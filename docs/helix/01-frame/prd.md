@@ -126,8 +126,8 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 ### Must Have (P0)
 
 1. The asynchronous loop and the model port, with the default OpenAI-compatible adapter and scripted, recording, and replay test doubles (FR-1 to FR-5, FR-38).
-2. The tool-call interface with typed arguments, approval, typed results, and the replay marker (FR-6 to FR-10).
-3. Sessions as append-only logs committed step by step, one turn per session, an in-memory store and a SQLite store (FR-11 to FR-13, FR-16).
+2. The tool-call interface with typed arguments, approval bound to one invocation, typed results, the replay marker, and intent recorded before an unsafe tool runs (FR-6 to FR-10, FR-42).
+3. Sessions as append-only logs committed step by step, one turn per session, idempotent create and send, an in-memory live store and archive, and a durable Postgres live store with an optional embedded server (FR-11 to FR-13, FR-16, FR-40, FR-41).
 4. Detection of an interrupted turn and its explicit resume (FR-14, FR-34).
 5. The client API: list, read, follow, and commands (FR-17 to FR-20).
 6. Spans and an audit record without content, and token usage (FR-22, FR-23, FR-25).
@@ -142,6 +142,8 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 3. Governance ports: policy, scope, result guards, and narrow-only providers (FR-26, FR-27).
 4. Opt-in automatic resume for applications that supply an identity (FR-37).
 5. Context compaction for long sessions (FR-35).
+6. The Databricks AI Gateway profile, with a derived archive over its inference tables (FR-39, FR-43).
+7. Reconciling and resolving an unknown tool outcome (FR-44).
 
 ### Nice to Have (P2)
 
@@ -149,7 +151,7 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 2. An MCP (Model Context Protocol) client adapter for tools.
 3. Parallel execution of independent tool calls in one reply.
 4. Subagents as sessions owned by a tool call.
-5. Postgres and other store adapters, and server adapters (HTTP, WebSocket) over the client API.
+5. A SQLite live store, other store adapters, and server adapters (HTTP, WebSocket) over the client API.
 6. An optional Pydantic AI adapter for providers outside the OpenAI-compatible protocol.
 
 ## Functional Requirements
@@ -167,9 +169,10 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 
 - **FR-6** — A tool is a plain `def` or `async def` function with typed arguments. Its schema is derived from the types, arguments are validated before the call, and a plain function never blocks the event loop.
 - **FR-7** — Tools are registered by name, uniqueness is enforced, and a client can list the tools a session offers.
-- **FR-8** — A tool can require approval before it runs. The turn ends with a pending confirmation that a later call answers, and the answer resumes the turn.
+- **FR-8** — A tool can require approval before it runs. The turn ends with a pending confirmation that a later call answers, and the answer resumes the turn. A new send to the session supersedes a pending approval.
 - **FR-9** — A tool call ends in a typed result (ok, error, denied, withheld, or interrupted) that the model reads and the record names; a denied or invalid call never records its argument values.
 - **FR-10** — A tool declares whether it is safe to rerun after an interrupted turn, and the default is that it is not.
+- **FR-42** — Before an unsafe tool runs, the log records an intent entry carrying a stable invocation id derived from the session, the assistant entry, and the call position, so recovery can tell not-started, started, finished, and resolved calls apart. An approval binds to one invocation, its arguments digest, and its tool-definition digest, satisfies only the approval gate, and every gate applies again when it is used. The library does not claim exactly-once external effects.
 
 ### Subsystem: Sessions
 
@@ -177,12 +180,14 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 - **FR-12** — A session can be created, closed, titled, tagged, and given settings, and each of these is recorded in the log.
 - **FR-13** — A session runs one turn at a time. Different sessions run concurrently.
 - **FR-15** — A new session can be forked from any entry of an existing one.
-- **FR-16** — Sessions are stored through a port. An in-memory store and a SQLite store ship, and the SQLite store works across processes that share its file.
+- **FR-16** — Sessions are stored through two ports: a live store, authoritative for in-flight and recent sessions, and an optional archive for finished ones. Each declares its capabilities (durability, lease scope, fencing, notifications; authoritative or derived, writable, lossless). An in-memory live store and archive ship, and so does a Postgres live store, which works across processes and which can start an embedded PostgreSQL 18 for zero-setup durability.
+- **FR-40** — An archive can be derived from a platform's own log, such as a gateway's inference tables: read-only, partial, read as the calling actor, bounded, and reporting pending, denied, or unavailable rather than an empty result. Archiving never sits in a turn's path.
+- **FR-41** — Creating a session with an application reference is idempotent per owner, a session can be found by that reference, and a send carrying a request id is idempotent; the tether log is the source of truth and the application holds only the reference.
 
 ### Subsystem: Crash Recovery and Resume
 
 - **FR-14** — A turn whose process died is detected from its expired lease and closed in the log as interrupted, and its session is listed as interrupted.
-- **FR-34** — A caller with a live identity can resume an interrupted turn. The resume continues from the last committed step: a tool call without a recorded result is rerun if the tool is declared safe to rerun and otherwise recorded as interrupted, then the model is called again; each committed step appears once; every gate applies again; and a chain of consecutive interruptions is bounded.
+- **FR-34** — A caller with a live identity can resume an interrupted turn. The resume continues from the last committed step: a call with an intent and no result is rerun if the tool is declared safe to rerun and otherwise recorded as interrupted with an unknown outcome, a call never started runs fresh, then the model is called again; each committed step appears once; every gate applies again; and a chain of consecutive interruptions is bounded.
 - **FR-37** — An application can opt in to automatic resume by supplying a function that returns an identity for a session, or declines it.
 
 ### Subsystem: Client API
@@ -215,6 +220,12 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 - **FR-30** — A terminal UI shows the session list and a live transcript and handles approvals and resume.
 - **FR-33** — After cloning the repository, one command starts the terminal UI against a built-in scripted demo model and a local store, with no configuration, no network access, and no credential, and the demo exercises streaming, a tool call, and an approval.
 
+### Subsystem: Databricks Profile
+
+- **FR-39** — A profile for the Databricks AI Gateway, delivered as an optional extra over the default adapter, supplies the route, the tier-to-service mapping, attribution tags, and identity modes (including one that requires the calling user's own token); the Databricks AI Gateway is supported and is never the only backend.
+- **FR-43** — The profile ships a derived archive that reads call detail from the gateway's inference tables on demand (FR-40).
+- **FR-44** — A tool can declare a reconcile function, and a caller can resolve a call whose outcome is unknown, recording the result in the log.
+
 ### Subsystem: Context Management
 
 - **FR-35** — A session's context can be bounded for the model by compaction that is recorded in the log, never alters earlier entries, and can be supplied by an application.
@@ -227,7 +238,7 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 
 ### Feature Map
 
-Each subsystem becomes one feature specification: FEAT-001 Agent Loop and Model Port, FEAT-002 Tools, FEAT-003 Sessions, FEAT-004 Crash Recovery and Resume, FEAT-005 Client API, FEAT-006 Telemetry, FEAT-007 Governance, FEAT-008 Test Kit, FEAT-009 Reference Clients, FEAT-010 Context Management, FEAT-011 Packaging and Licensing. Stories are in `docs/helix/01-frame/user-stories/`.
+Each subsystem becomes one feature specification: FEAT-001 Agent Loop and Model Port, FEAT-002 Tools, FEAT-003 Sessions, FEAT-004 Crash Recovery and Resume, FEAT-005 Client API, FEAT-006 Telemetry, FEAT-007 Governance, FEAT-008 Test Kit, FEAT-009 Reference Clients, FEAT-010 Context Management, FEAT-011 Packaging and Licensing, FEAT-012 Databricks Profile. Stories are in `docs/helix/01-frame/user-stories/`.
 
 ## Non-Functional Requirements
 
@@ -240,7 +251,7 @@ Each subsystem becomes one feature specification: FEAT-001 Agent Loop and Model 
 - **NFR-8** — No module imports a foundation-model provider's SDK (ADR-012), and the default install's dependency tree contains none; a boundary check enforces a banned list.
 - **NFR-7** — Performance targets (proposed, validated by the first baseline). The reference workload is one owner with 10,000 sessions of about 200 entries each, one session of 100,000 entries, entries of about 1 KiB, one process with one event loop, on a laptop-class machine with a local solid-state disk. All latencies are 99th percentile.
 
-| Operation | In-memory store | SQLite store |
+| Operation | In-memory store | Durable store (Postgres, local server) |
 |-----------|-----------------|--------------|
 | List a page of 50 summaries | at most 3 ms | at most 10 ms |
 | Get a session view | at most 2 ms | at most 5 ms |
@@ -282,7 +293,7 @@ This section records decisions; the rationale is in the ADRs.
 
 - **Language/Runtime**: Python 3.11 and later (the floor is an assumption: the lowest runtime of the first downstream consumer). `uv` for environments and builds (concern `python-uv`).
 - **Key Libraries**: `pydantic` v2; `anyio`; `httpx` for the default OpenAI-compatible model adapter (ADR-002); no foundation-model provider SDK (ADR-012); Pydantic AI only in an optional adapter; Textual for the terminal UI as an extra (ADR-008); the standard library `sqlite3` for the SQLite store (ADR-009); OpenTelemetry as an extra.
-- **Data/Storage**: an in-memory store and a SQLite store in WAL mode with full synchronous commits; other stores through the port.
+- **Data/Storage**: two ports, a live store and an archive (ADR-019). Defaults: in-memory (both); Postgres live store through `psycopg`, with an optional embedded PostgreSQL 18 (`pgserver`), tested on PostgreSQL 18 (ADR-020); SQLite (standard library, WAL, full synchronous commits) optional and later; a derived archive over gateway inference tables ships with the Databricks profile.
 - **APIs**: the model port, the engine ports, and the client API (contracts `CONTRACT-001` to `CONTRACT-003`).
 - **Platform Targets**: Linux and macOS.
 - **Hosting and CI**: GitHub (`DocumentDrivenDX/tether`) and GitHub Actions (an assumption to confirm).
@@ -311,7 +322,9 @@ This section records decisions; the rationale is in the ADRs.
 | Risk | Probability | Impact | Mitigation |
 |------|-------------|--------|------------|
 | The proposed performance targets are wrong | Medium | Medium | The first benchmark baseline replaces each with a measured budget; CI protects the budget afterward |
-| Per-step commits cost too much latency on SQLite | Medium | Medium | Batch a step's entries into one commit; measure in the benchmarks before 0.1; offer `synchronous=NORMAL` as a documented setting |
+| Per-step commits cost too much latency on the durable store | Medium | Medium | Batch a step's entries into one commit; measure in the benchmarks before 0.1; document the store's durability settings |
+| Starting the embedded Postgres exceeds the clone-and-try budget | Medium | Medium | Time it in the quickstart test; fall back to an in-memory demo or build the SQLite store for the durable demo (ADR-020) |
+| A derived archive hides a gap by returning less than the platform holds | Medium | High | It reports pending, denied, or unavailable and never an empty result; capability flags say partial (ADR-019) |
 | The ports or the provider surface prove too narrow or too wide | Medium | High | Port the first downstream platform's scenarios early; amend the contracts before release |
 | Resume re-executes a side effect | Medium | High | Tools default to unsafe and are recorded as interrupted, never rerun, unless declared safe; every gate applies again; resume is explicit by default (ADR-010) |
 | Server quirks in the OpenAI-compatible protocol break the default adapter | High | Medium | A conformance matrix from cassettes of local and self-hosted servers on fabricated prompts, live on demand; a quirk table in the adapter; server-specific parameters pass through; the optional Pydantic AI adapter as a fallback |
@@ -324,12 +337,15 @@ This section records decisions; the rationale is in the ADRs.
 
 - [ ] Is the default `resume="report"` (explicit resume, with automatic resume as an opt-in that needs an identity) right? It follows from credentials never being stored (ADR-010, ADR-011). Blocks FEAT-004. Ask Erik LaBianca.
 - [ ] Context compaction is proposed as P1 because two surveyed products ship it; should it move to P0 or P2? Blocks FEAT-010 sequencing. Ask Erik LaBianca.
+- [ ] Is the durable demo on Postgres (embedded, if it starts within the 10 s budget) or on a SQLite store built for it? Blocks the storage slice. Ask Erik LaBianca after the first start-time measurement (ADR-020).
+- [ ] May the live store hold call content by reference to a derived archive (for example, a gateway's inference tables) instead of a copy? Deferred to the Databricks slice (ADR-019). Ask Erik LaBianca.
+- [ ] Is the session metadata that "can be cleaned (gleaned?) from inference tables" a read-only derived view, or may the live store be purged so the archive becomes authoritative? The design supports both (ADR-019); confirm which the first consumer needs. Ask Erik LaBianca.
 - [ ] Whether GitHub Actions is the CI service. Blocks slice 0. Ask Erik LaBianca.
 - [ ] Whether 3.11 is the right Python floor. Blocks the packaging metadata. Ask Erik LaBianca, from the first downstream consumer's runtime.
 
 ## Success Criteria
 
 - Every P0 acceptance sketch passes in CI.
-- A developer completes the quickstart with the terminal UI against the demo model, then a real provider, then the SQLite store, changing only configuration.
+- A developer completes the quickstart with the terminal UI against the demo model, then a real provider, then the Postgres store, changing only configuration.
 - A turn killed at any step resumes with each completed step recorded once.
 - The first downstream platform replaces its in-house loop with a tether release and keeps its session, policy, and audit behavior.
