@@ -1,0 +1,117 @@
+"""A minimal OpenAI-compatible chat-completions client over httpx only (no provider SDK), tested
+against a stdlib asyncio server that streams server-sent events split mid-line, like real servers."""
+import asyncio, json
+import httpx
+
+class ModelUnavailable(Exception):
+    def __init__(self, reason, request_id=None): super().__init__(reason); self.request_id = request_id
+
+# ---- the client under test (this is the code whose size matters) -----------------------------
+async def stream(http, base_url, *, model, messages, tools=(), credential=None, extra=None, headers=None):
+    body = {"model": model, "messages": messages, "stream": True, "stream_options": {"include_usage": True}, **(extra or {})}
+    if tools: body["tools"] = [{"type": "function", "function": t} for t in tools]
+    hdrs = {"Content-Type": "application/json", **(headers or {})}
+    if credential is not None and (auth := await credential.authorization()): hdrs["Authorization"] = auth
+    text, calls, usage, request_id, done = [], {}, None, None, False
+    try:
+        async with http.stream("POST", f"{base_url}/chat/completions", json=body, headers=hdrs) as r:
+            request_id = r.headers.get("x-request-id")
+            if r.status_code >= 400:
+                await r.aread(); raise ModelUnavailable(f"http {r.status_code}", request_id)   # never the body
+            async for line in r.aiter_lines():
+                if not line.startswith("data:"): continue                                      # comments, blank separators
+                data = line[5:].strip()
+                if data == "[DONE]": done = True; break
+                chunk = json.loads(data)
+                if chunk.get("usage"): usage = (chunk["usage"]["prompt_tokens"], chunk["usage"]["completion_tokens"])
+                for choice in chunk.get("choices", []):
+                    delta = choice.get("delta") or {}
+                    if delta.get("content"): text.append(delta["content"]); yield ("delta", delta["content"])
+                    for tc in delta.get("tool_calls") or []:
+                        c = calls.setdefault(tc["index"], {"id": "", "name": "", "arguments": ""})
+                        c["id"] = tc.get("id") or c["id"]
+                        fn = tc.get("function") or {}
+                        c["name"] = fn.get("name") or c["name"]; c["arguments"] += fn.get("arguments") or ""
+    except httpx.HTTPError as e:
+        raise ModelUnavailable(type(e).__name__.lower(), request_id) from None                # class name only
+    if not done: raise ModelUnavailable("incomplete stream", request_id)
+    yield ("response", {"content": "".join(text), "request_id": request_id, "usage": usage,
+                        "tool_calls": [dict(id=c["id"], name=c["name"], arguments=json.loads(c["arguments"] or "{}")) for _, c in sorted(calls.items())]})
+# ---------------------------------------------------------------------------------------------
+
+def sse(obj): return f"data: {json.dumps(obj)}\n\n".encode()
+def chunk(delta=None, finish=None, usage=None):
+    c = {"id": "c", "object": "chat.completion.chunk", "created": 1, "model": "m", "choices": [{"index": 0, "delta": delta or {}, "finish_reason": finish}] if (delta is not None or finish) else []}
+    if usage: c["usage"] = usage
+    return sse(c)
+
+disconnected = []
+bodies = []
+async def serve(reader, writer):
+    head = await reader.readuntil(b"\r\n\r\n")
+    hdrs = {l.split(b":")[0].decode().lower(): l.split(b":", 1)[1].strip().decode() for l in head.split(b"\r\n")[1:] if b":" in l}
+    body = json.loads(await reader.readexactly(int(hdrs["content-length"])))
+    bodies.append(body); scenario = body["model"]; auth = hdrs.get("authorization", "")
+    def send(status, extra_headers, payload):
+        writer.write(f"HTTP/1.1 {status}\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n{extra_headers}\r\n".encode())
+    async def part(b):
+        writer.write(f"{len(b):x}\r\n".encode() + b + b"\r\n"); await writer.drain()
+    if scenario == "boom":
+        send("500 Internal Server Error", "Content-Type: application/json\r\nx-request-id: req-fail\r\n", None)
+        await part(b'{"error": {"message": "secret content"}}'); await part(b"")
+    else:
+        send("200 OK", f"Content-Type: text/event-stream\r\nx-request-id: req-for-{auth.removeprefix('Bearer ')}\r\n", None)
+        if scenario == "tool":                       # arguments arrive in pieces; one SSE line is split across two network chunks
+            stream_bytes = b"".join([chunk({"role": "assistant", "content": "Looking. "}),
+                chunk({"tool_calls": [{"index": 0, "id": "c1", "type": "function", "function": {"name": "lookup", "arguments": "{\"q\": \"sa"}}]}),
+                chunk({"tool_calls": [{"index": 0, "function": {"arguments": "mple\"}"}}]}),
+                chunk({}, finish="tool_calls"), chunk(usage={"prompt_tokens": 12, "completion_tokens": 9, "total_tokens": 21}), b"data: [DONE]\n\n"])
+            cut = len(stream_bytes) // 3
+            await part(stream_bytes[:cut]); await asyncio.sleep(0.01); await part(stream_bytes[cut:]); await part(b"")
+        elif scenario == "no-usage":                # some local servers omit usage
+            await part(chunk({"content": "hi"}) + chunk({}, finish="stop") + b"data: [DONE]\n\n"); await part(b"")
+        elif scenario == "truncated":               # connection ends without [DONE]
+            await part(chunk({"content": "partial"})); await part(b"")
+        elif scenario == "slow":                    # for the cancellation test
+            try:
+                for _ in range(200): await part(chunk({"content": "x"})); await asyncio.sleep(0.02)
+            except (ConnectionResetError, BrokenPipeError): disconnected.append(True)
+    try: await writer.drain(); writer.close()
+    except Exception: disconnected.append(True)
+
+class Cred:
+    def __init__(self, t): self.t = t
+    async def authorization(self): return f"Bearer {self.t}"
+
+async def collect(http, base, **kw):
+    out, resp = [], None
+    async for kind, val in stream(http, base, **kw):
+        if kind == "delta": out.append(val)
+        else: resp = val
+    return out, resp
+
+async def main():
+    server = await asyncio.start_server(serve, "127.0.0.1", 0); port = server.sockets[0].getsockname()[1]; base = f"http://127.0.0.1:{port}/v1"
+    async with httpx.AsyncClient(timeout=10) as http:
+        deltas, r = await collect(http, base, model="tool", messages=[{"role": "user", "content": "hi"}], tools=[{"name": "lookup", "parameters": {}}], credential=Cred("u1"), extra={"min_p": 0.05, "cache_prompt": True})
+        print("tool call stream:", deltas, "|", r["tool_calls"], "| usage", r["usage"], "| request id", r["request_id"])
+        first = bodies[0]
+        print("pass-through params on the wire:", {k: first.get(k) for k in ("min_p", "cache_prompt")}, "| stream_options:", first.get("stream_options"))
+        deltas, r = await collect(http, base, model="no-usage", messages=[{"role": "user", "content": "hi"}])
+        print("no usage chunk:", deltas, "| usage", r["usage"])
+        for scen in ("boom", "truncated"):
+            try: await collect(http, base, model=scen, messages=[{"role": "user", "content": "hi"}]); print(scen, "no error?!")
+            except ModelUnavailable as e:
+                leaked = "secret" in str(e)
+                print(scen, ": reason =", repr(str(e)), "| request id =", e.request_id, "| body leaked =", leaked)
+        results = await asyncio.gather(*(collect(http, base, model="tool", messages=[{"role": "user", "content": "hi"}], tools=[{"name": "lookup", "parameters": {}}], credential=Cred(f"user-{i}")) for i in range(5)))
+        print("5 concurrent calls, each read its own request id:", all(r["request_id"] == f"req-for-user-{i}" for i, (_, r) in enumerate(results)))
+        async def go():
+            async for _ in stream(http, base, model="slow", messages=[{"role": "user", "content": "hi"}]): pass
+        t = asyncio.create_task(go()); await asyncio.sleep(0.15); t.cancel()
+        try: await t
+        except asyncio.CancelledError: pass
+        await asyncio.sleep(0.3)
+        print("cancellation closed the connection (server saw disconnect):", bool(disconnected))
+    server.close()
+asyncio.run(main())

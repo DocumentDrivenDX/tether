@@ -17,6 +17,8 @@ ddx:
       kind: informed_by
     - id: ADR-003
       kind: informed_by
+    - id: ADR-012
+      kind: informed_by
 ---
 
 # Project Concerns
@@ -24,6 +26,8 @@ ddx:
 Project Concerns declare active cross-cutting context for downstream work. They are not principles, requirements, ADRs, test plans, or implementation tasks.
 
 tether is a library with two small reference clients. Slots that belong to a deployed web application (`frontend-framework`, `deploy-target`, `e2e-framework`, `auth-provider`, `datastore`) have no filler: the library publishes to a package index, its reference clients are a command-line program and a terminal UI, and it stores sessions through a port. This is a recorded assumption; revisit it if a web client is added.
+
+The Python runtime selection is retained after the Python/TypeScript and AgentKit evaluation (ADR-003). Python embedding and browser usability are equally important; the consuming application owns its existing server and browser contract. Databricks Apps is an application deployment target, not a required dependency of this library. No AgentKit wrapper, second harness runtime or additional frontend slot is selected.
 
 ## Active Concerns
 
@@ -37,6 +41,7 @@ tether is a library with two small reference clients. Slots that belong to a dep
 | `o11y-otel` | library | `area:telemetry` | Telemetry is a feature: spans and audit entries for every turn, model call, and tool call. | Applicable sections: agent run diagnostics and GenAI operations (the model-call spans); the tracer is a port with a no-op default and an OpenTelemetry (OTel) adapter as an extra; context propagates across awaits; spans and audit entries carry identifiers, sizes, and reasons and never message or tool content; service-only obligations (endpoints, SLOs) do not apply to a library |
 | `resilience` | library | `area:core`, `area:sessions` | Models and stores fail; the loop must fail in defined ways. | Gates fail closed; one layer retries and owns the policy; every external call has a bound; a failed step is recorded and a turn ends with a typed stop reason; crash recovery is idempotent |
 | `security-owasp` | library | all | The library handles identity per call and runs tool code. | No credential or private datum in the repository, fixtures, cassettes, or logs; the recorder strips identity and accepts only fabricated prompts; library errors never echo response bodies; dependencies pinned and audited; inputs from models validated before use |
+| `model-provider-independence` | project-local; ADR-012 | all | Operator design goal (2026-10-22): maximum leverage for local and sovereign models, and no dependency on a hyperscale foundation-model provider. | The model path is the OpenAI-compatible protocol over `httpx`; no module imports `openai`, `anthropic`, `claude_agent_sdk`, `google.genai`, `google.generativeai`, `vertexai`, `mistralai`, `cohere`, or `groq`, enforced by the boundary check and a dependency-tree test; server-specific parameters pass through the port's `extra`; a provider-only feature is an optional adapter capability and never required by the core or a contract; the demo and the tests need no network; examples and defaults name no hosted provider; using a provider SDK needs an ADR that shows the protocol cannot do the job and confines it to one optional adapter |
 | `scope-discipline` | library | all | The non-goals are the main defense against turning into a framework. | Each feature traces to the vision; an adjacency named in the non-goals needs an operator decision before it is built |
 | `code-shape-ceilings` | library | all | Small modules are what coding agents and reviewers read and edit reliably. | Global size and complexity ceilings checked in CI with no per-file exceptions; the ceiling is lowered as files are split, never raised to pass a change |
 
@@ -45,6 +50,7 @@ tether is a library with two small reference clients. Slots that belong to a dep
 | Concern | Practice | Override | Authority |
 |---------|----------|----------|-----------|
 | `python-uv` | Configuration: one central `pydantic-settings` `BaseSettings` class | The core defines plain `pydantic` configuration models and reads no environment variable, so the core does not depend on `pydantic-settings`. `pydantic-settings` is used only by the reference clients, as their composition root. | ADR-003 |
+| `model-provider-independence` | (project-local; no library practice) | The banned SDK list in ADR-012 binds every package, including optional adapters | ADR-012 |
 | `python-uv` | Python 3.12 or later when the runtime allows | The floor is 3.11 until the first downstream consumer's runtime is confirmed (a library's floor is the lowest consumer runtime) | Needs confirmation (PRD open assumption) |
 
 ## Area Labels

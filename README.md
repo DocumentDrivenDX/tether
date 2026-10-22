@@ -27,13 +27,14 @@ interface, the storage, and the policy. Tether is the runtime underneath:
   you write over it.
 - **Telemetry.** Spans and audit entries for every turn, model call, and tool call, without
   message content by default.
+- **Any model server, no provider SDK.** The default model adapter speaks the OpenAI-compatible chat-completions protocol over `httpx`, so a local, self-hosted, or sovereign model server works by configuration, and tether depends on no foundation-model provider's SDK.
 - **Testing.** Every port has a dummy implementation and a conformance suite. A recorded model
   conversation replays through the loop deterministically.
 
 ## What it is not
 
 Not a UI, not a server, not a multi-agent orchestration graph, not a coding agent, and not a
-model provider SDK (it uses [Pydantic AI](https://ai.pydantic.dev) for model calls). See the
+model provider SDK and not tied to any provider: it speaks the open OpenAI-compatible protocol and imports no provider's SDK. See the
 [non-goals](docs/helix/00-discover/product-vision.md#non-goals).
 
 ## License
@@ -43,4 +44,10 @@ Dual licensed under either of
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
-at your option. Copyright 2026 Synaptiq.
+at your option. Copyright 2026 FocusedDiversity LLC.
+
+## Contributing
+
+You can contribute directly: open an issue or a pull request. There is no contributor license agreement to sign. Contributions are accepted as prompts: describe the change you want precisely enough that a maintainer's coding agent can implement it, and include any reference code as illustration. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project, as defined in the Apache-2.0 license, is dual licensed as above, without any additional terms or conditions.

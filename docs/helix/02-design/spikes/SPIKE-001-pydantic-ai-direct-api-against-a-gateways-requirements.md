@@ -28,11 +28,12 @@ ddx:
 **Technical Question**: Can Pydantic AI (an open-source Python library from the Pydantic team that wraps model providers behind one message and tool model) carry the requirements of a multi-user, OpenAI-compatible model gateway while the harness keeps its own loop, gates, and types, and can it do so through its native asynchronous calls?
 
 **Goals**:
-- [x] A per-call bearer token for the calling user, read from a context variable.
+- [x] A per-call bearer token for the calling user, from a context variable (and, in Finding 7, from an explicit credential).
 - [x] Per-call `User-Agent` (a session tag) and W3C `traceparent` headers, with the `User-Agent` not overwritten by the client library.
 - [x] `reasoning_effort`, tools, tool-call parsing, and token usage on the chat-completions route.
 - [x] A streaming call that yields text deltas, then the assembled response with usage, synchronously and asynchronously.
 - [x] Concurrent calls, each carrying its own user's token and reading back its own `x-request-id`.
+- [x] An explicit per-call `Authorization` header, with no ambient context variable, that overrides the client's default key.
 - [x] The gateway's `x-request-id` response header, on success, on a stream, and on failure.
 - [x] An HTTP failure maps to an outage whose reason carries a status and never the response body.
 
@@ -56,12 +57,13 @@ ddx:
 | 1 | Read the library's documentation for the direct API, the OpenAI model, and testing | Confirm sync and async calls and a custom client exist |
 | 2 | Probe (`SPIKE-001-probe/probe.py.txt`) with `pydantic-ai-slim` 2.59.0, `openai` 3.36.0, `httpx` 0.28.1 on Python 3.11 | Show each requirement against a mock transport, through the synchronous wrappers |
 | 3 | Async probe (`SPIKE-001-probe/async_probe.py.txt`), same versions | Show the native asynchronous calls and five concurrent calls |
+| 4 | Explicit-credential probe (`SPIKE-001-probe/explicit_credential_probe.py.txt`), same versions | Show a per-call `Authorization` header from an explicit credential object, under concurrency |
 
 ## Findings
 
 **FINDING 1**: Per-user bearer auth works through an `httpx.Auth` object that reads a context variable.
 - **Evidence**: The mock server saw `Authorization: Bearer <value set in the caller's context>` on a call made through `model_request_sync`. The sync wrapper runs the request inside the caller's context, so the variable is visible.
-- **Implications**: The adapter reads the caller's identity from a context variable it is given and can refuse a call that has none when identity is required.
+- **Implications**: The first design read the caller's identity from a context variable; Finding 7 shows an explicit credential works without one, and ADR-011 adopts that.
 
 **FINDING 2**: Per-call headers and request-body fields pass through `ModelSettings`.
 - **Evidence**: `extra_headers={"User-Agent": ..., "traceparent": ...}` reached the server and the `User-Agent` was the one supplied, not the client library's. `extra_body={"reasoning_effort": "high"}` appeared as a top-level body field. Tools and the model name appeared in the body unchanged, and the request path was the `base_url` plus `/chat/completions`.
@@ -83,6 +85,10 @@ ddx:
 - **Evidence**: With `model_request` and `model_request_stream`, a plain `ContextVar.set` inside the response hook was visible to the caller, so no holder is needed. The stream yielded the deltas `Hel`, `lo` and usage 5 and 2. Five concurrent calls, each in its own task with its own user token, put five distinct bearer values on the wire, and each task read back the request id derived from its own token.
 - **Implications**: The adapter is the asynchronous one (ADR-001, ADR-002). The per-call identity design (a context variable read by an `httpx.Auth`) is correct under concurrency, which is the case a harness serving many sessions on one event loop depends on.
 
+**FINDING 7**: An explicit per-call `Authorization` header from a credential object works without any ambient context variable.
+- **Evidence**: With a client built with a default API key, five concurrent calls each passed `ModelSettings(extra_headers={"Authorization": <value from that call's credential object>})`. The mock server saw five distinct bearer values and none was the client default; a call with no per-call header used the default.
+- **Implications**: Identity can be an explicit `Credential` on the actor, read asynchronously so a token can refresh, and passed to the adapter per call (ADR-011). No context variable is needed, which makes resume, background work, and tests straightforward.
+
 ### Measurements
 | Requirement | Result | Notes |
 |-------------|--------|-------|
@@ -94,6 +100,7 @@ ddx:
 | Sync and async streaming | Works | `.response` after iteration (sync); `async with` (async) |
 | `x-request-id` | Works | Response hook; a caller-owned holder through the sync wrappers, a plain `ContextVar` through the async calls |
 | Concurrent calls with distinct users | Works | Five tasks, five tokens, five request ids |
+| Explicit per-call credential | Works | `extra_headers` overrides the client default; no ambient state |
 | Error text without the body | Needs adapter code | Library error text includes the body |
 
 ## Analysis
@@ -123,4 +130,4 @@ ddx:
 
 ## Artifacts
 
-- `SPIKE-001-probe/probe.py.txt` and `SPIKE-001-probe/async_probe.py.txt`: the probes, run with `uv run --no-project --python 3.11 --with 'pydantic-ai-slim[openai]' --with httpx python <name>.py` after renaming to `.py`.
+- `SPIKE-001-probe/probe.py.txt`, `async_probe.py.txt`, and `explicit_credential_probe.py.txt`: the probes, run with `uv run --no-project --python 3.11 --with 'pydantic-ai-slim[openai]' --with httpx python <name>.py` after renaming to `.py`.

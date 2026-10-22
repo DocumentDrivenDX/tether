@@ -9,7 +9,7 @@ points here and carries no rules of its own.
 loop, a typed tool-call interface, durable session management, telemetry, and a fast in-process
 API that exposes the session list and session data to a user interface. It also ships a simple
 CLI and terminal UI as reference clients. It is dual licensed MIT OR Apache-2.0, copyright
-Synaptiq.
+FocusedDiversity LLC.
 
 The repository is governed by HELIX. `.helix.yml` scopes the `helix` flow to `docs/helix/`.
 Project artifacts (vision, PRD, concerns, ADRs, contracts) govern; the research under
@@ -43,6 +43,8 @@ This repository is built to be public. Hard floors:
 - The core package reads no environment variable. A settings object is built at the composition
   root and passed in.
 - Every port has a dummy implementation and a conformance suite. A new port needs both.
+- Port before you write. When the first downstream platform already has a tested implementation of a component, port it: read it, remove what is specific to that platform, adapt it to this library's contracts, and bring its tests. Do not reinvent it. The commit that adds ported work names it by description, never by the private repository's name.
+- Import no foundation-model provider's SDK (`openai`, `anthropic`, `claude_agent_sdk`, `google.genai`, and the like). The model path is the OpenAI-compatible protocol over `httpx` (ADR-012). Using a provider SDK needs an ADR that shows the protocol cannot do the job.
 - Telemetry and audit entries carry identifiers, sizes, and reasons, never message or tool
   content.
 - Add regression coverage for changed behavior. Do not lower checks, weaken assertions, or add

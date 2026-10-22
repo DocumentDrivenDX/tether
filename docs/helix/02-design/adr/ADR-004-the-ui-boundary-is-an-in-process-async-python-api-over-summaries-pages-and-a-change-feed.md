@@ -42,6 +42,9 @@ We will expose the session list and session data to a UI through one in-process,
 ### Over an HTTP and server-sent-events server in the library
 It would make tether usable from any language and from a browser directly, at the cost of a server dependency, a security surface (authentication, cross-origin rules), and a deployment opinion. The vision excludes it; an adapter over the client API serves a browser.
 
+### Keeping the existing application server
+The consuming application exposes the client API through its existing authenticated routes and streaming connection. This boundary does not require a new service, a second agent runtime or an AgentKit integration. TypeScript browser code uses the application's wire contract; Python continues to host the library. Any shared schema generation belongs to that application until a reusable client package is explicitly selected. ADR-003 records the language and runtime-adoption decision.
+
 ### Over interfaces reading the store directly
 It couples every interface to the store's schema, bypasses ownership checks, and gives no change feed. A store would no longer be replaceable behind a port.
 
@@ -49,7 +52,7 @@ It couples every interface to the store's schema, bypasses ownership checks, and
 A list needs the state of every session, so a new interface would replay every event of every session. Summaries and pages avoid that cost.
 
 ### Over a query language such as GraphQL
-It adds a schema and an execution layer for three reads. A typed Python API is faster and simpler, and a query layer can be an adapter.
+It adds a schema and an execution layer for three reads. The Python API keeps the embedded surface small; a query layer can be supplied by the application. Relative performance requires measurement.
 
 ## Consequences
 

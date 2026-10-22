@@ -31,6 +31,12 @@ ddx:
       kind: informed_by
     - id: SPIKE-001
       kind: informed_by
+    - id: SPIKE-002
+      kind: informed_by
+    - id: ADR-012
+      kind: informed_by
+    - id: ADR-013
+      kind: informed_by
     - id: concerns
       kind: informed_by
 ---
@@ -51,7 +57,7 @@ ddx:
 
 | Requirement | Technical Capability | Component | Priority |
 |------------|---------------------|-----------|----------|
-| FR-1 to FR-5 | The loop, the model port, the Pydantic AI adapter, the scripted, recording, and replay doubles | Engine; `tether.adapters.pydantic_ai`; test kit | P0 |
+| FR-1 to FR-5, FR-38 | The loop, the model port, the default OpenAI-compatible HTTPX adapter, and scripted/recording/replay doubles | Engine; `tether.adapters.openai_compat`; test kit | P0 |
 | FR-6 to FR-10 | `@tool`, the registry, argument validation, thread offload, approval, typed results, the replay marker | Engine | P0 (FR-10 P1) |
 | FR-11 to FR-13, FR-16 | Entry log, per-step commits, the lease, `InMemoryStore`, then the SQLite store | Session service; stores | P0 (SQLite P1) |
 | FR-14 | Lease expiry, recovery, idempotent keys, resume | Session service; engine | P1 |
@@ -84,13 +90,13 @@ ddx:
 ### Approach 2: Adopt an existing harness or framework as the engine
 **Description**: Build on Pi Durable, LangGraph, or the OpenAI Agents SDK.
 **Pros**: Less loop code.
-**Cons**: A different language or a second owner of session state; the gates still have to be built around it (ADR-003).
+**Cons**: Adopting a runtime changes the transition/state model and still needs Tether-specific policy, session and recovery integration. A single state owner is possible; duplication is an integration risk, not an inevitable defect. AgentKit supplies invocation supervision rather than the loop and does not replace the selected contracts (ADR-003).
 **Evaluation**: Rejected.
 
 ### Approach 3: A ports-and-providers library with its own loop, built in staged slices (selected)
 **Description**: Types and ports first, then the model port, the engine, the session log and service, the client API, then the adapters and clients; each slice is verifiable on its own.
 **Pros**: Boundaries and dummies exist before features; each slice ships alone; the contracts are exercised from the start.
-**Cons**: More upfront design; two session shapes if an application needs its own state (it subclasses and stores it in its own tables).
+**Cons**: Tether maintains execution, persistence, recovery and protocol compatibility. The application keeps its own business state and a reference to the conversation; it must not create a second authoritative transcript.
 **Evaluation**: Selected.
 
 **Selected Approach**: Approach 3.
@@ -136,7 +142,7 @@ erDiagram
 
 ### Component: Model adapters and doubles
 - **Purpose**: Implementations of the model port.
-- **Responsibilities**: The Pydantic AI adapter with per-call identity, tags, request id, and scrubbed errors; the scripted, recording, and replay doubles; the cassette.
+- **Responsibilities**: The default OpenAI-compatible adapter over HTTPX with per-call identity, tags, request id and scrubbed errors; the Databricks gateway profile; scripted/recording/replay doubles and cassettes. An optional Pydantic AI adapter is separate and subject to the dependency policy (ADR-002, ADR-012, ADR-013).
 - **Requirements Addressed**: FR-2 to FR-5, FR-28
 - **Interfaces**: CONTRACT-001.
 - **Owned by TDs**: Slice 1.
@@ -193,7 +199,7 @@ graph TD
     Engine --> Telemetry[Tracer / audit ports]
     Store --> Bus[Change bus]
     Bus --> Client
-    Model --> Pai[Pydantic AI adapter]
+    Model --> Compat[OpenAI-compatible HTTPX adapter]
     Store --> Sqlite[SQLite store]
     Telemetry --> Otel[OTel adapter]
 ```
@@ -202,13 +208,17 @@ graph TD
 
 | Layer | Choice | Why | Alternatives Rejected |
 |-------|--------|-----|----------------------|
-| Language | Python 3.11 and later | The `python-uv` concern; the target users | A TypeScript library (ADR-003) |
+| Language | Python 3.11 and later | Direct embedding of Python tools and application objects; browser transport stays in the existing application (ADR-003) | TypeScript harness or dual runtimes; accept the cross-language browser contract |
 | Models and ports | `pydantic` v2 frozen models, `typing.Protocol` | Validation and JSON Schema for tools; structural typing for ports that tests implement | Dataclasses (no validation); abstract base classes |
 | Concurrency | `asyncio` with `anyio` for offload and cancellation scopes | ADR-001 | Threads per turn; a sync and an async twin |
-| Model client | Pydantic AI behind a port | ADR-002, SPIKE-001 | Bespoke HTTP; the `openai` SDK; LangChain |
+| Model client | Owned OpenAI-compatible HTTPX adapter behind `ModelPort` | ADR-002, ADR-012, SPIKE-002 | Provider SDKs and framework-owned default clients; optional adapters require compliant dependency closure |
 | Store | In-memory first, then SQLite through the standard library | No new dependency; a local file with indexes and transactions | A server database first |
 | Packaging | One distribution with extras, `uv`, `hatchling` with `uv-dynamic-versioning` | The `python-uv` concern; one install for users | Several distributions (premature) |
 | Boundary gate | `scripts/check_layers.py` and a clean-environment run | A repository script and an undeclared-import test | A third-party import checker |
+
+### Application integration boundary
+
+Retain the existing Databricks Apps server and its UI transport. The library exposes `Client` to that process; it does not add an AgentKit server, another supervisor, or a second TypeScript implementation. No AgentKit integration or comparative-wrapper experiment is a release dependency. Revisit adoption only through the concrete replacement/deletion criterion in ADR-003.
 
 ## Staged Build Plan
 
@@ -217,7 +227,7 @@ Each slice is one change that leaves the repository releasable. The first downst
 | Slice | Does | Verifiable outcome |
 |-------|------|--------------------|
 | 0. Scaffold | `pyproject.toml` (`uv`, `hatchling`, `uv-dynamic-versioning`), `src/tether/` skeleton with `py.typed`, `ruff`, `pyright`, `pytest` with the `anyio` plugin and `hypothesis`, ceilings, `scripts/check_layers.py`, CI, a pre-commit hook, license metadata | The gates pass on the skeleton; the layering check rejects each planted forbidden import (negative controls); a clean install shows both license texts |
-| 1. Types, model port, doubles, adapter | `tether.types` and `tether.ports` for the model port; scripted, recording, and replay doubles and the cassette; `model_port_suite`; the Pydantic AI adapter with wire tests | The suite passes for every double and the adapter, including concurrent calls that keep their own identity and cancellation that propagates; a cassette round-trips; one live smoke call succeeds against a real provider on a fabricated prompt (the owner supplies a credential at run time, never in the repository) |
+| 1. Types, model port, doubles, adapter | `tether.types` and `tether.ports` for the model port; scripted, recording, and replay doubles and the cassette; `model_port_suite`; the default HTTPX adapter with wire tests and local-server conformance | The suite passes for every double and the adapter, including concurrent calls that keep their own identity and cancellation that propagates; a cassette round-trips; one live smoke call succeeds against a real provider on a fabricated prompt (the owner supplies a credential at run time, never in the repository) |
 | 2. Engine core | `@tool`, the registry, the pipeline, gates, built-in guards, confirmation, providers, in-process interaction dummies, against a stub `TurnLog` | The ported characterization scenarios pass; narrow-only property tests pass; the `ASYNC` lint rules are clean; a plain-function tool does not block a concurrent task |
 | 3. Sessions | Entries, `InMemoryStore`, `Tether`, the lease, recovery, summary projection, the change bus; `session_store_suite` | The suite passes; a simulated death between steps leaves each completed step once; the summary equals the rebuilt projection |
 | 4. Client API and benchmarks | `Client`: list, get, entries, follow, commands; the benchmark suite | FR-17 to FR-20 acceptance sketches pass; the benchmark baseline is committed; the owner sets budgets from it |
@@ -259,8 +269,8 @@ Each slice is one change that leaves the repository releasable. The first downst
 ## Constraints & Assumptions
 
 - **Constraints**: Python 3.11 and later; asynchronous only; no dependency beyond the core's `pydantic` and `anyio` without an ADR; no credential, private data, or reference to a private repository in the repository, fixtures, or cassettes.
-- **Assumptions**: Pydantic AI's direct API stays stable and is pinned exactly; a hosted CI service is available; the first downstream platform will adopt a release.
-- **Dependencies**: Pydantic AI, `httpx`, `openai`, `anyio`, `pydantic`, OpenTelemetry (extra), a TUI library (open).
+- **Assumptions**: A hosted CI service is available; the first downstream platform will adopt a library release. The existing Apps deployment is context, not proof that every proposed library contract is implemented.
+- **Dependencies**: `pydantic` and `anyio` in the core; `httpx` for the default model adapter; Textual and OpenTelemetry in their selected extras. Pydantic AI is an optional, separately audited adapter. AgentKit and foundation-model provider SDKs are excluded under ADR-003 and ADR-012.
 
 ## Risks
 
@@ -270,7 +280,7 @@ Each slice is one change that leaves the repository releasable. The first downst
 | Per-step commits cost too much latency | M | M | One commit per step with its entries batched; benchmarks in slice 4 and 5 before the budgets are set |
 | The change feed's resume and coalescing rules are subtle | M | H | Property tests for ordering and resume; consider a bounded model (formal-methods) if tests find surprises |
 | A blocking call stalls the event loop | M | H | Offload; `ASYNC` lint rules; a loop-lag test |
-| Pydantic AI changes incompatibly | M | M | Exact pin; wire tests; only the adapter imports it |
+| Protocol variations or optional-adapter dependencies break compatibility | M | M | HTTPX wire tests and local-server conformance; exact pins and dependency-closure checks for any optional adapter |
 | Unverified competitor cells hide a product that already does this | M | H | Validate in `frame` before building past slice 4 |
 | Publication blocked by the legal entity name or contribution policy | L | M | Both are open questions with an owner; slices 0 to 9 proceed privately |
 

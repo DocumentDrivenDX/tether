@@ -27,7 +27,7 @@ ddx:
 
 ## Problem
 
-An agent harness spends nearly all of its time waiting: on a streaming model call, on tools, on stores, on a user's approval. An application serving many sessions does that waiting on one event loop or on a thread per turn. A thread cannot be cancelled, so a closed window or a shutdown cannot stop a model stream; a synchronous interface also forces every adapter to be written for blocking I/O. The model layer the library builds on, Pydantic AI, is asynchronous at its core, and its synchronous wrappers start an event loop per call (SPIKE-001). Tool authors, however, write plain functions and are not all asynchronous programmers.
+An agent harness spends nearly all of its time waiting: on a streaming model call, on tools, on stores, on a user's approval. An application serving many sessions does that waiting on one event loop or on a thread per turn. A thread cannot be cancelled, so a closed window or a shutdown cannot stop a model stream; a synchronous interface also forces every adapter to be written for blocking I/O. The asynchronous HTTP client the model path uses is asynchronous at its core, and a synchronous wrapper around one starts an event loop per call (SPIKE-001). Tool authors, however, write plain functions and are not all asynchronous programmers.
 
 ## Decision
 
@@ -43,7 +43,7 @@ We will make the engine, the session service, the client API, and every port tha
 ## Why We Chose This
 
 ### Over a synchronous library running turns on threads
-It is the simplest for tools and tests. It also costs a thread per active turn, cannot cancel a turn, uses Pydantic AI through wrappers that start an event loop per call, and fits only synchronous hosts. A streaming, multi-session consumer benefits from cancellation and cheap concurrency.
+It is the simplest for tools and tests. It also costs a thread per active turn, cannot cancel a turn, puts every model client behind wrappers that start an event loop per call, and fits only synchronous hosts. A streaming, multi-session consumer benefits from cancellation and cheap concurrency.
 
 ### Over offering a synchronous and an asynchronous interface
 Two interfaces double the contract and every conformance suite, every port is implemented twice, and the less-used twin is the one that rots.
@@ -53,7 +53,7 @@ A `run_sync` helper gets called from inside event loops by accident, which nests
 
 ## Consequences
 
-**Good**: One interface. Native Pydantic AI with no event loop per call and no request-id workaround (SPIKE-001 finding 6). A turn can be cancelled. Concurrency across sessions without a thread per turn. Streaming and following live turns fit the model naturally.
+**Good**: One interface. Native asynchronous model clients with no event loop per call and no request-id workaround (SPIKE-001 finding 6, SPIKE-002). A turn can be cancelled. Concurrency across sessions without a thread per turn. Streaming and following live turns fit the model naturally.
 
 **Trade-offs**: Every adapter on the turn path must be asynchronous or run in a worker thread (a store on SQLite runs the blocking driver in a thread). A blocking call in the engine stalls every session on the loop, so the lint rule and review matter. Developers who want a synchronous call must wrap it themselves.
 
