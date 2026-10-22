@@ -84,6 +84,8 @@ Terms: **MCP** is the Model Context Protocol, a standard for connecting tools to
 | Policy gates that fail closed around model and tool calls | Planned | Partial (a blocking tool hook; other hooks skip on error) | Unverified | Unverified | Unverified | Unverified |
 | Record and replay of a model conversation as a test double | Planned | Unverified | Unverified | Unverified | Unverified | None found (test models only) |
 | Depends on no foundation-model provider's SDK | Planned (ADR-012) | Unverified | None (Anthropic's own SDK) | Unverified | None (OpenAI's own SDK) | Partial (its OpenAI-compatible model needs the `openai` package) |
+| Separate live and archive session storage behind ports | Planned (ADR-019) | Unverified | Unverified | Partial (pluggable checkpointers; no archive port found) | Partial (pluggable session backends; no archive port found) | None found |
+| Supports the Databricks AI Gateway as one backend among others | Planned (ADR-013) | Unverified | None found | Unverified | Unverified | Unverified |
 | Context compaction | Planned (P1) | Full (a compaction task) | Unverified | Unverified | Full (a compaction wrapper) | Unverified |
 
 **Legend**: Full | Partial | Planned | None | None found (searched, not found) | Unverified (not checked). Cells for other products are not claims about their full capability.
