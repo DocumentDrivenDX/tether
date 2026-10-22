@@ -266,33 +266,56 @@ Each slice is one change that leaves the repository releasable. The first downst
 |-------|------|--------------------|
 | 0. Scaffold | `pyproject.toml` (`uv`, `hatchling`, `uv-dynamic-versioning`), `src/tether/` skeleton with `py.typed`, `ruff`, `pyright`, `pytest` with the `anyio` plugin and `hypothesis`, ceilings, `scripts/check_layers.py`, CI, a pre-commit hook, license metadata | The gates pass on the skeleton; the layering check rejects each planted forbidden import (negative controls); a clean install shows both license texts |
 | 1. Types, model port, doubles, adapter | `tether.types` and `tether.ports` for the model port; scripted, recording, and replay doubles and the cassette; `model_port_suite`; the default HTTPX adapter with wire tests and local-server conformance | The suite passes for every double and the adapter, including concurrent calls that keep their own identity and cancellation that propagates; a cassette round-trips; one live smoke call succeeds against a real provider on a fabricated prompt (the owner supplies a credential at run time, never in the repository) |
-| 2. Engine core | `@tool`, the registry, the pipeline, gates, built-in guards, confirmation, providers, in-process interaction dummies, against a stub `TurnLog` | The ported characterization scenarios pass; narrow-only property tests pass; the `ASYNC` lint rules are clean; a plain-function tool does not block a concurrent task |
-| 3. Sessions | Entries, `InMemoryStore`, `Tether`, the lease, recovery, summary projection, the change bus; `session_store_suite` | The suite passes; a simulated death between steps leaves each completed step once; the summary equals the rebuilt projection |
+| 2. Engine core | `@tool`, the registry, the pipeline, required authorization/approval/intent gates, configured guards, providers, in-process interaction dummies, against a stub `TurnLog` | The ported characterization scenarios pass; narrow-only property tests pass; the `ASYNC` lint rules are clean; a plain-function tool does not block a concurrent task |
+| 3. Sessions | Entries, `InMemoryStore`, `Tether`, the lease, recovery, summary projection, the change bus; `live_store_suite` | The suite passes; a simulated death between steps leaves each completed step once; the summary equals the rebuilt projection |
 | 4. Client API and benchmarks | `Client`: list, get, entries, follow, commands; the benchmark suite | FR-17 to FR-20 acceptance sketches pass; the benchmark baseline is committed; the owner sets budgets from it |
 | 5. Postgres live store | `tether.stores.postgres` ported from the first consumer's backend, its migration runner, the embedded server extra, the live store suite, benchmarks | The suite passes on PostgreSQL 18, including a cross-process lease and fencing test; the embedded server's start time is measured against the quickstart budget; benchmarks compared with the in-memory baseline |
 | 6. Telemetry | The tracer and audit sinks, usage totals, the OTel adapter | The content test finds the marker in no span or audit entry; spans nest across awaits and tasks |
 | 7. Governance | Policy, scope binder and kinds, spec resolver, result guards, provider conformance, the optional `tether.scope` and `tether.guards` | The suites pass; a provider cannot widen a decision (property tests); a failing hook closes |
 | 8. Reference clients | `tether.cli` and `tether.tui`, the demo model | Scripted end-to-end sessions pass for the CLI; the TUI shows a list, a live transcript, and an approval in a pseudo-terminal test; the quickstart is timed |
-| 9. Durability | Intent entries and invocation ids, the approval lifecycle, the resume planner, the `replay` marker, idempotent step keys | A real process killed between steps resumes or reports interrupted, each committed entry once and no unsafe tool run twice, over every log prefix |
+| 9. Durability | Intent entries and invocation ids, the approval lifecycle, the resume planner, the `replay` marker, idempotent step keys | A real process killed between steps resumes or reports interrupted, each committed entry once and no automatic rerun of an unsafe invocation; V-H1/V-H2/V-H3 and the failure-point matrix qualify the boundary beyond log prefixes |
 | 10. Release 0.1 | Documentation, the quickstart test, packaging, publication | A clean environment passes the quickstart; both license texts ship; the first downstream platform's parity check is run |
 | 11. Databricks profile and archive | `tether.adapters.databricks` (ported gateway client settings, identity modes, tier map), the archive ports' conformance suite, the derived archive over inference tables | The profile passes the model port suite against recorded gateway responses; the derived archive reports pending, denied, and unavailable correctly; call content is read as the calling actor |
 | 12. Reconcile and resolve | `Tool.reconcile`, `Client.resolve` | An unknown outcome resolved by reconcile or by a caller leaves a log the planner treats as finished |
 
 **Characterization scenarios (slice 2)**: a plain answer; an allowed tool call; a call denied as not permitted; a call denied as scope required; invalid arguments; a tool that raises; the step limit; a model outage mid-stream; a model call denied; manual approval approved, declined, and superseded by a new message; a tool that always asks; a result flagged by the scan; a result outside the bound context; a widening that rolls back; a tool hidden by a stage; a hook that raises; a cancelled turn.
 
+### Framework review verification
+
+The [framework review](../../00-discover/agent-harness-framework-review.md#current-disposition-after-coordinated-design-reconciliation) selects no additional runtime dependency. The following cases make its recommendations concrete for the existing slices. They are planned acceptance work, not executed evidence. All inputs, identities, documents, and effects are fabricated.
+
+| Case | Requirement / finding | Primary owner and slice | Proposed acceptance evidence |
+|---|---|---|---|
+| V-H1. Unsafe effect completes before result commit | FR-14/34/42; H1 | Engine and durable store, slice 9 | A separate process records an observable fabricated effect, then is killed before result append. Intent survives, outcome is unknown, resume never automatically reruns that invocation, and committed entries/summary/feed agree |
+| V-H1b. Fresh model call repeats an unresolved effect | FR-42/44; H1 | Engine/policy design before slice 9; reconcile in slice 12 | Model emits an equivalent unsafe action with a new call ID after timeout/error/unknown. Demonstrate the chosen application/core refusal or renewed-authorization boundary; a new ID must not be treated as proof the earlier effect did not happen |
+| V-H2. Synchronous tool outlives cancellation | FR-6/20/42; H2 | Engine/offload and durable store, slices 2/5/9 | Block a real worker-thread tool on a controlled barrier, cancel or expire its lease, start a contender, then release the old tool. Show stale writes are rejected and external-effect uncertainty is preserved; measure outstanding worker capacity rather than counting only waiting coroutines |
+| V-H3. Approval races and compatibility | FR-8/20/42; H3 | Engine/client, slices 2/4/9 | Duplicate answers have one winner; changed actor rights, arguments or tool digests refuse execution; restart between approval and intent preserves valid approval without skipping authorization |
+| V-M1. Bounds and absent usage | FR-1/5/25/26; M1 | Model adapter, engine/policy, slices 1/2/7 | Configured tool/hook deadlines and step limits work; configured policy handles missing usage explicitly. Oversized request/tool output and retry exhaustion follow an explicitly selected adapter/application policy; no inferred zero usage or stacked retries |
+| V-M2. Small context and long history | FR-35/38; M2 | Application context provider; P1 context work | Configure a small-context local-server profile; retain authoritative history while bounding model input. Pending tool pairs, approvals and unknown outcomes survive any selected redaction/compaction. Do not claim default long-session support before a bound/overflow policy is selected |
+| V-M3. Failure-point matrix | FR-14/28/34/42; M3 | Engine and store test kit, slice 9 | Inject failure before intent, after intent/before dispatch, after external effect, during result normalization, before/after commit, and before notification. Cover ordered mixed safe/unsafe batches; log-prefix property tests supplement these execution tests |
+| V-M3b. Replay and stochastic task quality | FR-28/38; M3 | Test kit, slices 1/2 and application qualification | Fixed-response replay reproduces runtime decisions and reports request drift. Separately grade fabricated research, extraction and approved-action outcomes across named server/model profiles; report repeated-trial results without treating replay as model-quality evidence |
+| V-M4. Dependency boundaries | FR-31/38; NFR-8; M4 | Packaging and adapter owners, slices 0/1 | A clean default install has no banned SDK imports or transitive dependencies. A later optional adapter must qualify its own exact dependency closure before support is claimed; no Pydantic AI installation is required for 0.1 |
+| V-CLIENT. Identity and reconnect | FR-4/17–20; NFR-4/6 | Client/store and telemetry, slices 4/5/6 | Two concurrent actors retain separate credentials, reconnect from persisted positions, and recover authoritative changes while slow readers stay bounded; no prompt, tool-content or credential marker appears in operational telemetry |
+
+**Remaining design details.** Before slice 9 acceptance, resolve H1's fresh-call retry boundary and H2's outstanding-worker/replacement-work behavior in CONTRACT-002 and the relevant ADRs. Current intent records and fenced appends do not settle either question. The integration application must supply target-system idempotency, reconciliation, or fencing where effects require it; Tether cannot infer semantic equivalence of arbitrary tool arguments. Owner: Erik LaBianca with the engine/policy author. P1 reconciliation does not silently become a P0 dependency, and a P0 unknown must not be advertised as an automatically recoverable effect.
+
+**Sequencing.** Approval enforcement, current authorization and pre-effect intent are required whenever an unsafe tool is dispatched, including characterization/demo paths. Later slices add production storage and fault qualification; they do not authorize an earlier path to bypass those gates. Compaction remains P1 under FR-35; configurable usage/cost thresholds remain application policy. The numeric performance targets remain proposals until measured.
+
+**Evidence closeout.** A qualification run should record the source/artifact versions, selected store capabilities, configured deadlines/context policy, fabricated scenario IDs, model/server profile when applicable, fault point, observed effects and recovery state, verification result, and capture limits. OTel claims additionally need a real receiver/export correlation check under the selected diagnostics practice; console silence and no-op tracers prove no exporter integration. Store operational evidence separately from content-bearing fabricated eval fixtures. No framework benchmark or provider SDK installation is a release gate.
+
 ## Traceability
 
 | Requirement ID | Component | Design Element | Test Strategy |
 |---------------|-----------|----------------|---------------|
-| FR-1 to FR-5 | Engine, model adapters | CONTRACT-001, CONTRACT-002 sections 1 and 7 | Characterization scenarios; `model_port_suite` |
+| FR-1 to FR-5 | Engine, model adapters | CONTRACT-001, CONTRACT-002 sections 1 and 8 | Characterization scenarios; `model_port_suite` |
 | FR-6 to FR-10 | Engine | CONTRACT-002 section 4 | Tool and approval scenarios; offload test |
 | FR-11 to FR-16, FR-41 | Session service, stores | CONTRACT-003 sections 1 to 3 | `live_store_suite`; kill tests |
 | FR-14, FR-34, FR-37, FR-42 | Engine, session service | CONTRACT-002 sections 8 to 10; ADR-010, ADR-014, ADR-015 | Prefix property test; real-process kill tests |
 | FR-39, FR-40, FR-43, FR-44 | Databricks profile, archives | CONTRACT-003 section 4; ADR-013, ADR-019 | Archive suite; recorded gateway responses |
-| FR-17 to FR-21 | Client API | CONTRACT-003 sections 4 to 6 | Acceptance sketches; benchmarks |
+| FR-17 to FR-21 | Client API | CONTRACT-003 sections 5 to 7 | Acceptance sketches; benchmarks |
 | FR-22 to FR-25 | Telemetry | CONTRACT-002 section 6 | Content test; span nesting tests |
 | FR-26, FR-27 | Engine | CONTRACT-002 sections 2, 4, 5 | Governance suites; property tests |
-| FR-28 | Test kit | CONTRACT-001 section 2; CONTRACT-002 section 9; CONTRACT-003 section 7 | Each suite passes for its dummy |
+| FR-28 | Test kit | CONTRACT-001 section 2; CONTRACT-002 section 12; CONTRACT-003 section 8 | Each suite passes for its dummy |
 | FR-29, FR-30 | Reference clients | Slice 8 | End-to-end and pseudo-terminal tests |
 | FR-31, FR-32, FR-36 | Packaging | ADR-006, ADR-007, slice 0 | Clean-environment install test |
 
@@ -300,6 +323,7 @@ Each slice is one change that leaves the repository releasable. The first downst
 - [ ] Feature specifications and user stories are not yet written; `frame` writes them and maps each FR to a story.
 - [ ] The performance numbers are proposals (NFR-7); the first baseline validates or replaces them.
 - [ ] Content by reference in the live store, backed by a derived archive, is undecided (ADR-019).
+- [ ] H1/H2: specify fresh-call handling of unresolved unsafe effects and outstanding synchronous-worker/replacement-work behavior before slice 9 acceptance; execute the failure-boundary cases above.
 
 ## Concern Alignment
 
@@ -335,4 +359,4 @@ Each slice is one change that leaves the repository releasable. The first downst
 | The performance numbers (proposals in NFR-7) | Erik LaBianca | Slice 4 acceptance, slice 10 |
 | Postgres embedded or SQLite for the durable demo | Erik LaBianca | Slice 5 |
 | Whether the live store may hold call content by reference to a derived archive | Erik LaBianca | Slice 11 |
-| Whether crash resume is required for 0.1 (the PRD makes it P0) | Erik LaBianca | The release plan |
+| Fresh-call handling of an unresolved unsafe effect, and replacement work while a synchronous tool is still running (H1/H2) | Erik LaBianca with the engine/policy author | Slice 9 acceptance; slice 10 |

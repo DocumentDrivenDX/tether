@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: proposed
   owner: Erik LaBianca
-  updated: 2026-10-21
+  updated: 2026-10-22
   authoring:
     home: repo
   links:
@@ -37,7 +37,7 @@ We will make the engine, the session service, the client API, and every port tha
 - **Tool and hook authors may write `def` or `async def`.** The engine runs a plain function in a worker thread through `anyio.to_thread` with the caller's context variables copied and a bounded limiter, so a tool author needs no asynchronous code.
 - **No synchronous interface.** The package exports no `run_sync` helper. A script calls `asyncio.run`. The test kit's tests are asynchronous and run with the `anyio` pytest plugin.
 - **Concurrency.** Different sessions run concurrently on one event loop. A session runs one turn at a time. Within a turn, steps and tool calls run in order so the transcript and the audit record keep their order; running independent tool calls in parallel is a later decision.
-- **Cancellation.** A cancelled turn stops its model stream and its running tool. The steps already committed remain in the session log (ADR-005), and the log ends with a cancelled-turn entry.
+- **Cancellation.** A cancelled turn closes its model stream and requests cancellation of an asynchronous tool. A synchronous tool already running in a worker thread cannot be forcibly stopped; the engine abandons waiting for it, and its external outcome can remain unknown (ADR-014). The steps already committed remain in the session log (ADR-005), and the log ends with a cancelled-turn entry. Cancelling the turn or fencing its log writer does not roll back or fence an external effect. Applications needing stronger isolation run the operation behind an isolated executor and use downstream idempotency or fencing.
 - **The engine never blocks the loop.** The project's lint selects ruff's `ASYNC` rules, which flag a blocking call inside an `async def`.
 
 ## Why We Chose This
@@ -55,7 +55,7 @@ A `run_sync` helper gets called from inside event loops by accident, which nests
 
 **Good**: One interface. Native asynchronous model clients with no event loop per call and no request-id workaround (SPIKE-001 finding 6, SPIKE-002). A turn can be cancelled. Concurrency across sessions without a thread per turn. Streaming and following live turns fit the model naturally.
 
-**Trade-offs**: Every adapter on the turn path must be asynchronous or run in a worker thread (a store on SQLite runs the blocking driver in a thread). A blocking call in the engine stalls every session on the loop, so the lint rule and review matter. Developers who want a synchronous call must wrap it themselves.
+**Trade-offs**: Every adapter on the turn path must be asynchronous or run in a worker thread (a store on SQLite runs the blocking driver in a thread). A blocking call in the engine stalls every session on the loop, so the lint rule and review matter. Developers who want a synchronous call must wrap it themselves. Abandoned synchronous tools can outlive their turn; applications must account for their resource use and uncertain effects before allowing replacement work.
 
 **Drift signals to watch**: A `time.sleep`, `urllib`, `requests`, or blocking database call inside an `async def`. A `run_sync` or `asyncio.run` inside the package. A port with both a synchronous and an asynchronous method. Thread offload of engine code rather than a tool or provider hook.
 

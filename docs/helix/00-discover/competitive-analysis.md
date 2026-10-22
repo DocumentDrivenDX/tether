@@ -23,8 +23,14 @@ The [agent harness framework and design review](agent-harness-framework-review.m
 compares LangGraph, OpenAI Agents SDK, Claude Agent SDK, Pydantic AI Harness,
 and additional alternatives against Tether's contracts, with primary web sources,
 a framework-free counterfactual, design findings, and proposed verification.
-It recommends retaining the owned harness while resolving uncertain tool effects,
-synchronous-tool cancellation, and approval/resume compatibility.
+It recommends retaining the owned harness. Its current disposition reconciles the
+initial findings against ADR-014–020 and the revised contracts: approval/resume
+signatures and lifecycle are specified; fresh-call handling of unknown effects
+and replacement work after synchronous cancellation still need design closure.
+Concrete acceptance scenarios are allocated in SD-001; none has run.
+
+Related discovery: [Hermes design and reuse profile](component-profile-hermes-agent.md)
+and [Databricks integration assessment](databricks-integration-assessment.md).
 
 Use that review to qualify the survey below: current Pydantic AI documentation
 includes step persistence and a composable Harness, LangGraph documents checkpoint

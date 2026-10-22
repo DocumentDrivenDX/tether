@@ -69,6 +69,11 @@ AppKit's documented agents run inside the app and expose React streaming integra
 
 The existing Apps deployment removes deployment/scaffolding as a reason to adopt AgentKit. Reconsider adoption only if a specific replacement deletes substantial machinery, preserves identity/recovery and portability, and reduces total complexity. Do not introduce a permanent compatibility wrapper or schedule a framework bake-off as a hedge. H1–H3 remain design/verification questions to resolve against current contracts; they are not proof that an owned harness is safer than a framework.
 
+## Related coordinated discovery
+
+- [Hermes Agent component profile](component-profile-hermes-agent.md) evaluates whole-runtime fit and targeted design/source reuse against the same Python, identity, SDK and recovery constraints. Its inspected engine conflicts with async/configuration and SDK requirements; context projection, reconnect state, uncertain admissions and small utilities remain learning candidates. No source extraction is authorized or implemented.
+- [Databricks integration assessment](databricks-integration-assessment.md) maps identity, gateway, governed tools, Lakebase, archives/artifacts, telemetry/evaluation and deployment ownership. It preserves ADR-003 and identifies package/SDK/identity/retention/support choices as proposals; it does not expand ADR-013 or certify workspace behavior.
+
 ## Market Landscape
 
 The relevant alternatives span different layers: low-level orchestration (LangGraph), an agent runner (OpenAI Agents SDK), an embedded complete agent runtime (Claude Agent SDK), composable Python harnesses (Pydantic AI Harness and Strands), and durable workflow engines. Treating them as interchangeable obscures the integration cost.
@@ -190,7 +195,26 @@ Tether is selling the execution and session boundary itself. Wrapping another ow
 
 ## Design review findings
 
-Severity here applies to design readiness. No implementation defect or failing test is asserted. Each item names the governing location and a proposed verification; governing edits are follow-up work.
+Severity applies to design readiness. The H1–H3/M1–M4 observations below describe the initial review snapshot; use the current disposition first. No implementation defect or passing runtime test is asserted.
+
+### Current disposition after coordinated design reconciliation
+
+The newer ADR-014–020 and revised CONTRACT-002/003 address much of the initial review. Accepted ADR-003 settles Python, the owned harness, the existing Apps server, and no AgentKit wrapper. This review closes the research comparison; it does not turn design intent into delivered guarantees. [SD-001](../02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md#framework-review-verification) owns the remaining failure-boundary verification and unresolved design details.
+
+| Finding | Current disposition | Evidence and remaining work |
+|---|---|---|
+| H1, unknown external effects | **INCOMPLETE** | ADR-014 and CONTRACT-002 sections 8–10 define stable invocation IDs, pre-effect intents, explicit unknowns, and P1 reconcile/resolve. They do not prevent a fresh model call from repeating the same business action; error/timeout rows still say the model may retry. Define that boundary before slice 9 acceptance; no exactly-once effect claim is justified |
+| H2, synchronous cancellation and stale runners | **UNDERSPECIFIED** | ADR-014 explicitly acknowledges thread abandonment; ADR-001 now states the same limit. CONTRACT-003 fences log writes, not external services. Bounded outstanding worker capacity and replacement-work behavior remain to specify and qualify |
+| H3, approvals and resume | **ALIGNED in design** | ADR-015 binds an approval to invocation, arguments, tool definition and actor, with lifecycle/races/rechecks; CONTRACT-002 now carries actor credentials plus APPROVE/RESUME and Engine.resume; CONTRACT-003 uses client(actor), confirm(invocation_id), and resume. Version/migration and executed race/crash tests remain qualification work |
+| M1, execution limits | **PARTIAL; application-owned thresholds selected** | CONTRACT-002 supplies tool timeouts, hook limits, UsageSoFar and policy budget denials; the core enforces max_steps. Output/request capacity and missing-usage policy remain application/adapter design work. This review does not promote universal token or cost limits into core requirements |
+| M2, context bounds | **DEFERRED by current scope** | PRD FR-35 keeps compaction P1; CONTRACT-002 exposes a narrowing before_request hook and reserves a compaction entry. Arbitrary summary/retrieval replacement needs an explicit P1 context contract rather than silently widening that hook. A minimal context-bound/overflow proposal remains advisory until selected; long-session support must stay qualified to the configured model/input policy |
+| M3, failure-boundary evidence | **ALLOCATED; NOT RUN** | SD-001 now names dispatch/effect/commit crash points, approval races, uncertain-effect repeats, synchronous cancellation, and replay-versus-task-eval checks. Log-prefix tests alone are insufficient |
+| M4, stale competitive/dependency claims | **ALIGNED for this research** | Current comparisons distinguish persistence, recovery and external effects; HTTPX is the default in SD-001; ADR-003 rejects inevitable dual ownership as a framework property. Optional Pydantic adapters are P2 and need a separately compliant dependency closure; none is certified by this review |
+
+The current storage direction is in-memory plus Postgres, with optional embedded Postgres and optional SQLite (ADR-019/020). Store declarations qualify durability/fencing; older references to SQLite as the primary durable store describe earlier intent. Reconciliation/manual recovery remain P1 under FR-44. The review does not silently promote them or certify automatic repeat prevention for an unresolved effect.
+
+### Initial review observations
+
 
 ### H1 — Unknown effects can be duplicated by a new model decision
 
@@ -202,7 +226,7 @@ Severity here applies to design readiness. No implementation defect or failing t
 
 ### H2 — Worker-thread cancellation and lease expiry do not stop effects
 
-**Location:** CONTRACT-002 section 4 (plain function offload), Error Semantics (cancel/lost lease); CONTRACT-003 section 3 (lease). A cancelled coroutine cannot forcibly stop arbitrary synchronous code already running in a thread. A lease prevents stale log writes; it cannot itself fence a remote system's side effect.
+**Location:** CONTRACT-002 section 4 (plain function offload), Error Semantics (cancel/lost lease); CONTRACT-003 section 3 (lease). A cancelled coroutine cannot forcibly stop arbitrary synchronous code already running in a thread. AnyIO documents both its default shielded wait and opt-in abandonment, which leaves the thread running. [PY1] A lease prevents stale log writes; it cannot itself fence a remote system's side effect.
 
 **Proposal:** define whether cancellation waits for a synchronous tool, cooperatively cancels it, or abandons an outcome as unknown. Keep session exclusivity consistent with that choice. For stronger containment, use an isolated process/executor and target-system fencing or idempotency; a process kill alone still cannot roll back a remote effect.
 
@@ -317,9 +341,9 @@ For the optional-server option, Tether's session log is authoritative for turns,
 
 Publishing an AgentKit event after a Tether commit is a second write, not the atomic CONTRACT-003 change record. A crash between the two must be repairable from the authoritative Tether log/outbox. Never make that notification the only way to discover a committed result. Passing every `ReplyText` to `context.emit` would also persist content that CONTRACT-003 declares live-only. Custom feed routes may preserve the intended behavior, at the cost of reducing the amount of AgentKit streaming machinery reused. [AK1]
 
-**Replacement criterion:** first inspect the deployed server and identify a concrete block of invocation supervision that AgentKit would wholly replace. Only if that deletion materially simplifies the application should a replacement experiment exercise two actors, approval, an external effect, process death before result commit, changed policy, fresh-identity resume, browser reconnect and cancellation of a still-running synchronous tool. Check uncertain effects, safe logs, dependency closure and the portable path. Do not add a permanent AgentKit wrapper to hedge the decision. Unknown effects and synchronous-tool cancellation remain unresolved work in either choice, not evidence of Tether superiority.
+**Replacement criterion:** first inspect the deployed server and identify a concrete block of invocation supervision that AgentKit would wholly replace. Only if that deletion materially simplifies the application should a replacement experiment exercise two actors, approval, an external effect, process death before result commit, changed policy, fresh-identity resume, browser reconnect and cancellation of a still-running synchronous tool. Check uncertain effects, safe logs, dependency closure and the portable path. Do not add a permanent AgentKit wrapper to hedge the decision. Unknown effects and synchronous-tool cancellation require the remaining H1/H2 design and verification work in either choice; they are not evidence of Tether superiority.
 
-Two governing details need reconciliation before that experiment can certify conformance: CONTRACT-002's displayed `Actor` lacks the credential described by ADR-011, and its `Action` lacks `RESUME`; CONTRACT-003 shows `client(owner)` and no `resume` method despite ADR-011/010 and PRD FR-20. Existing H3 already identifies the resume gap. This comparison uses the explicit actor and continuation behavior in the governing direction and does not silently amend the older signatures.
+The initial comparison found missing credential/resume signatures. Those details are now reconciled in CONTRACT-002/003: Actor carries an excluded credential, core actions include RESUME, and the client binds an actor and exposes resume. H3 is closed at design level; this does not certify runtime behavior. H1/H2 remain the substantive effect/cancellation qualification risks.
 
 ## Differentiation Strategy
 
@@ -337,17 +361,17 @@ Durability here should mean preserving committed history and making uncertainty 
 
 ### Proposed next evidence
 
-First reconcile H1–H3 and the model/recovery plan drift in governed design work. Then run one fabricated scenario through the owned harness: tool lookup, approval, unsafe effect, forced crash, changed policy, explicit resume, and client reconnect. Include two concurrent actors and a small-context model profile. Measure completion correctness, duplicated effects, recovery/approval behavior, leaked content, imported dependencies, and client API behavior.
+Use the current disposition above and the failure-boundary allocation in SD-001. Close the remaining H1/H2 semantics before claiming acceptance, then run one fabricated scenario through the owned harness: tool lookup, approval, unsafe effect, forced crash, changed policy, explicit resume, and client reconnect. Include two concurrent actors and a small-context model profile. Measure completion correctness, duplicated effects, recovery/approval behavior, leaked content, imported dependencies, and client API behavior.
 
-If a framework bake-off is authorized later, implement the same scenario with Pydantic AI Harness and LangGraph in isolated experiments. Provider SDKs may be needed by those experiments; that requires an explicit scope/policy decision before installation. A benchmark should count custom integration code, persistence/version migration, deployment components, and unresolved guarantees as well as latency and tokens. No effort or speed estimate is credible from this documentation-only review.
+No framework bake-off is scheduled or required. Only if ADR-003's concrete replacement/deletion criterion is met and a later experiment is authorized, implement the same scenario with the selected alternative in isolation. Provider SDKs may be needed by those experiments; that requires an explicit scope/policy decision before installation. A benchmark should count custom integration code, persistence/version migration, deployment components, and unresolved guarantees as well as latency and tokens. No effort or speed estimate is credible from this documentation-only review.
 
 ## Open Questions
 
 | Question | Current disposition | Owner |
 |---|---|---|
-| Does “dependency free” mean literally stdlib-only? | Assumed framework-free within the already selected stack; literal zero dependencies would revise ADR-003/concerns | Erik LaBianca |
-| What should the application do with an unresolved unsafe effect? | Proposed reconciliation or renewed approval; exact API/design remains open (H1) | Erik LaBianca |
-| What is the cancellation contract for already-running synchronous tools? | Must resolve before claiming safe cancellation/lease takeover (H2) | Erik LaBianca |
+| Does “dependency free” mean literally stdlib-only? | Settled by accepted ADR-003 and current concerns: framework-free within the selected Python stack | Erik LaBianca |
+| What should the application do with an unresolved unsafe effect? | ADR-014 selects explicit unknowns; FR-44 reserves reconcile/resolve for P1. Preventing a fresh automatic equivalent action remains the H1 boundary in SD-001 | Erik LaBianca |
+| What is the cancellation contract for already-running synchronous tools? | Thread abandonment and unknown outcomes are explicit. Outstanding worker capacity and replacement-work rules remain H2 work in SD-001 | Erik LaBianca |
 | Is a minimal context cap P0 while semantic compaction stays P1? | Recommended; exact default/model metadata contract remains open | Erik LaBianca |
 | Which optional Pydantic integrations satisfy the dependency policy? | Unknown until exact extras and dependency closure are audited | Erik LaBianca |
 | Do published mechanisms meet Tether's performance and isolation requirements? | Unmeasured; needs the same workload and explicit runtime evidence | Erik LaBianca |
@@ -387,6 +411,7 @@ All links below were accessed on 2026-10-22. They are primary sources; mutable d
 | V1 | [Vercel AI SDK agents][V1]: TypeScript loop abstraction |
 | B1 | [Pi Durable README][B1]: checkpointed tasks, replay and hook failures |
 | E1 | [Temporal activity definition][E1]: idempotency and crash-after-effect window |
+| PY1 | [AnyIO working with threads][PY1], documentation identified 4.15.1: shielded waits, abandonment and cooperative cancellation; no Tether runtime test |
 | BP1 | [Building effective agents][BP1], 2024-12-19: composable patterns, framework trade-offs |
 | BP2 | [Effective harnesses for long-running agents][BP2], 2025-11-26: incremental progress across sessions |
 | BP3 | [Effective context engineering][BP3], 2025-09-29: bounded context and selective retrieval |
@@ -444,3 +469,5 @@ All links below were accessed on 2026-10-22. They are primary sources; mutable d
 [TS1]: https://docs.databricks.com/aws/en/dev-tools/databricks-apps
 [TS2]: https://developers.databricks.com/docs/apps/agentic-features
 [TS3]: https://docs.databricks.com/aws/en/genie-code/genie-code-cli
+
+[PY1]: https://anyio.readthedocs.io/en/stable/threads.html
