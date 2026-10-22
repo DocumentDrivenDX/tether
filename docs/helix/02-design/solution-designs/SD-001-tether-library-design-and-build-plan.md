@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-21
+  updated: 2026-10-22
   authoring:
     home: repo
   links:
@@ -37,19 +37,33 @@ ddx:
       kind: informed_by
     - id: ADR-013
       kind: informed_by
+    - id: ADR-014
+      kind: informed_by
+    - id: ADR-015
+      kind: informed_by
+    - id: ADR-016
+      kind: informed_by
+    - id: ADR-017
+      kind: informed_by
+    - id: ADR-018
+      kind: informed_by
+    - id: ADR-019
+      kind: informed_by
+    - id: ADR-020
+      kind: informed_by
     - id: concerns
       kind: informed_by
 ---
 
 # SD-001: The Tether Library Design and Build Plan
 
-**Feature**: all subsystems of the [PRD](../../01-frame/prd.md) (feature specifications `FEAT-001` to `FEAT-009` are written in `frame`). **Artifact**: `docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md`
+**Feature**: all subsystems of the [PRD](../../01-frame/prd.md) (feature specifications `FEAT-001` to `FEAT-012` are written in `frame`). **Artifact**: `docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md`
 
 ## Scope
 
-- Feature-level design for the whole library: the engine, the session service and stores, the client API, telemetry, the test kit, and the reference clients, and the order in which they are built.
+- Feature-level design for the whole library: the engine, the session service, the live stores and archives, the client API, telemetry, the test kit, and the reference clients, and the order in which they are built.
 - Not in scope: story-level designs (technical designs per slice, written when a slice starts), the first downstream platform's adoption work, and any server adapter.
-- Governing artifacts: the PRD, the architecture, ADR-001 to ADR-006, CONTRACT-001 to CONTRACT-003, SPIKE-001, and `concerns.md`.
+- Governing artifacts: the PRD, the architecture, ADR-001 to ADR-020, CONTRACT-001 to CONTRACT-003, SPIKE-001, SPIKE-002, and `concerns.md`.
 
 ## Requirements Mapping
 
@@ -58,16 +72,20 @@ ddx:
 | Requirement | Technical Capability | Component | Priority |
 |------------|---------------------|-----------|----------|
 | FR-1 to FR-5, FR-38 | The loop, the model port, the default OpenAI-compatible HTTPX adapter, and scripted/recording/replay doubles | Engine; `tether.adapters.openai_compat`; test kit | P0 |
-| FR-6 to FR-10 | `@tool`, the registry, argument validation, thread offload, approval, typed results, the replay marker | Engine | P0 (FR-10 P1) |
-| FR-11 to FR-13, FR-16 | Entry log, per-step commits, the lease, `InMemoryStore`, then the SQLite store | Session service; stores | P0 (SQLite P1) |
-| FR-14 | Lease expiry, recovery, idempotent keys, resume | Session service; engine | P1 |
+| FR-6 to FR-10, FR-42 | `@tool`, the registry, argument validation, thread offload, approval bound to an invocation, typed results, the replay marker, intent before unsafe tools | Engine | P0 |
+| FR-11 to FR-13, FR-16, FR-41 | Entry log, per-step commits, the lease with fencing, idempotent create and send, `InMemoryStore`, the Postgres live store, the embedded server | Session service; stores | P0 |
+| FR-14, FR-34, FR-37 | Lease expiry, recovery, idempotent keys, the resume planner, opt-in automatic resume | Session service; engine | P0 (FR-37 P1) |
 | FR-15 | Fork from an entry | Session service; stores | P2 |
 | FR-17 to FR-21 | `Client`: list, get, entries, follow, commands; the change bus; benchmarks | Client; session service | P0 (FR-21 P1) |
 | FR-22 to FR-25 | Tracer and audit ports, the OTel adapter, usage totals | Engine; `tether.adapters.otel` | P0 (OTel P1) |
-| FR-26, FR-27 | Policy, scope, guards, providers (narrow only) | Engine | P1 |
+| FR-26, FR-27 | Policy, scope, guards, providers (narrow only) | Engine; `tether.scope`, `tether.guards` | P1 |
 | FR-28 | Dummies, conformance suites, cassettes, replay driver | Test kit | P0 |
-| FR-29, FR-30 | CLI and TUI | `tether.cli`, `tether.tui` | P0 (CLI), P1 (TUI) |
-| FR-31, FR-32 | Packaging, extras, license files | Packaging | P0 |
+| FR-29, FR-30, FR-33 | CLI, TUI, the zero-configuration demo | `tether.cli`, `tether.tui` | P0 |
+| FR-31, FR-32, FR-36 | Packaging, extras, license files, contribution policy | Packaging | P0 |
+| FR-39, FR-43 | The Databricks profile and its derived archive | `tether.adapters.databricks` | P1 |
+| FR-40 | The archive ports and the derived-archive rules | Core ports; archives | P1 |
+| FR-44 | `Tool.reconcile`, `Client.resolve` | Engine; client | P1 |
+| FR-35 | Context compaction recorded in the log | Engine; session service | P1 |
 
 ### NFR Impact on Architecture
 
@@ -75,8 +93,10 @@ ddx:
 |-----|------------|---------------------|-----------------|
 | Concurrency | Many sessions, cancellation, no blocking | Async throughout; offload; structured task ownership by `Tether` | ADR-001 |
 | Performance | Fast list, page, follow at scale | Summaries, keyset cursors, delta feed, bounded queues | ADR-004 |
-| Reliability | No lost or duplicated step after a crash | Per-step atomic commit, lease, idempotent keys, recovery | ADR-005 |
-| Security | No content in telemetry; fail closed; narrow-only providers | Content-free spans and audit, scrubbed adapter errors, gate order fixed by the engine | CONTRACT-002 sections 4 to 7 |
+| Reliability | No lost or duplicated committed step after a crash; no automatic rerun of an unsafe tool; an unknown outcome is explicit | Per-step atomic commit, lease with fencing, idempotent keys, intent before effect, the resume planner, declared store capabilities | ADR-005, ADR-010, ADR-014, ADR-019 |
+| Provider independence | No foundation-model SDK; the Databricks gateway supported, never required | Owned adapter, banned SDK list, the Databricks profile | ADR-012, ADR-013 |
+| Storage separation | Hot and cold needs met by different stores; a platform log usable as an archive | Live store and archive ports with capabilities | ADR-019, ADR-020 |
+| Security | No content in telemetry; fail closed; engine invariants hold against a buggy extension | Content-free spans and audit, scrubbed adapter errors, gate order fixed by the engine, approval bound to an invocation, an explicit trust model | ADR-015, ADR-016, CONTRACT-002 sections 7 to 9 |
 | Testability | Loop tested alone | Ports with dummies; cassettes; conformance suites | ADR-003 |
 
 ## Solution Approaches
@@ -101,7 +121,7 @@ ddx:
 
 **Selected Approach**: Approach 3.
 
-**Architecture/ADR impact**: ADR-001 to ADR-006 record the decisions; `architecture.md` records the module boundaries.
+**Architecture/ADR impact**: ADR-001 to ADR-020 record the decisions; `architecture.md` records the module boundaries.
 
 ## Domain Model
 
@@ -110,6 +130,10 @@ erDiagram
     SESSION ||--|{ ENTRY : "is a log of"
     SESSION ||--|| SUMMARY : "is projected to"
     SESSION ||--o| LEASE : "may hold"
+    SESSION ||--o| APP_REF : "is referenced by"
+    SESSION }o--o| ARCHIVE_RECORD : "may be archived as"
+    ENTRY ||--o| INTENT : "records before an unsafe tool"
+    INTENT ||--o| APPROVAL : "may be bound to"
     SESSION ||--o{ TURN : "runs"
     TURN ||--|{ STEP : "commits"
     STEP ||--|{ ENTRY : "appends"
@@ -125,11 +149,15 @@ erDiagram
 ### Business Rules
 1. **One decision point**: every model call, tool call, retrieval, engagement, and widening is decided by the policy port and recorded, allowed or denied.
 2. **Gates are the engine's**: a provider narrows (refuses, hides, redacts) and never widens; a failing hook closes.
-3. **A step is one commit**: its entries, the summary update, and the change records are atomic and durable before the next step starts.
+3. **A step is one commit**: its entries, the summary update, and the change records are atomic before the next step starts, and durable on a store that declares durability.
 4. **The log is the truth**: summaries and the feed are projections that cannot disagree with it.
 5. **One turn per session**: a lease with a heartbeat enforces it; an expired lease is an interrupted turn.
 6. **Content stays out of telemetry**: spans and audit entries carry identifiers, sizes, and reasons.
 7. **The core reads no environment**: an application builds configuration and passes it in.
+8. **Intent before effect**: an unsafe tool's intent is committed before it runs; an unknown outcome is explicit and never rerun automatically.
+9. **An approval is bound**: to one invocation, its arguments, and its tool definition; it satisfies only the approval gate.
+10. **One owner per kind of state**: the application holds a reference to a session and never a second transcript (ADR-018).
+11. **Archiving is off the turn path**: a derived archive is read-only, partial, and reports pending, denied, or unavailable, never empty.
 
 ## System Decomposition
 
@@ -142,24 +170,31 @@ erDiagram
 
 ### Component: Model adapters and doubles
 - **Purpose**: Implementations of the model port.
-- **Responsibilities**: The default OpenAI-compatible adapter over HTTPX with per-call identity, tags, request id and scrubbed errors; the Databricks gateway profile; scripted/recording/replay doubles and cassettes. An optional Pydantic AI adapter is separate and subject to the dependency policy (ADR-002, ADR-012, ADR-013).
+- **Responsibilities**: The default OpenAI-compatible adapter over HTTPX with per-call identity, tags, request id and scrubbed errors; the Databricks gateway profile (slice 11); scripted/recording/replay doubles and cassettes. An optional Pydantic AI adapter is separate and subject to the dependency policy (ADR-002, ADR-012, ADR-013).
 - **Requirements Addressed**: FR-2 to FR-5, FR-28
 - **Interfaces**: CONTRACT-001.
 - **Owned by TDs**: Slice 1.
 
 ### Component: Engine
 - **Purpose**: Runs a turn.
-- **Responsibilities**: Spec resolution, scope binding, model steps, the tool pipeline, built-in guards, confirmation, providers, cancellation, the commit at each step.
-- **Requirements Addressed**: FR-1, FR-6 to FR-10, FR-22 to FR-27
+- **Responsibilities**: Spec resolution, scope binding, model steps, the tool pipeline, gates, intent, approval, the resume planner, providers, cancellation, the commit at each step.
+- **Requirements Addressed**: FR-1, FR-6 to FR-10, FR-22 to FR-27, FR-34, FR-42
 - **Interfaces**: CONTRACT-002.
 - **Owned by TDs**: Slices 2 and 7.
 
-### Component: Session service and stores
-- **Purpose**: The session log, its persistence, and the live change feed.
-- **Responsibilities**: Entries, summaries, leases, recovery, the change bus, `Tether`, `InMemoryStore`, the SQLite store.
-- **Requirements Addressed**: FR-11 to FR-16, FR-19
+### Component: Session service
+- **Purpose**: The session log's owner in the process, and the live change feed.
+- **Responsibilities**: Turn tasks, the lease and recovery, summaries, the change bus, idempotent create and send, `Tether`, `InMemoryStore`, `InMemoryArchive`.
+- **Requirements Addressed**: FR-11 to FR-14, FR-16, FR-19, FR-34, FR-41
 - **Interfaces**: CONTRACT-003.
-- **Owned by TDs**: Slices 3, 5, 9.
+- **Owned by TDs**: Slices 3 and 9.
+
+### Component: Live stores and archives
+- **Purpose**: Persistence behind the two storage ports, each declaring its capabilities.
+- **Responsibilities**: The Postgres live store with its migration runner, leases, and notifications; the embedded server; an optional SQLite store; the derived archive over gateway inference tables.
+- **Requirements Addressed**: FR-16, FR-40, FR-43
+- **Interfaces**: CONTRACT-003 sections 3 and 4.
+- **Owned by TDs**: Slices 5 and 11.
 
 ### Component: Client API
 - **Purpose**: The UI boundary.
@@ -192,7 +227,8 @@ graph TD
     CLI[CLI / TUI / an application's interface] --> Client[Client API]
     Client --> Tether[Session service: Tether]
     Tether --> Engine
-    Tether --> Store[(Session store port)]
+    Tether --> Store[(Live store port)]
+    Tether -.-> Archive[(Archive ports)]
     Engine --> Model[Model port]
     Engine --> Policy[Policy / scope / guards ports]
     Engine --> Providers
@@ -200,7 +236,9 @@ graph TD
     Store --> Bus[Change bus]
     Bus --> Client
     Model --> Compat[OpenAI-compatible HTTPX adapter]
-    Store --> Sqlite[SQLite store]
+    Store --> Pg[Postgres store, optional embedded]
+    Store --> Mem[In-memory store]
+    Archive --> Derived[Derived archive over inference tables]
     Telemetry --> Otel[OTel adapter]
 ```
 
@@ -212,7 +250,7 @@ graph TD
 | Models and ports | `pydantic` v2 frozen models, `typing.Protocol` | Validation and JSON Schema for tools; structural typing for ports that tests implement | Dataclasses (no validation); abstract base classes |
 | Concurrency | `asyncio` with `anyio` for offload and cancellation scopes | ADR-001 | Threads per turn; a sync and an async twin |
 | Model client | Owned OpenAI-compatible HTTPX adapter behind `ModelPort` | ADR-002, ADR-012, SPIKE-002 | Provider SDKs and framework-owned default clients; optional adapters require compliant dependency closure |
-| Store | In-memory first, then SQLite through the standard library | No new dependency; a local file with indexes and transactions | A server database first |
+| Stores | In-memory first, then Postgres through `psycopg` with an optional embedded PostgreSQL 18; SQLite optional | Ports tested code from the first consumer; real cross-process leases and notifications (ADR-020) | SQLite as the only durable store; a server database with no embedded option |
 | Packaging | One distribution with extras, `uv`, `hatchling` with `uv-dynamic-versioning` | The `python-uv` concern; one install for users | Several distributions (premature) |
 | Boundary gate | `scripts/check_layers.py` and a clean-environment run | A repository script and an undeclared-import test | A third-party import checker |
 
@@ -231,12 +269,14 @@ Each slice is one change that leaves the repository releasable. The first downst
 | 2. Engine core | `@tool`, the registry, the pipeline, gates, built-in guards, confirmation, providers, in-process interaction dummies, against a stub `TurnLog` | The ported characterization scenarios pass; narrow-only property tests pass; the `ASYNC` lint rules are clean; a plain-function tool does not block a concurrent task |
 | 3. Sessions | Entries, `InMemoryStore`, `Tether`, the lease, recovery, summary projection, the change bus; `session_store_suite` | The suite passes; a simulated death between steps leaves each completed step once; the summary equals the rebuilt projection |
 | 4. Client API and benchmarks | `Client`: list, get, entries, follow, commands; the benchmark suite | FR-17 to FR-20 acceptance sketches pass; the benchmark baseline is committed; the owner sets budgets from it |
-| 5. SQLite store | The adapter, the suite, benchmarks, cross-process lease | The suite passes on SQLite; a cross-process lease test passes; benchmarks compared with the in-memory baseline |
+| 5. Postgres live store | `tether.stores.postgres` ported from the first consumer's backend, its migration runner, the embedded server extra, the live store suite, benchmarks | The suite passes on PostgreSQL 18, including a cross-process lease and fencing test; the embedded server's start time is measured against the quickstart budget; benchmarks compared with the in-memory baseline |
 | 6. Telemetry | The tracer and audit sinks, usage totals, the OTel adapter | The content test finds the marker in no span or audit entry; spans nest across awaits and tasks |
-| 7. Governance | Policy, scope binder and kinds, spec resolver, result guards, provider conformance | The suites pass; a provider cannot widen a decision (property tests); a failing hook closes |
-| 8. Reference clients | `tether.cli` and `tether.tui` | Scripted end-to-end sessions pass for the CLI; the TUI shows a list, a live transcript, and an approval in a pseudo-terminal test |
-| 9. Durability | Crash resume, the `replay` marker, idempotent step keys | A real process killed between steps resumes or reports interrupted, each completed step once |
+| 7. Governance | Policy, scope binder and kinds, spec resolver, result guards, provider conformance, the optional `tether.scope` and `tether.guards` | The suites pass; a provider cannot widen a decision (property tests); a failing hook closes |
+| 8. Reference clients | `tether.cli` and `tether.tui`, the demo model | Scripted end-to-end sessions pass for the CLI; the TUI shows a list, a live transcript, and an approval in a pseudo-terminal test; the quickstart is timed |
+| 9. Durability | Intent entries and invocation ids, the approval lifecycle, the resume planner, the `replay` marker, idempotent step keys | A real process killed between steps resumes or reports interrupted, each committed entry once and no unsafe tool run twice, over every log prefix |
 | 10. Release 0.1 | Documentation, the quickstart test, packaging, publication | A clean environment passes the quickstart; both license texts ship; the first downstream platform's parity check is run |
+| 11. Databricks profile and archive | `tether.adapters.databricks` (ported gateway client settings, identity modes, tier map), the archive ports' conformance suite, the derived archive over inference tables | The profile passes the model port suite against recorded gateway responses; the derived archive reports pending, denied, and unavailable correctly; call content is read as the calling actor |
+| 12. Reconcile and resolve | `Tool.reconcile`, `Client.resolve` | An unknown outcome resolved by reconcile or by a caller leaves a log the planner treats as finished |
 
 **Characterization scenarios (slice 2)**: a plain answer; an allowed tool call; a call denied as not permitted; a call denied as scope required; invalid arguments; a tool that raises; the step limit; a model outage mid-stream; a model call denied; manual approval approved, declined, and superseded by a new message; a tool that always asks; a result flagged by the scan; a result outside the bound context; a widening that rolls back; a tool hidden by a stage; a hook that raises; a cancelled turn.
 
@@ -246,24 +286,26 @@ Each slice is one change that leaves the repository releasable. The first downst
 |---------------|-----------|----------------|---------------|
 | FR-1 to FR-5 | Engine, model adapters | CONTRACT-001, CONTRACT-002 sections 1 and 7 | Characterization scenarios; `model_port_suite` |
 | FR-6 to FR-10 | Engine | CONTRACT-002 section 4 | Tool and approval scenarios; offload test |
-| FR-11 to FR-16 | Session service, stores | CONTRACT-003 sections 1 to 3 | `session_store_suite`; kill tests |
+| FR-11 to FR-16, FR-41 | Session service, stores | CONTRACT-003 sections 1 to 3 | `live_store_suite`; kill tests |
+| FR-14, FR-34, FR-37, FR-42 | Engine, session service | CONTRACT-002 sections 8 to 10; ADR-010, ADR-014, ADR-015 | Prefix property test; real-process kill tests |
+| FR-39, FR-40, FR-43, FR-44 | Databricks profile, archives | CONTRACT-003 section 4; ADR-013, ADR-019 | Archive suite; recorded gateway responses |
 | FR-17 to FR-21 | Client API | CONTRACT-003 sections 4 to 6 | Acceptance sketches; benchmarks |
 | FR-22 to FR-25 | Telemetry | CONTRACT-002 section 6 | Content test; span nesting tests |
 | FR-26, FR-27 | Engine | CONTRACT-002 sections 2, 4, 5 | Governance suites; property tests |
 | FR-28 | Test kit | CONTRACT-001 section 2; CONTRACT-002 section 9; CONTRACT-003 section 7 | Each suite passes for its dummy |
 | FR-29, FR-30 | Reference clients | Slice 8 | End-to-end and pseudo-terminal tests |
-| FR-31, FR-32 | Packaging | ADR-006, slice 0 | Clean-environment install test |
+| FR-31, FR-32, FR-36 | Packaging | ADR-006, ADR-007, slice 0 | Clean-environment install test |
 
 ### Gaps
 - [ ] Feature specifications and user stories are not yet written; `frame` writes them and maps each FR to a story.
-- [ ] Performance budgets and the quickstart target have no numbers: the owner sets them after the first measurements.
-- [ ] The injection scanner's port shape and the TUI library are undecided (open items).
+- [ ] The performance numbers are proposals (NFR-7); the first baseline validates or replaces them.
+- [ ] Content by reference in the live store, backed by a derived archive, is undecided (ADR-019).
 
 ## Concern Alignment
 
 - **Concerns used**: `python-uv`, `hexagonal-architecture`, `modularity-and-encapsulation`, `concurrency-model`, `testing`, `o11y-otel`, `resilience`, `security-owasp`, `scope-discipline`, `code-shape-ceilings`.
 - **Constraints honored**: the core reads no environment; every port has a dummy and a suite; gates fail closed; telemetry carries no content; ceilings apply globally with no per-file exceptions.
-- **ADRs referenced**: ADR-001 to ADR-006.
+- **ADRs referenced**: ADR-001 to ADR-020.
 - **Departures**: the core does not use `pydantic-settings` (ADR-003; recorded in `concerns.md`).
 
 ## Constraints & Assumptions
@@ -277,19 +319,20 @@ Each slice is one change that leaves the repository releasable. The first downst
 | Risk | Prob | Impact | Mitigation |
 |------|------|--------|------------|
 | The ports or the provider surface are too narrow or too wide | M | H | Port the first downstream platform's scenarios in slice 2; amend the contracts before slice 10 |
-| Per-step commits cost too much latency | M | M | One commit per step with its entries batched; benchmarks in slice 4 and 5 before the budgets are set |
+| Per-step commits cost too much latency | M | M | One commit per step with its entries batched; benchmarks in slices 4 and 5 before the budgets are set |
+| The embedded Postgres starts too slowly for the quickstart | M | M | Measure in slice 5; the demo falls back to in-memory, or a SQLite store is built (ADR-020) |
+| A derived archive is mistaken for a complete record | M | H | Capability flags and the pending, denied, unavailable results; the suite checks them (ADR-019) |
 | The change feed's resume and coalescing rules are subtle | M | H | Property tests for ordering and resume; consider a bounded model (formal-methods) if tests find surprises |
 | A blocking call stalls the event loop | M | H | Offload; `ASYNC` lint rules; a loop-lag test |
 | Protocol variations or optional-adapter dependencies break compatibility | M | M | HTTPX wire tests and local-server conformance; exact pins and dependency-closure checks for any optional adapter |
 | Unverified competitor cells hide a product that already does this | M | H | Validate in `frame` before building past slice 4 |
-| Publication blocked by the legal entity name or contribution policy | L | M | Both are open questions with an owner; slices 0 to 9 proceed privately |
+| Publication blocked by a repository or release decision | L | M | Slices 0 to 9 proceed privately |
 
 ## Open Decisions
 
 | Decision | Owner | Blocks |
 |----------|-------|--------|
-| The performance budgets and the quickstart target | Erik LaBianca | Slice 4 acceptance, slice 10 |
-| The terminal UI library (recommendation: Textual) | Erik LaBianca | Slice 8 |
-| SQLite through the standard library in worker threads or `aiosqlite` (recommendation: the standard library) | Erik LaBianca | Slice 5 |
-| Whether crash resume is required for 0.1 | Erik LaBianca | The release plan |
-| The legal entity name for the copyright notice; the contribution policy | Erik LaBianca | Slice 10 |
+| The performance numbers (proposals in NFR-7) | Erik LaBianca | Slice 4 acceptance, slice 10 |
+| Postgres embedded or SQLite for the durable demo | Erik LaBianca | Slice 5 |
+| Whether the live store may hold call content by reference to a derived archive | Erik LaBianca | Slice 11 |
+| Whether crash resume is required for 0.1 (the PRD makes it P0) | Erik LaBianca | The release plan |
