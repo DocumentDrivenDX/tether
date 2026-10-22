@@ -1,0 +1,57 @@
+"""Async variant: does the native async path carry auth, request-id, and streaming with less machinery?"""
+import asyncio, contextvars, json
+import httpx
+from openai import AsyncOpenAI
+from pydantic_ai.direct import model_request, model_request_stream
+from pydantic_ai.messages import ModelRequest, TextPart, PartDeltaEvent, PartStartEvent
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.settings import ModelSettings
+
+user_token = contextvars.ContextVar("user_token", default=None)
+request_id = contextvars.ContextVar("request_id", default=None)   # a plain value, no holder
+seen = []
+
+class UserAuth(httpx.Auth):
+    def auth_flow(self, request):
+        t = user_token.get()
+        if t: request.headers["Authorization"] = f"Bearer {t}"
+        yield request
+
+async def on_response(response):
+    request_id.set(response.headers.get("x-request-id"))          # plain set inside the hook
+
+def sse(chunks): return "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+def handler(request):
+    body = json.loads(request.content); seen.append(request.headers.get("authorization"))
+    if body.get("stream"):
+        ch = [{"id": "s", "object": "chat.completion.chunk", "created": 1, "model": "m", "choices": [{"index": 0, "delta": {"role": "assistant", "content": t}, "finish_reason": None}]} for t in ("Hel", "lo")]
+        ch.append({"id": "s", "object": "chat.completion.chunk", "created": 1, "model": "m", "choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}})
+        return httpx.Response(200, text=sse(ch), headers={"content-type": "text/event-stream", "x-request-id": "req-stream"})
+    rid = "req-for-" + (request.headers.get("authorization") or "none").removeprefix("Bearer ")
+    return httpx.Response(200, json={"id": "c", "object": "chat.completion", "created": 1, "model": "m", "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "hi"}}], "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4}}, headers={"x-request-id": rid})
+
+http = httpx.AsyncClient(transport=httpx.MockTransport(handler), auth=UserAuth(), event_hooks={"response": [on_response]})
+client = AsyncOpenAI(base_url="https://gateway.example/v1", api_key="unused", http_client=http, max_retries=0)
+model = OpenAIChatModel("svc", provider=OpenAIProvider(openai_client=client))
+settings = ModelSettings(extra_headers={"User-Agent": "scope-tag"})
+
+async def one(i):
+    user_token.set(f"user-{i}")                                   # each task has its own context
+    resp = await model_request(model, [ModelRequest.user_text_prompt("hi")], model_settings=settings)
+    return i, resp.parts[0].content, request_id.get()
+
+async def main():
+    r = await model_request(model, [ModelRequest.user_text_prompt("hi")], model_settings=settings)
+    print("plain async call:", r.parts[0].content, "| usage", r.usage.input_tokens, r.usage.output_tokens, "| request-id via plain ContextVar.set:", request_id.get())
+    async with model_request_stream(model, [ModelRequest.user_text_prompt("hi")], model_settings=settings, model_request_parameters=ModelRequestParameters(allow_text_output=True)) as s:
+        deltas = [e.part.content if isinstance(e, PartStartEvent) else e.delta.content_delta async for e in s if isinstance(e, (PartStartEvent, PartDeltaEvent)) and (isinstance(e, PartDeltaEvent) or isinstance(e.part, TextPart))]
+        final = s.get()
+    print("stream deltas:", deltas, "| final usage", final.usage.input_tokens, final.usage.output_tokens, "| request-id:", request_id.get())
+    seen.clear()
+    out = await asyncio.gather(*(one(i) for i in range(5)))
+    print("5 concurrent calls, tokens on the wire:", sorted(seen))
+    print("request id each task read back:", sorted((i, rid) for i, _, rid in out))
+    print("every task read its own id:", all(rid == f"req-for-user-{i}" for i, _, rid in out))
+asyncio.run(main())

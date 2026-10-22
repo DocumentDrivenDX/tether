@@ -1,0 +1,4 @@
+flows:
+  - id: helix
+    root: docs/helix/
+autonomy: medium

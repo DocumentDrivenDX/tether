@@ -1,0 +1,9 @@
+# Operator slot-default override for tether.
+# HELIX reads this file before concerns.md during concern selection; each key
+# below sets the filler for that exclusive slot ahead of the shipped default in
+# the installed catalog's concerns/slots.yml.
+# tether is a library: no frontend framework, deploy target, auth provider, or
+# browser e2e tool is selected (the reference clients are a CLI and a terminal UI).
+defaults:
+  language-runtime: python-uv
+  architecture-style: hexagonal-architecture

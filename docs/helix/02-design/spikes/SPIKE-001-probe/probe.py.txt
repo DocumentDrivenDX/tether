@@ -1,0 +1,93 @@
+"""Can Pydantic AI's direct API carry the gateway adapter's requirements? Mock transport only."""
+import contextvars, json
+import httpx
+from openai import AsyncOpenAI
+from pydantic_ai.direct import model_request_sync, model_request_stream_sync
+from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, TextPart, PartDeltaEvent, PartStartEvent
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.settings import ModelSettings
+from pydantic_ai.tools import ToolDefinition
+
+user_token = contextvars.ContextVar("user_token", default=None)
+request_id = contextvars.ContextVar("request_id", default=None)  # holds a dict the caller owns
+seen = []
+
+class UserAuth(httpx.Auth):                      # per-call bearer from a contextvar
+    def auth_flow(self, request):
+        t = user_token.get()
+        if t: request.headers["Authorization"] = f"Bearer {t}"
+        yield request
+
+async def on_response(response):                 # capture x-request-id
+    holder = request_id.get()
+    if holder is not None: holder["id"] = response.headers.get("x-request-id")
+
+COMPLETION = {"id": "chatcmpl-1", "object": "chat.completion", "created": 1, "model": "svc",
+  "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {"role": "assistant", "content": None,
+     "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "lookup", "arguments": "{\"q\": \"x\"}"}}]}}],
+  "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}}
+
+def sse(chunks):
+    return "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+
+def handler(request: httpx.Request) -> httpx.Response:
+    body = json.loads(request.content)
+    seen.append({"url": str(request.url), "auth": request.headers.get("authorization"),
+                 "ua": request.headers.get("user-agent"), "traceparent": request.headers.get("traceparent"),
+                 "body": body})
+    if body.get("model") == "boom":
+        return httpx.Response(500, json={"error": {"code": "INTERNAL", "message": "secret content"}}, headers={"x-request-id": "req-fail"})
+    if body.get("stream"):
+        chunks = [{"id": "s1", "object": "chat.completion.chunk", "created": 1, "model": "svc",
+                   "choices": [{"index": 0, "delta": {"role": "assistant", "content": t}, "finish_reason": None}]} for t in ("Hel", "lo")]
+        chunks.append({"id": "s1", "object": "chat.completion.chunk", "created": 1, "model": "svc",
+                       "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
+        chunks.append({"id": "s1", "object": "chat.completion.chunk", "created": 1, "model": "svc", "choices": [],
+                       "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}})
+        return httpx.Response(200, text=sse(chunks), headers={"content-type": "text/event-stream", "x-request-id": "req-stream"})
+    return httpx.Response(200, json=COMPLETION, headers={"x-request-id": "req-1"})
+
+http = httpx.AsyncClient(transport=httpx.MockTransport(handler), auth=UserAuth(),
+                         event_hooks={"response": [on_response]})
+client = AsyncOpenAI(base_url="https://gateway.example/v1", api_key="unused", http_client=http, max_retries=0)
+def model(name): return OpenAIChatModel(name, provider=OpenAIProvider(openai_client=client))
+
+params = ModelRequestParameters(function_tools=[ToolDefinition(name="lookup", description="d",
+          parameters_json_schema={"type": "object", "properties": {"q": {"type": "string"}}})], allow_text_output=True)
+settings = ModelSettings(extra_headers={"User-Agent": "tether-scope/spec=a;session=s", "traceparent": "00-abc-def-01"},
+                         extra_body={"reasoning_effort": "high"}, timeout=30)
+
+print("== non-stream")
+user_token.set("per-call-token")
+holder = {}; request_id.set(holder)
+resp = model_request_sync(model("tier-balanced"), [ModelRequest.user_text_prompt("hi")],
+                          model_settings=settings, model_request_parameters=params)
+s = seen[-1]
+print("url", s["url"]); print("auth", s["auth"]); print("ua", s["ua"]); print("traceparent", s["traceparent"])
+print("body keys", sorted(s["body"])); print("reasoning_effort", s["body"].get("reasoning_effort"))
+print("parts", [type(p).__name__ for p in resp.parts], [getattr(p, "tool_name", None) for p in resp.parts])
+print("usage", resp.usage.input_tokens, resp.usage.output_tokens)
+print("provider_response_id", resp.provider_response_id)
+print("x-request-id captured via hook:", holder.get("id"))
+
+print("== stream (sync)")
+holder = {}; request_id.set(holder)
+with model_request_stream_sync(model("tier-balanced"), [ModelRequest.user_text_prompt("hi")],
+                               model_settings=settings, model_request_parameters=ModelRequestParameters(allow_text_output=True)) as stream:
+    deltas = []
+    for ev in stream:
+        if isinstance(ev, PartStartEvent) and isinstance(ev.part, TextPart): deltas.append(ev.part.content)
+        elif isinstance(ev, PartDeltaEvent) and hasattr(ev.delta, "content_delta"): deltas.append(ev.delta.content_delta)
+    final = stream.response
+print("deltas", deltas); print("final text", "".join(p.content for p in final.parts if isinstance(p, TextPart)))
+print("stream usage", final.usage.input_tokens, final.usage.output_tokens); print("x-request-id (stream):", holder.get("id"))
+
+print("== error")
+holder = {}; request_id.set(holder)
+try:
+    model_request_sync(model("boom"), [ModelRequest.user_text_prompt("hi")], model_settings=settings)
+except Exception as e:
+    print(type(e).__mro__[0].__name__, "| status", getattr(e, "status_code", None), "| str:", str(e)[:120])
+    print("x-request-id on failure:", holder.get("id"))
