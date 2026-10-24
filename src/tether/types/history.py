@@ -10,6 +10,8 @@ from pydantic import Field, JsonValue, model_validator
 from tether.types import AttemptIdentity, Message, Payload, ResponseReceipt
 from tether.types.execution import Actor, HistoryRef
 
+HISTORY_CONTRACT_VERSION = 2
+
 HistoryStatus = Literal[
     "ready",
     "pending",

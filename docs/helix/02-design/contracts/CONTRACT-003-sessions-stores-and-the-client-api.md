@@ -49,7 +49,7 @@ ddx:
 
 **Contract ID**: CONTRACT-003
 **Type**: library (Python ports and API)
-**Version**: v1
+**Version**: v2
 **Related**: ADR-001, ADR-004, ADR-005, ADR-010, ADR-011, ADR-014, ADR-015, ADR-018, ADR-019, ADR-020, CONTRACT-001, CONTRACT-002
 
 ## Purpose
@@ -184,6 +184,13 @@ class StoreCapabilities(BaseModel):
     # always true, so not declared: atomic append, idempotent keys
 
 class SessionInit(BaseModel):  ref: str | None = None; spec: str | None = None; title: str | None = None; tags: tuple[str, ...] = (); settings: dict[str, JsonValue] = {}
+class SessionPatch(BaseModel):
+    title: str | None = None
+    tags: tuple[str, ...] | None = None
+    settings: dict[str, JsonValue] | None = None
+# Omitted patch fields do not change state. Explicit title=None clears a title at the
+# store boundary. tags/settings=None do not change those fields; an empty tags tuple
+# clears tags, while supplied settings merge into existing settings after validation.
 
 class LiveStore(Protocol):
     capabilities: StoreCapabilities
@@ -366,6 +373,7 @@ class Tether:                                          # the composition: engine
 |------|-------------|
 | History | `history` hydrates only referenced content in a bounded position page; every slot reports readiness independently. Entries/snapshots/listing remain usable during provider outage and carry refs/facts, not empty substituted text. `pending` first verifies authorized raw source arguments against CallManifest.args_digest, then validates with the pinned tool/schema and displays the normalized executable values whose digest the approval binds. `confirm` repeats both checks and cannot dispatch changed executable values under an earlier approval. The selected HistoryProvider is a separate Tether composition dependency, defaulting to JSONL in reference clients. |
 | One object | A UI needs only `Client`. It never imports a store or the engine. |
+| Payload disclosure | `call_detail` payloads and exports containing model exchanges additionally require current `READ_CALL_PAYLOAD` for the session. READ_SESSION alone permits metadata and separately authorized original-message history, not raw exchange bodies. Denial returns no exchange payload; it never falls back to cached or broader-identity content. Engine use of original sources is governed by READ_SESSION and CALL_MODEL, not a UI payload grant. |
 | Identity | Each read/snapshot/effects operation and each feed delivery/replay batch is authorized with `READ_SESSION` for the bound actor and owner; denial or policy failure stops it without revealing content. `client(actor)` binds an actor. Commands that start model calls (`send`, `confirm`, `resume`) use its credential for that call and never persist it (ADR-011). A metadata-only follower needs no model credential; hydrating external source content may require its own current caller credential. |
 | Send | `send` durably writes the user content through HistoryProvider, then commits its ref and the turn start, then returns a `TurnHandle` without waiting for the turn to finish. The turn runs as a task owned by `Tether`; the consumer follows it through `follow` or awaits `result`. |
 | Idempotent send | `send` with a `request_id` that exists in the session with the same canonical accepted input (text, attachments and requested spec) digest returns the existing turn's handle; a different digest raises `RequestConflict`. The key is `request:<request_id>` (ADR-018). |
@@ -383,6 +391,12 @@ class Tether:                                          # the composition: engine
 | Settings | `update` records a `settings` or `session` entry and the change appears in the feed. |
 | Defaults | A `SessionQuery` of `None` lists the owner's live sessions, most recently updated first. |
 | Application references | A `ref` ties a session to an application's own record; tether never reads the application's records (ADR-018). |
+
+**Event-loop ownership.** `Tether.__aenter__` binds composition, owned tasks and async
+resources to the current running event loop. All client I/O and shutdown MUST run on that
+loop; a wrong-loop call raises `RuntimeError("wrong_event_loop")` before touching resources.
+An external thread bridge may submit to the bound loop; no blocking bridge may run on it.
+Engine and storage lifetimes cannot migrate async pools/locks/tasks between loops.
 
 **`Tether` options.** `history` is an explicit HistoryProvider; reference clients supply local JSONL and tests supply InMemoryHistory.  Executor limits and shutdown deadline are explicit finite settings (CONTRACT-002); `max_resolution_reason_chars` bounds operator text. `max_pending_argument_bytes` and `max_resolution_reason_chars` are positive finite limits; oversized inputs are refused before persistence. Read/argument/context limits are shared with CONTRACT-001/004/005. The demo uses `resume="off"` on the non-durable in-memory store.  `resume` (`"off"`, `"report"`, or `"auto"`; the durable reference default is `"report"`), `resume_actor` (a function that returns an actor with a live credential for a session, or `None`, used only with `"auto"`), `recover_interval`, `max_resumes` (the reference configuration proposes 3, qualified before release), `lease_window` and `heartbeat_interval`, `approval_ttl` (none by default), `archive` and `archive_on` (a policy for when a session is archived), and the archive read time limit. The numeric defaults other than those named are supplied by the owner after the first baseline.
 
@@ -477,7 +491,7 @@ detail = await client.call_detail(session_id, [entry.model_call_id for entry in 
 - Position-addressed entries and keyset-addressed sessions are chosen so no read needs a scan. A UI that wants "jump to page N" of sessions must search or filter instead.
 - A server adapter (HTTP, WebSocket, server-sent events) maps `Client` calls to routes and `follow` to a stream. Its authentication and the choice of the actor are its own.
 - Preview and metadata search follow the explicit authority rule in section 2; a cached source read never grants later disclosure after source access is revoked.
-- The live and archive ports follow a pattern in the first downstream platform: its session store keeps keys and facts (request ids, usage, statuses), and a bounded, per-user reader returns the gateway's logged request and response on demand. That reader is the model for a derived archive.
+- Execution facts, original conversation content and optional externally observed model exchanges have separate authorities. Gateway detail may enrich a separately retained original transcript; selecting that source does not imply that a deployment reconstructs its conversation from gateway logs.
 - Original content is referenced through CONTRACT-005; the runtime journal keeps execution facts and ordering. Gateway reads are a history-source dependency only when content is requested, not an archive dependency of execution recovery.
 
 ## Open Items

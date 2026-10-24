@@ -19,6 +19,8 @@ from tether.types import (
     ToolCall,
 )
 
+ENGINE_CONTRACT_VERSION = 2
+
 Effect = Literal["read_only", "effectful"]
 Replay = Literal["safe", "unsafe"]
 
@@ -27,6 +29,7 @@ class Actor(Payload):
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
     id: str
     kind: str = "user"
+    principal: str | None = Field(default=None, min_length=1)
     attributes: dict[str, JsonValue] = Field(default_factory=dict)
     credential: SkipJsonSchema[Credential | None] = Field(default=None, exclude=True, repr=False)
 

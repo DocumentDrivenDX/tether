@@ -36,9 +36,8 @@ class JournalAttemptRecorder:
         self.started: dict[str, tuple[AttemptIdentity, JsonValue, str]] = {}
 
     async def reserve(self) -> AttemptIdentity:
-        if (
-            self.tags.session_id != self.gov.log.session.id
-            or self.tags.principal != self.gov.actor.id
+        if self.tags.session_id != self.gov.log.session.id or self.tags.principal != (
+            self.gov.actor.principal or self.gov.actor.id
         ):
             raise ModelAttemptDenied("invalid_attempt_identity")
         identity = AttemptIdentity(

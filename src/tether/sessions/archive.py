@@ -74,6 +74,8 @@ class ArchiveTransfer:
             for ref in references(entry.model_dump(mode="json"))
         }
         for ref in refs.values():
+            if ref.kind == "model_exchange":
+                await self._authorize(actor, session_id, "read_call_payload")
             values = await self.history.read([ref], actor=actor)
             if len(values) != 1 or values[0].status != "ready" or values[0].record is None:
                 raise StoreError("archive_reference_unavailable")
@@ -82,6 +84,8 @@ class ArchiveTransfer:
                 raise IntegrityError("archive_reference_integrity")
             records.append(StoredHistory(ref=ref, record=record).model_dump(mode="json"))
         await self._authorize(actor, session_id)
+        if any(ref.kind == "model_exchange" for ref in refs.values()):
+            await self._authorize(actor, session_id, "read_call_payload")
         if await self.store.snapshot(session_id, actor.id) != snapshot:
             raise StoreError("archive_session_changed")
         summary, settings = snapshot.view.summary, snapshot.view.settings

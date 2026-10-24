@@ -105,8 +105,8 @@ class SessionIndex:
             self._usage(entry)
         elif entry.kind == "settings":
             self._settings(facts)
-        elif entry.kind == "session" and facts.get("event") == "closed":
-            self.summary = summary.model_copy(update={"status": "closed", "resumable": False})
+        elif entry.kind == "session":
+            self._session(facts)
 
     def _confirmation(self, entry: Entry) -> None:
         binding = entry.facts.get("binding")
@@ -156,6 +156,15 @@ class SessionIndex:
                 "usage_complete": all(value is not None for value in self.counted.values()),
             }
         )
+
+    def _session(self, facts: dict[str, JsonValue]) -> None:
+        event, value = facts.get("event"), facts.get("value")
+        if event == "closed":
+            self.summary = self.summary.model_copy(update={"status": "closed", "resumable": False})
+        elif event in {"titled", "tagged"}:
+            key = "title" if event == "titled" else "tags"
+            self.init = SessionInit.model_validate(self.init.model_dump() | {key: value})
+            self.summary = self.summary.model_copy(update={key: getattr(self.init, key)})
 
     def _settings(self, facts: dict[str, JsonValue]) -> None:
         changes = facts.get("changes")

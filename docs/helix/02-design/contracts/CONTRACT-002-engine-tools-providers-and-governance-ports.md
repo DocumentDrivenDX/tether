@@ -49,7 +49,7 @@ ddx:
 
 **Contract ID**: CONTRACT-002
 **Type**: library (Python ports)
-**Version**: v1
+**Version**: v2
 **Related**: ADR-001, ADR-003, ADR-005, ADR-010, ADR-011, ADR-014, ADR-015, ADR-016, ADR-017, ADR-018, CONTRACT-001, CONTRACT-003
 
 ## Purpose
@@ -73,12 +73,17 @@ Signatures are Python 3.11. Payload types are frozen `pydantic` models with `ext
 ```python
 class Actor(BaseModel):                                                          # who a call is for
     id: str; kind: str = "user"; attributes: dict[str, JsonValue] = {}
+    principal: str | None = None  # verified model attribution; defaults to id, never a credential
     credential: Credential | None = Field(default=None, exclude=True, repr=False)   # CONTRACT-001; never stored (ADR-011)
 
 # Actions are strings. The core defines these; an optional package defines its own as `x.<package>.<action>`.
 CALL_MODEL = "call_model"; CALL_TOOL = "call_tool"; RETRIEVE = "retrieve"
 APPROVE = "approve"; RESUME = "resume"; READ_SESSION = "read_session"
-RESOLVE_EFFECT = "resolve_effect"
+RESOLVE_EFFECT = "resolve_effect"; READ_CALL_PAYLOAD = "read_call_payload"
+
+# Actor.id remains the session owner and policy/approval subject. Model RequestTags.principal
+# is Actor.principal when supplied, otherwise Actor.id. The application verifies the mapping;
+# neither field selects a credential or grants access. Empty supplied principal is refused.
 
 class Decision(BaseModel):  allowed: bool; reason: str                          # "allowed" when allowed
 class AgentSpec(BaseModel):                                                      # what the loop reads of a task
@@ -364,7 +369,7 @@ The package ships `tether.testing.conformance`, as asynchronous tests run with t
 
 The initial v1 is revised before release, including CONTRACT-004 and `RESOLVE_EFFECT`; no compatibility layer is required.
 
-- Versioning: one integer, `ENGINE_CONTRACT_VERSION`. A provider declares the version it was written for in `Provider.contract`; the registry refuses a provider above the engine's and accepts a lower one the engine still supports. `AgentSpec.schema_version` versions a specification separately.
+- Versioning: one integer, `ENGINE_CONTRACT_VERSION=2`. Version 2 adds explicit model principal and the enforced READ_CALL_PAYLOAD action. Existing version-1 providers retain the identical hook surface and are supported; policies must handle the new action or fail closed. A provider declares the version it was written for in `Provider.contract`; the registry refuses a provider above the engine's and accepts a lower one the engine still supports. `AgentSpec.schema_version` versions a specification separately.
 - Ordering or precedence: the gate sequence of section 8 is normative and overrides any provider's expectation.
 - Backward-compatibility rules: adding an optional method with a default to `Provider`, a new action string the engine does not itself raise, or a new optional field is compatible. Changing a signature, adding a reason the engine reads, reordering the sequence, or tightening a rule is a new version. There is no synchronous form, so asynchrony is not a compatibility axis.
 - Deprecation rules: a removed item is announced one version ahead and kept, with a warning, for that version.

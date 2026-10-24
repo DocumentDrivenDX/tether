@@ -33,7 +33,7 @@ ddx:
 
 **Contract ID**: CONTRACT-005
 **Type**: library (asynchronous Python ports and persisted references)
-**Version**: v1, initial pre-release design
+**Version**: v2, initial pre-release design
 **Related**: ADR-013/018/019/020/021; CONTRACT-001 to CONTRACT-004; PRD FR-50 to FR-53
 
 ## Purpose
@@ -95,7 +95,12 @@ A codec can expose a normalized assistant message or summary component of one ex
 
 The journal's immutable message entry contains a `HistoryRef`, role and stable message id. Its dense entry position remains the source address used by CONTRACT-004. Content lives behind that reference. The client materializes a history page by joining committed entries to the history provider; its ordering always comes from journal positions, not provider timestamps or table row order. Uncommitted orphan history records are not visible as accepted messages.
 
-`HistoryRef` is not a bearer capability. The service first checks session ownership and `READ_SESSION`, verifies every ref is reachable from the requested session's committed entries, and calls the provider as the present actor. Provider reads MUST enforce owner/session scope as well. The public client takes session positions or known call ids, never arbitrary table names, SQL, row selectors or external request ids as access grants. Denied reads never fall back to an application identity with broader rights.
+`HistoryRef` is not a bearer capability. The service first checks session ownership and `READ_SESSION`, verifies every ref is reachable from the requested session's committed entries, and calls the provider as the present actor. Provider reads MUST enforce owner/session scope as well. The public client takes session positions or known call ids, never arbitrary table names, SQL, row selectors or external request ids as access grants. Denied reads never fall back to an application identity with broader rights. Service disclosure
+of raw model-exchange records additionally requires current `READ_CALL_PAYLOAD` for the
+session (CONTRACT-002/003 v2), including archive export. A message/summary component does not
+grant access to its containing wire exchange. Ordinary transcript hydration remains under
+READ_SESSION plus provider checks; the engine's source use remains subject to its model/tool
+gates. Metadata reads do not implicitly hydrate exchange bodies.
 
 ### Canonical digests and immutable bindings
 
@@ -188,7 +193,7 @@ External recording coverage remains explicit: pending rows, expired retention, m
 
 ## Precedence and Compatibility
 
-- `HISTORY_CONTRACT_VERSION=1`; the initial pre-release CONTRACT-001 to CONTRACT-004 are revised together. Existing external histories are imported only through explicit versioned refs/codecs, never assumed to match the latest schema.
+- `HISTORY_CONTRACT_VERSION=2`; the initial pre-release CONTRACT-001 to CONTRACT-004 are revised together. Existing external histories are imported only through explicit versioned refs/codecs, never assumed to match the latest schema.
 - The journal owns order/execution; the selected history binding owns content; CONTRACT-004 owns the derived model projection. A disagreement is an integrity/coverage problem, never a majority vote between copies.
 - Local JSONL record version, content codec and external schema profile are independently versioned. Unknown fields are preserved where opaque payloads permit it; unknown semantic codecs refuse use. History provider migration appends explicit bindings and preserves identities/provenance.
 

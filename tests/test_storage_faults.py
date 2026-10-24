@@ -89,9 +89,16 @@ async def test_canceled_file_writer_retains_lock_and_capacity_until_actual_exit(
 
 
 async def test_projection_publish_failure_is_unknown_and_stale_indexes_are_unavailable(monkeypatch):
+    from tether.types.execution import SessionState
+    from tether.types.storage import SessionArchive
+
     files = MemoryFiles()
     store = await JsonlSessionStore.open(files)
-    session = await store.create("owner", SessionInit())
+    init = SessionInit(ref="fabricated")
+    session = await store.create("owner", init)
+    archive = SessionArchive(
+        state=SessionState(id=session.id, owner="owner"), init=init, entries=()
+    )
     original = store._publish
 
     def fail(event):
@@ -105,6 +112,12 @@ async def test_projection_publish_failure_is_unknown_and_stale_indexes_are_unava
             await log.append([NewEntry(kind="message")])
     with pytest.raises(StoreError):
         await store.snapshot(session.id, "owner")
+    with pytest.raises(StoreError):
+        await store.create("owner", init)
+    with pytest.raises(StoreError):
+        await store.restore(archive, created_at=session.created_at)
+    with pytest.raises(StoreError):
+        await store.recover(now=session.updated_at)
 
 
 CHILD = """
