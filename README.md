@@ -83,8 +83,9 @@ The POSIX single-writer profile stores checksummed batches and accepted-prefix w
 fences leased writes, and reconstructs pending approval from journal/source facts with the
 original supplied specs. Unknown writes require reopening; close retains ownership while
 actual I/O remains. Process-exit evidence does not prove power-cut behavior. Broader recovery fault qualification, scope/spec resolver integration and telemetry
-remain unfinished. Model/tool attachments,
-non-JSON executable argument leaves and lossy argument serializers are refused by this subset.
+remain unfinished. User and guarded tool-result attachment refs are supported as metadata rendered
+into text; the original refs remain in history and model requests. Artifact bytes, native media,
+non-JSON executable argument leaves and lossy argument serializers remain outside this subset.
 The fabricated examples and faults are in [the execution tests](tests/test_gated_execution.py)
 and [the integration review](tests/test_execution_review.py).
 

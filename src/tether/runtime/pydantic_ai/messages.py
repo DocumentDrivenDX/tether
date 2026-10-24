@@ -27,6 +27,8 @@ from pydantic_ai.usage import RequestUsage
 from tether.models.canonical import canonical
 from tether.types import Message, ModelResponse, ModelUnavailable, TokenUsage, ToolCall
 
+from .attachments import model_view
+
 CODEC = "tether-text-tools-v1"
 
 
@@ -143,9 +145,8 @@ def to_sdk_messages(
 ) -> list[ModelMessage]:
     result: list[ModelMessage] = [SDKRequest(parts=[SystemPromptPart(system)])] if system else []
     names: dict[str, str] = {}
-    for message in messages:
-        if message.attachments:
-            raise ModelUnavailable("unsupported_content")
+    for original in messages:
+        message = model_view(original)
         if message.role == "assistant":
             for call in message.tool_calls:
                 if call.id in names:

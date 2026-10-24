@@ -318,5 +318,10 @@ per-physical-attempt rechecks apply to default and custom recorders. The complet
 conversation remains verified history. Tool-free auxiliary summary execution and compatible reuse
 now share the existing ModelPort, policy, physical attempts, usage and deadline. Immutable content
 precedes atomic compaction/call provenance; accepted positions precede derived materialization.
-Actual wire estimators, attachment encoding, streaming and broader profile/fidelity qualification
-remain work; no second Agent loop exists.
+The shared attachment metadata codec projects refs to text within the original message role.
+Agent-derived history must equal the complete current authorized projection before Engine restores
+original refs. Tool results are independently copied before guards; withheld output clears refs and
+provider hooks can only remove refs. Summary inputs carry metadata inside untrusted source JSON.
+Artifact storage, retrieval and native media transport belong to separately composed profiles.
+Actual wire estimators, streaming and broader profile/fidelity qualification remain work;
+no second Agent loop exists.

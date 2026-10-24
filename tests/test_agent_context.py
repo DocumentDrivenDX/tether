@@ -297,7 +297,7 @@ async def test_provider_cannot_remove_one_member_of_a_completed_old_tool_group(l
         assert len(h.tool.calls) == 1
 
 
-async def test_sdk_unsupported_attachments_refuse_before_model_egress(limits):
+async def test_sdk_attachment_refs_survive_before_model_egress(limits):
     from tether.types import AttachmentRef
     from tether.types.execution import TurnStart
 
@@ -316,6 +316,10 @@ async def test_sdk_unsupported_attachments_refuse_before_model_egress(limits):
             ),
         )
         result = await h.engine.run_turn(h.actor, h.log, "Fabricated", spec=h.spec, start=start)
-        assert (result.stop_reason, result.reason) == ("model_unavailable", "unsupported_content")
-        assert not h.model.requests
-        assert not estimator.requests
+        assert result.stop_reason == "final"
+        assert h.model.requests[0].messages[0].attachments == start.attachments
+        assert estimator.requests
+        assert any(
+            r.messages and r.messages[0].attachments == start.attachments
+            for r in estimator.requests
+        )

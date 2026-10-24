@@ -7,6 +7,7 @@ from collections.abc import Callable
 from uuid import uuid4
 
 from tether.ports import ModelPort
+from tether.runtime.pydantic_ai.attachments import projected
 from tether.runtime.pydantic_ai.gated import GatedAgent
 from tether.types import (
     AttemptRecorder,
@@ -84,8 +85,9 @@ class Run:
             )
         step = self.preparation
         async with step.guarded():
+            originals = await step.capture()
             if (
-                request.messages != await step.capture()
+                request.messages != projected(originals)
                 or request.system != self.executor.spec.instructions
             ):
                 raise ExecutionDenied("derived_history_changed")
@@ -107,6 +109,7 @@ class Run:
                         )
                     ),
                     "tags": tags,
+                    "messages": originals,
                 }
             )
             request = await step.prepare(request)

@@ -294,7 +294,11 @@ accepted-summary reuse now share ModelPort, policy,
 physical attempts, usage and the preparation deadline. Compaction facts bind the generating call;
 content precedes atomic provenance and actual indices precede materialization. Preserve unknown
 history acknowledgement through cleanup, frozen pre-write hashes and known successful terminals.
-The opt-in SummarizingContext preserves user messages by default. Actual wire estimators,
-attachment codecs and provisional stream integration remain qualification work. Explicit context
+The opt-in SummarizingContext preserves user messages by default. Attachment refs use the shared
+metadata-only text codec; original refs remain authoritative, complete ordered SDK projection must
+verify before restoration, and tool output is copied before awaited guards. Withheld output clears
+refs; result hooks may only remove them. Summary source JSON carries metadata, never loaded artifact
+bytes. Artifact fetching and native media transport require explicit separate profiles. Actual wire
+estimators and provisional stream integration remain qualification work. Explicit context
 configuration and an estimator are required; fabricated_context is a fabricated test composition only.
 Never treat fixed-token fixture conformance as wire evidence.

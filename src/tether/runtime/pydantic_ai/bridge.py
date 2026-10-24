@@ -27,6 +27,7 @@ from tether.types import (
     ToolSpec,
 )
 
+from .attachments import projected
 from .messages import from_sdk_messages, to_sdk_messages, to_sdk_response
 from .response import bounded_response
 
@@ -148,7 +149,17 @@ async def run_agent(
 ) -> AgentModelResult:
     """Slice 1: text or deferred proposals; no function may dispatch before slice 2 gates."""
     await authorize_history()
-    bridge = PortModel(port, request, limits, prepare)
+    request = copy_request(request)
+
+    async def restore(candidate: ModelRequest) -> ModelRequest:
+        await authorize_history()
+        if candidate.messages != projected(request.messages) or candidate.system != request.system:
+            raise ModelAttemptDenied("derived_history_changed")
+        return await prepare(
+            copy_request(candidate.model_copy(update={"messages": request.messages}))
+        )
+
+    bridge = PortModel(port, request, limits, restore)
     definitions = [
         ToolDefinition(
             name=t.name, description=t.description, parameters_json_schema=t.input_schema
