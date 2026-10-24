@@ -234,7 +234,7 @@ A function tool: the library also offers a decorator that builds a `Tool` from a
 | Order | Providers run in registration order. |
 | `before_request` | Hooks chain: each receives the previous hook's output. The result MUST be a tuple of messages that is a structural subset of the input: the same or fewer messages, unchanged roles, unchanged tool-call ids/names/arguments, no added tool calls, and attachments that are a subset. An output that is not is a `provider_output_invalid` failure of the step. Whether a change to a message's content is a faithful redaction is the author's obligation. |
 | `before_call` | Every provider's hook runs in order. It returns a `Refusal` or `None`; `None` means no objection and never an allow. The first refusal wins and is recorded with its provider id. |
-| `after_call` | Hooks chain. The returned message MUST keep `role`, `tool_call_id`, and `is_error`; a change to any of them is `provider_output_invalid` and the result is withheld. If the final content differs from what the guards saw, the engine MUST re-run every guard on the final content. |
+| `after_call` | Hooks chain. Attachments MUST be an ordered subset of the prior message refs, with unchanged metadata. Added, reordered or altered refs withhold the result. The returned message MUST keep `role`, `tool_call_id`, and `is_error`; a change to any of them is `provider_output_invalid` and the result is withheld. If the final content differs from what the guards saw, the engine MUST re-run every guard on the final content. |
 | Reasons | A reason without the `x.<provider id>.` prefix is normalized to `x.<provider id>.invalid_reason`. |
 | `prompt_section` and `hidden_tools` | `prompt_section` adds text to the instructions; it is not an authorization and the contract does not treat it as one. `hidden_tools` removes tools from what the model is offered. |
 | Time limit | A hook that exceeds the engine's configured time limit fails closed. The value is the application's. |
@@ -246,7 +246,7 @@ A function tool: the library also offers a decorator that builds a `Tool` from a
 ### 5. Result guards
 
 ```python
-class GuardInput(BaseModel):  tool: str; output: str; traits: dict[str, JsonValue]; facts: dict[str, JsonValue]
+class GuardInput(BaseModel):  tool: str; output: ToolOutput; traits: dict[str, JsonValue]; facts: dict[str, JsonValue]
 class GuardVerdict(BaseModel):  outcome: Literal["ok", "withheld", "denied"]; reason: str | None = None; facts: dict[str, JsonValue] = {}
 class ResultGuard(Protocol):
     id: str
@@ -255,10 +255,11 @@ class ResultGuard(Protocol):
 
 | Rule | Requirement |
 |------|-------------|
+| Output snapshot | Before any awaited guard or provider hook, the engine independently validates and copies the complete ToolOutput, including refs and facts. Guards inspect this owned snapshot; retained tool objects cannot change accepted metadata. Byte limits cover the complete output. After-hook changes re-run guards over text and retained refs. |
 | No mandatory guard | The engine runs the guards it is given, in order. The default list is empty. The optional `tether.guards` package ships a rules-based injection heuristic and `default_guards()`; the optional `tether.scope` package ships the bound-context guard (ADR-017). |
 | Not a security boundary | A guard is a heuristic or a check the application chose. The documents MUST NOT describe the injection heuristic as protection against prompt injection; policy, scope, and approval are the controls. |
 | Fail closed | A guard that raises withholds the result with reason `<id>_unavailable`. |
-| Withheld results | A withheld result reaches the model as a typed denial and never as content; the audit entry names the call and reason and, for a denied or unvalidated call, never its argument values. |
+| Withheld results | A withheld result clears all attachment refs and reaches the model as a typed denial and never as content; the audit entry names the call and reason and, for a denied or unvalidated call, never its argument values. |
 
 ### 6. Telemetry
 

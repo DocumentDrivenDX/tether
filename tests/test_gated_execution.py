@@ -31,6 +31,7 @@ from tether.types.execution import (
     Replay,
     SessionState,
     ToolContext,
+    ToolOutput,
 )
 
 pytestmark = pytest.mark.anyio
@@ -67,7 +68,7 @@ class DemoTool:
     def asks_first(self, ctx: ToolContext, args: BaseModel) -> bool:
         return True
 
-    async def run(self, ctx: ToolContext, args: BaseModel) -> str:
+    async def run(self, ctx: ToolContext, args: BaseModel) -> str | ToolOutput:
         self.calls.append((ctx.invocation_id, args.model_dump()))
         if self.failure:
             raise self.failure

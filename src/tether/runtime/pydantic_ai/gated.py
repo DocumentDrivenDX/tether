@@ -22,6 +22,7 @@ from tether.types import (
     ToolSpec,
 )
 
+from .attachments import model_view
 from .bridge import PortModel, PrepareModel
 from .messages import to_sdk_messages
 
@@ -61,9 +62,10 @@ class GatedAgent:
             message = await self._execute(call)
             if message is None:
                 raise ApprovalRequired()
+            content = model_view(message).content
             if message.is_error:
-                raise ToolFailed(message.content)
-            return message.content
+                raise ToolFailed(content)
+            return content
 
         return Tool.from_schema(
             execute,

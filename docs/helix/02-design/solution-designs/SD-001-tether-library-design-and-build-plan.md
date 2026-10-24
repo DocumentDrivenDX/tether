@@ -1030,3 +1030,27 @@ acceptance hazards, both fixed with exact regressions; final read-only review fo
 ran no tests. Four fresh hash-locked installed profiles and162 matching package
 sources are recorded in the execution receipt. Real token counting, attachment encoding, summary
 fidelity, provisional streaming and broader external/hosted matrix proof remain open.
+
+
+The attachment metadata checkpoint extends the selected text/function-tool subset through one
+role-preserving canonical JSON text projection. User refs and guarded tool output refs remain in
+original history and ModelRequest; SDK text is restored only after complete ordered equality with
+currently authorized sources. Marker-looking ordinary text is never parsed for authority.
+Successful and failed SDK tool returns share the renderer, including approval continuations and
+fresh root reconstruction. The direct one-step Agent helper verifies the same source projection.
+Tool output is independently validated/copied before any guard wait; withheld output clears refs,
+result hooks may only narrow refs, and changed content or refs are guarded again. Auxiliary summary
+inputs carry only authorized post-provider metadata in their bounded source JSON. Artifact fetching,
+storage and media transport remain application/profile concerns. Qualify real wire-aware estimators
+next; these metadata checks do not establish real token counts, semantic summary fidelity,
+provisional streaming, native media or the broader external/hosted matrix.
+
+
+The attachment metadata checkpoint passes1449 cases in46 bounded groups at92.19%
+branch-inclusive coverage with strict typing0 and unchanged gates. Its23 new cases cover actual
+Agent restoration/guards/approval, one-way metadata semantics, native HTTP text rendering, governed
+summary inputs, real JSONL root reopen and tool-retained ref mutation. Independent review identified
+the retained-ref hazard; the fix has an exact regression and final review found no blocker. Reviewer
+ran no tests. Four fresh hash-locked installed profiles and163 matching package
+sources are recorded in the execution receipt. Real token counting, artifact contents/native media,
+summary fidelity, provisional streaming and broader external/hosted matrix proof remain open.

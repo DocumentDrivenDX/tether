@@ -105,6 +105,7 @@ async def complete(port: ModelPort, request: ModelRequest) -> ModelResponse: ...
 | Outage | A provider/transport failure to produce a response MUST raise `ModelUnavailable`. Local `ModelAttemptDenied`, `StoreError`, `CommitUnknown`, `LeaseLost`, and cancellation propagate unchanged; they are not provider outages and MUST NOT be retried by the adapter. Its `reason` MUST be a short code (`http 503`, `timeout`, `unconfigured tier`, `incomplete stream`) and MUST NOT contain request or response content, a header value, or the text of an underlying exception. |
 | Cancellation | A cancelled call MUST stop the underlying request and let the cancellation propagate; it MUST NOT be reported as an outage. |
 | Content | Operational logs/errors never carry content. Explicit history capture is a separate content path: the engine/history adapter may persist credential-free requests/responses only through CONTRACT-005. Cassettes remain fabricated-only test fixtures. |
+| Attachment metadata | AttachmentRef names and sizes describe application-owned artifacts. The selected text/function-tool integration renders every declared ref field as untrusted JSON text in the same message; it MUST NOT fetch or infer file contents. The original refs remain in authoritative history and ModelRequest. Native media/image/audio/binary transport requires a separately qualified profile. |
 | Request id | `request_id` is a convenience identifier; `receipt` keeps provider response-header id, provider invocation id and completion-body id in separate fields with their provenance. A body id is not a proven inference-table join. Capture observed ids on stream headers and failures, not only successful terminal frames (CONTRACT-005). |
 | Attempt correlation | The adapter reserves identity with `attempts.reserve()`, builds the final credential-free wire representation including its exact outbound attempt tags, then awaits `attempts.start(identity, request_digest=..., wire_request=..., codec=...)` before EVERY physical egress. It calls `observe` as soon as receipt metadata is available. Hidden SDK retries are disabled unless they can do this. Outbound required tags use the reserved attempt id; logical call and session/turn ids remain stable. An engine call without its recorder is refused before network I/O. |
 | Concurrency | An adapter MUST be safe to call from many tasks at once. Caller mode uses only that request's credential; application mode uses only the explicitly configured application identity; anonymous mode sends no authorization. No mode inherits identity from another task. |
@@ -134,6 +135,24 @@ JSON Lines, one object per line. The first line is `{"cassette": 1, "provider": 
 ### 4. Adapter execution limits
 
 An adapter is constructed with a `ModelExecutionLimits` value: `max_response_bytes` and `max_tool_argument_bytes` (positive integers over decoded UTF-8 payload bytes), `max_attempts` (positive integer including the first attempt), `request_timeout_seconds` (positive finite total deadline including retries/backoff) and `max_retry_delay_seconds` (positive finite cap). These settings are explicit; invalid/non-finite Retry-After values are ignored and bounded jittered policy applies. Waiting beyond the remaining total deadline ends `timeout`; it does not start another attempt. An endpoint that cannot enforce the configured output field refuses configuration, rather than silently dropping it.
+
+### Attachment metadata text codec
+
+`tether-attachment-metadata-v1` renders a message with refs as its original content followed by
+`\n\n<attachment-metadata codec="tether-attachment-metadata-v1">\n`, a canonical UTF-8 JSON
+array of refs in original order, then `\n</attachment-metadata>`. Every object carries `id`,
+`filename`, `media_type`, `size_bytes`, `read`, and `withheld`; duplicate refs are preserved.
+Canonical JSON sorts object keys and escapes control characters. Ref fields and marker-looking
+ordinary text remain untrusted data. The flags confer no access or execution permission.
+Messages without refs retain their content. Roles, call IDs, arguments and error state are unchanged.
+
+The SDK projection carries this text with an empty attachments tuple. Decoding SDK messages alone
+returns that derived text; it MUST NOT parse markers into refs. Engine and the one-step Agent helper
+verify the complete ordered projection against their currently authorized original source messages
+before restoring originals for preparation. Equality includes system text. Duplicate-looking
+messages are restored by their known positions only after complete equality; no content matching,
+SDK metadata or checkpoint grants source authority. Native adapters render the restored refs once.
+Returned SDK conversations remain derivatives and contain rendered metadata text.
 
 ## Precedence and Compatibility
 

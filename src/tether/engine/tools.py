@@ -9,6 +9,7 @@ from datetime import timedelta
 from typing import cast
 from uuid import uuid4
 
+from tether.context.provenance import compatible
 from tether.types import Message, ToolCall
 from tether.types.canonical import canonical, digest
 from tether.types.execution import (
@@ -321,7 +322,11 @@ class ToolExecutor:
                     args.value.model_copy(deep=True),
                     observe=observation,
                 )
-            output = value if isinstance(value, ToolOutput) else ToolOutput(text=value)
+            output = (
+                ToolOutput.model_validate(value.model_dump(mode="json"))
+                if isinstance(value, ToolOutput)
+                else ToolOutput(text=value)
+            )
         except asyncio.CancelledError:
             raise  # The accepted effectful intent remains unresolved.
         except Exception:
@@ -329,17 +334,22 @@ class ToolExecutor:
             return await self.result(
                 inv, "interrupted" if tool.effect == "effectful" else "error", reason
             )
-        message = Message(role="tool", content=output.text, tool_call_id=inv.manifest.call_id)
+        message = Message(
+            role="tool",
+            content=output.text,
+            tool_call_id=inv.manifest.call_id,
+            attachments=output.attachments,
+        )
         message = await self._guard(tool, output, message)
         message = await self._after(inv, tool, args, message)
         status = "withheld" if message.is_error else "ok"
         return await self.result(inv, status, "withheld" if message.is_error else None, message)
 
     async def _guard(self, tool: Tool, output: ToolOutput, message: Message) -> Message:
-        if output.attachments:
-            return message.model_copy(update={"content": "unsupported_content", "is_error": True})
         if len(canonical(output.model_dump(mode="json"))) > self.gov.limits.max_result_bytes:
-            return message.model_copy(update={"content": "result_too_large", "is_error": True})
+            return message.model_copy(
+                update={"content": "result_too_large", "is_error": True, "attachments": ()}
+            )
         for guard in self.guards:
             try:
                 async with asyncio.timeout(self.gov.limits.hook_timeout_seconds):
@@ -355,7 +365,9 @@ class ToolExecutor:
                 if verdict.outcome != "ok":
                     raise ExecutionDenied("result_withheld")
             except Exception:
-                return message.model_copy(update={"content": "result_withheld", "is_error": True})
+                return message.model_copy(
+                    update={"content": "result_withheld", "is_error": True, "attachments": ()}
+                )
         return message
 
     async def _after(
@@ -371,20 +383,21 @@ class ToolExecutor:
                     ToolCall(id=inv.manifest.call_id, name=tool.name, arguments=args.arguments),
                     message,
                 )
-                if not isinstance(changed, Message) or (
-                    changed.role,
-                    changed.tool_call_id,
-                    changed.is_error,
-                    changed.tool_calls,
-                    changed.attachments,
-                ) != (message.role, message.tool_call_id, message.is_error, (), ()):
+                if not isinstance(changed, Message):
+                    raise ExecutionDenied("invalid_provider_result")
+                changed = Message.model_validate(changed.model_dump(mode="json"))
+                if not compatible(message, changed):
                     raise ExecutionDenied("invalid_provider_result")
                 if changed != message:
-                    changed = await self._guard(tool, ToolOutput(text=changed.content), changed)
+                    changed = await self._guard(
+                        tool,
+                        ToolOutput(text=changed.content, attachments=changed.attachments),
+                        changed,
+                    )
                 message = changed
-            except ExecutionDenied:
+            except (ExecutionDenied, ValueError, TypeError):
                 message = message.model_copy(
-                    update={"content": "result_withheld", "is_error": True}
+                    update={"content": "result_withheld", "is_error": True, "attachments": ()}
                 )
         return message
 
