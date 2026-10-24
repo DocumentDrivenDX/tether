@@ -29,6 +29,7 @@ from tether.types.execution import (
     PendingConfirmation,
     Policy,
     Provider,
+    Resolution,
     ResultGuard,
     SessionState,
     Tool,
@@ -46,6 +47,7 @@ from .confirmations import approval_entries
 from .governance import AllowAll, Governance, utc_now
 from .inspection import describe_pending
 from .reconstruction import pinned_spec, requested_turn, restore_pending, restored_usage
+from .resolution import resolve
 from .run import Run
 from .starts import accept_input
 from .tools import Registry, ToolExecutor
@@ -287,6 +289,25 @@ class Engine:
                 self.clock,
             )
             await close_session(gov)
+            self._runs.pop(log.session.id, None)
+        finally:
+            self._running.discard(log.session.id)
+            if not self._running:
+                self._idle.set()
+
+    async def resolve(self, actor: Actor, log: TurnLog, value: Resolution) -> None:
+        self._enter(actor, log)
+        try:
+            gov = Governance(
+                actor,
+                log,
+                self.history,
+                self.policy,
+                log.turn_id or str(uuid4()),
+                self.limits,
+                self.clock,
+            )
+            await resolve(gov, value.model_copy(deep=True))
             self._runs.pop(log.session.id, None)
         finally:
             self._running.discard(log.session.id)

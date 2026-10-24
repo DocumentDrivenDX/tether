@@ -351,8 +351,12 @@ binder-managed held context; governed binding remains a separate extension seam.
 Client close now seals incomplete/pending groups and commits closure atomically after content
 preparation and current policy checks. It refuses active turns, actual live workers and unresolved
 effects, with repeat-close idempotency and closed-session read access. Cancellation projects as
-idle/nonresumable, distinct from interruption (ADR-010). Resume/resolve and remaining command
-race qualification stay in this slice; provisional text/reset/coalescing remain slice 9a. The Agent remains the only
+idle/nonresumable, distinct from interruption (ADR-010). Manual resolution now records authorized operator outcomes under the lease without dispatch,
+closes missing terminal results as unknown, preserves original evidence, clears the indexed barrier
+atomically and rejects conflicting decisions or malformed partial-group refs. Identical retries
+remain authorized and mutation-free, including after close/reopen. Volatile history now verifies
+the same scoped refs as durable profiles. Resume and remaining command race qualification stay
+in this slice; provisional text/reset/coalescing remain slice 9a. The Agent remains the only
 model/tool iterator. Full qualification status is in the execution record.
 
 ### Consumer boundary review and implementation plan

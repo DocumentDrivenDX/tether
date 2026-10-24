@@ -102,8 +102,12 @@ Omitted title preserves it, explicit None clears it; public settings refuse mana
 Close is owner/read-authorized and lease-serialized; it refuses actual workers and unresolved
 effects, prepares incomplete-group results before atomic closure, and keeps closed sessions readable.
 Explicit cancellation is idle/nonresumable under ADR-010; interruption remains distinct.
-Resume/resolve commands, provisional stream production,
-full safe-invocation recovery/manual resolution, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
+Manual resolve requires current RESOLVE_EFFECT and a lease, refuses live workers and conflicting
+decisions, and commits unknown-result closure/decision/barrier atomically without new execution.
+Reused partial-group refs need scope/profile/call correlation; malformed immutable groups refuse.
+Volatile MemoryHistory refs carry and verify owner/session/message scope.
+Resume commands, provisional stream production,
+full safe-invocation recovery, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.
 The new-input seam adopts the lease turn id, prepares content before atomic supersession/start/

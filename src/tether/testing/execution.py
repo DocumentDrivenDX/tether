@@ -54,12 +54,22 @@ class MemoryHistory:
             raise EntryConflict("history_conflict")
         self._values[address] = value
         return HistoryRef(
-            provider="memory", key=key, sha256=digest(message.model_dump(mode="json"))
+            provider="memory",
+            key=key,
+            sha256=digest(message.model_dump(mode="json")),
+            owner=actor.id,
+            session_id=session_id,
+            kind="message",
         )
 
     async def read(self, ref: HistoryRef, *, actor: Actor, session_id: str) -> Message:
         value = self._values.get((session_id, ref.key))
-        if ref.provider != "memory" or value is None or value[0] != actor.id:
+        if (
+            (ref.provider, ref.owner, ref.session_id, ref.kind, ref.component, ref.codec)
+            != ("memory", actor.id, session_id, "message", "record", "tether-message-v1")
+            or value is None
+            or value[0] != actor.id
+        ):
             raise PermissionError("history_denied")
         message = value[1]
         if digest(message.model_dump(mode="json")) != ref.sha256:

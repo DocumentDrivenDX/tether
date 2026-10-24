@@ -325,6 +325,20 @@ class EffectsUnresolved(ExecutionDenied):
     pass
 
 
+class NotUnresolved(ExecutionDenied):
+    pass
+
+
+class ResolutionConflict(ExecutionDenied):
+    pass
+
+
+class Resolution(Payload):
+    invocation_id: str = Field(min_length=1)
+    outcome: Literal["completed", "not_completed"]
+    reason: str = Field(min_length=1, max_length=1024)
+
+
 class CommitUnknown(Exception):
     """Caller must not infer whether the append was accepted."""
 

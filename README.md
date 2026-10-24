@@ -8,7 +8,7 @@ reference CLI/terminal clients are planned in later build slices.
 **Status: gated execution, local durability and partial Client commands (slices 2–4 subset).** Pydantic AI Agent now runs tools through
 Tether's policy, validation, approval and commit gates. Model doubles and shared codecs remain
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
-Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Resume/resolve commands, provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Resume commands, provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
 
 ## Development
 
@@ -77,8 +77,7 @@ and message-history subsets. Their durability is `none`. For local durability, e
 The POSIX single-writer profile stores checksummed batches and accepted-prefix witnesses,
 fences leased writes, and reconstructs pending approval from journal/source facts with the
 original supplied specs. Unknown writes require reopening; close retains ownership while
-actual I/O remains. Process-exit evidence does not prove power-cut behavior. Manual effect
-resolution, safe started-invocation recovery, scope/spec resolver integration and telemetry
+actual I/O remains. Process-exit evidence does not prove power-cut behavior. Safe started-invocation recovery, scope/spec resolver integration and telemetry
 remain unfinished. Model/tool attachments,
 non-JSON executable argument leaves and lossy argument serializers are refused by this subset.
 The fabricated examples and faults are in [the execution tests](tests/test_gated_execution.py)
@@ -120,6 +119,14 @@ in one journal commit. It refuses active turns, live workers and unresolved effe
 sessions remain readable and repeat close is idempotent. Failed result-content preparation
 cannot publish closure. Explicit cancellation returns the session to idle without advertising
 resume; an actual interruption is distinct and may be resumable.
+
+`client.resolve(session_id, invocation_id, "completed", reason="operator_checked")` records
+an explicit operator decision under current `RESOLVE_EFFECT` policy and the session lease.
+It clears that unknown-effect barrier without another tool or model call. Identical decisions
+are idempotent; conflicting outcomes/reasons refuse. Missing terminal results are first closed
+as unknown, preserving original evidence. Malformed partial groups refuse instead of clearing
+the barrier. A live worker still prevents resolution. Resolution reasons are bounded operator
+metadata, and credentials must never be included.
 
 Tether bounds its owned jobs by `ClientLimits.max_active_turns`. Lease loss stops the Agent;
 shutdown cancels owned turns and retains storage until actual workers and in-flight heartbeats

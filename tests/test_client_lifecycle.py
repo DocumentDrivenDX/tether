@@ -133,6 +133,8 @@ async def assert_worker_refusals(client, session_id):
         await client.close(session_id)
     with pytest.raises(WorkerOutstanding):
         await client.send(session_id, "Replacement", spec="demo")
+    with pytest.raises(WorkerOutstanding):
+        await client.resolve(session_id, "unknown", "completed", reason="decision")
 
 
 async def assert_rebuilt_unknown(path, session_id, owner):
