@@ -15,6 +15,7 @@ from tether.types.execution import Actor, Entry, NewEntry, SessionState
 from tether.types.telemetry import AuditSink, TelemetryLimits, TraceIds, Tracer
 from tether.types.usage import UsageLedger
 
+from .client import ClientObservers
 from .delivery import AuditDelivery
 from .metadata import Scope, record, text
 from .tracing import GuardedTracer
@@ -39,6 +40,7 @@ class Observers:
         self._calls: OrderedDict[tuple[str, str, str], TraceIds | None] = OrderedDict()
         self._lock = Lock()
         self._failures = 0
+        self.client = ClientObservers(self.delivery, self.tracer, self.enabled, self.failed)
 
     @property
     def failures(self) -> int:

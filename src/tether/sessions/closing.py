@@ -35,4 +35,9 @@ async def close_session(
                 raise
         return await summary()
 
-    return await access.metadata(actor, sid, operation)
+    return await access.metadata(
+        actor,
+        sid,
+        operation,
+        session_id=sid,
+    )

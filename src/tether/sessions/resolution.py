@@ -25,7 +25,7 @@ async def resolve(
         if view is None:
             raise UnknownSession("unknown_session")
         if view.summary.status == "closed":
-            await access.authorize(actor, value.invocation_id, "resolve_effect")
+            await access.authorize(actor, value.invocation_id, "resolve_effect", session_id=sid)
             entries = await access.store_for(actor).lookup(
                 sid,
                 actor.id,
@@ -46,4 +46,9 @@ async def resolve(
             raise UnknownSession("unknown_session")
         return view.summary
 
-    return await access.metadata(actor, sid, operation)
+    return await access.metadata(
+        actor,
+        sid,
+        operation,
+        session_id=sid,
+    )

@@ -90,6 +90,8 @@ class AuthzRequest(Payload):
 
 
 class Decision(Payload):
+    model_config = ConfigDict(revalidate_instances="always")
+
     allowed: StrictBool
     reason: str
 

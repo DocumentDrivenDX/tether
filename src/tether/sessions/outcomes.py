@@ -28,7 +28,10 @@ async def read_outcome(
     access: SessionAccess, engine: Engine, actor: Actor, session_id: str, turn_id: str
 ) -> TurnResult:
     return await access.metadata(
-        actor, session_id, lambda: outcome(access, engine, actor, session_id, turn_id)
+        actor,
+        session_id,
+        lambda: outcome(access, engine, actor, session_id, turn_id),
+        session_id=session_id,
     )
 
 

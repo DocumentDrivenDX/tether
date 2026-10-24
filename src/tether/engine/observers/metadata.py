@@ -24,6 +24,8 @@ ACTIONS = frozenset(
         "create_session",
         "update_session",
         "close_session",
+        "x.tether.archive_session",
+        "x.tether.restore_session",
     }
 )
 REASONS = frozenset(

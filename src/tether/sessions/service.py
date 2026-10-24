@@ -50,7 +50,9 @@ class SessionService:
         if resume == "auto":
             raise Unsupported("auto_resume_unqualified")
         self.engine, self.store, self.history, self.limits = engine, store, history, limits
-        self.access = SessionAccess(store, history, engine.policy, limits)
+        self.access = SessionAccess(
+            store, history, engine.policy, limits, observers=engine.observers
+        )
         self.archives = ArchiveAccess(self.access, archive, archive_sink)
         self.followers = Followers(self.access)
         self.turns = OwnedTurns(self.access, engine, default_spec)
