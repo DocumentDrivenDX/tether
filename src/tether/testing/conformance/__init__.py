@@ -1,6 +1,11 @@
 """Reusable public-port checks; reports distinguish logical cases from full profile evidence."""
 
 from .archive import archive_suite as archive_suite
+from .context import ContextStrategyFactory as ContextStrategyFactory
+from .context import TokenEstimatorFactory as TokenEstimatorFactory
+from .context import TokenEstimatorFixture as TokenEstimatorFixture
+from .context import context_strategy_suite as context_strategy_suite
+from .context import token_estimator_suite as token_estimator_suite
 from .live import live_store_suite as live_store_suite
 from .mutations import mutation_receipt_suite as mutation_receipt_suite
 from .telemetry import AuditSinkFactory as AuditSinkFactory

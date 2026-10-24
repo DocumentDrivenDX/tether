@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-24
   authoring:
     home: repo
   links:
@@ -146,7 +146,7 @@ graph TD
 | tether.stores.sqlite | Optional live-store implementation | SqliteStore | types, ports, sqlite3 and offload | Agent/provider SDKs, engine internals |
 | tether.adapters.otel | Tracer/audit adapter; owns OTel imports | OtelTracer/OtelAuditSink | types, ports, selected extra | Content capture by default, engine implementation |
 | tether.scope / tether.guards | Optional scope kinds, bound-context and heuristic guards | Declared guards/kinds | types, ports | Agent internals or a dispatch bypass |
-| tether.testing | Public-port doubles/suites/cassettes and qualified runtime test helpers | Contract test kit | Core modules and the named runtime integration; test dependencies | Required native provider extras/network credentials |
+| tether.testing | Public-port doubles/suites/cassettes and qualified runtime test helpers | Contract test kit | Core modules including context helpers and the named runtime integration; test dependencies | Required native provider extras/network credentials |
 | tether.cli / tether.tui | Reference clients and their composition roots | Console scripts | Client, Tether, selected adapters/stores, settings, Textual for TUI | Engine/Agent/store internals |
 
 **Integration Owners**: the internal runtime module owns Agent/capability/SDK message and Conversation conversion. Model adapters own provider-specific clients, wire parsing, settings and errors, using those shared codecs; do not build two conversion authorities. The compatible profile configures that adapter rather than reimplementing the protocol. Databricks owns platform authentication/history reads; stores own persistence drivers; OTel and Textual remain in their named integrations.

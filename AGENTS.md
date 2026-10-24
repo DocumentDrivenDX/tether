@@ -279,3 +279,13 @@ Only known committed policy denial becomes RetrievalDenied. Provider observation
 pinned/validated; unknown or mutated IDs are omitted with a secondary counter. Never forward raw
 provider dictionaries or unknown x.* facts into audit. Source-addressed context preparation remains
 functional slice9a work before context telemetry can claim completion.
+
+
+Context foundation helpers live in tether.context and tether.types.context (CONTRACT-004).
+They provide strict copied source plans, complete-group/protected coverage, provider provenance,
+fixed omission markers, Full/Tail planners and fabricated bounded doubles/conformance fixtures.
+They confer no authority and do not yet integrate Agent preparation. Keep untouched original source
+snapshots and require unique ordered provenance for fresh provider objects. Provider omissions are
+engine-owned IDs without pre-redaction content; validate visible plans before merged final coverage.
+Summarizing execution, wire estimators, lease-owned preparation/context-use facts, restart and context
+telemetry remain qualification work. Never treat fixed-token fixture conformance as wire evidence.
