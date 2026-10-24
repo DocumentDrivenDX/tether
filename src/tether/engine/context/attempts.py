@@ -1,5 +1,7 @@
 """Custom attempt recorders retain accounting semantics, never an Engine context bypass."""
 
+from typing import Protocol
+
 from tether.types import (
     AttemptIdentity,
     AttemptRecorder,
@@ -10,12 +12,18 @@ from tether.types import (
 )
 
 from ..governance import Governance
-from .step import ContextStep
+
+
+class ContextAdmission(Protocol):
+    tier: str
+
+    def check(self) -> None: ...
+    async def recheck(self) -> None: ...
 
 
 class CheckedRecorder:
     def __init__(
-        self, recorder: AttemptRecorder, step: ContextStep, gov: Governance, tags: RequestTags
+        self, recorder: AttemptRecorder, step: ContextAdmission, gov: Governance, tags: RequestTags
     ) -> None:
         self.recorder, self.step, self.gov, self.tags = recorder, step, gov, tags
 

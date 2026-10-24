@@ -315,5 +315,8 @@ POSIX/non-root; no external server administration or automatic migration is adde
 The scoped C4 main-request runtime now performs explicit Full/Tail projection within Agent's
 existing preparation callback. Accepted preparation/use facts bind the logical main model call;
 per-physical-attempt rechecks apply to default and custom recorders. The complete original
-conversation remains verified history. Auxiliary summary execution, actual wire estimators,
-attachment encoding and streaming remain separate qualification work; no second Agent loop exists.
+conversation remains verified history. Tool-free auxiliary summary execution and compatible reuse
+now share the existing ModelPort, policy, physical attempts, usage and deadline. Immutable content
+precedes atomic compaction/call provenance; accepted positions precede derived materialization.
+Actual wire estimators, attachment encoding, streaming and broader profile/fidelity qualification
+remain work; no second Agent loop exists.

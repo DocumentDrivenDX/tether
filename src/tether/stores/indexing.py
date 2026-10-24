@@ -23,6 +23,7 @@ def entry_groups(session_id: str, entry: Entry) -> set[tuple[str, str]]:
         "model_call",
         "context_preparation",
         "context_use",
+        "compaction",
     }:
         groups.add(("model_call", call))
     binding = entry.facts.get("binding")

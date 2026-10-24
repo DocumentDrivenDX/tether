@@ -144,12 +144,13 @@ The engine authorizes `CALL_MODEL` separately for each summary call with `AuthzR
 
 ContextConfig.summary_identity_mode="inherit" copies the main request's explicitly selected identity mode. Caller mode uses the current caller credential only; application and anonymous modes carry no caller credential. Explicit application mode requires the selected adapter's explicitly configured application mechanism. A missing/unusable caller credential refuses caller-mode egress, never substitutes another mode. Principal metadata and policy attribution remain the current actor even when the explicitly selected summary mode differs from the main request.
 
-The summary request itself must fit its own profile. If source material is too large, the engine reports `context_exhausted`; it does not trim summary inputs silently or move to a larger/other model without explicit configuration. Strategies may propose bounded chunks in later steps, within the same coverage/protection rules. SDK/model conversation histories are transient conversions of this source-addressed view. A selected runner's cumulative usage and deferred execution metadata must be preserved as versioned derived state separate from the authoritative history and from engine approvals/effect facts. An existing summary may be folded into a new summary only when its entire coverage is included and its provenance is compatible; dependency cycles are invalid.
+The summary request itself must fit its own profile. If source material is too large, the engine reports `context_exhausted`; it does not trim summary inputs silently or move to a larger/other model without explicit configuration. Strategies may propose bounded chunks in later steps, within the same coverage/protection rules. SDK/model conversation histories are transient conversions of this source-addressed view. A selected runner's cumulative usage and deferred execution metadata must be preserved as versioned derived state separate from the authoritative history and from engine approvals/effect facts. An existing summary may be folded into a new summary only when its entire coverage is included and its provenance is compatible; dependency cycles are invalid. The auxiliary prompt includes the prior generated summary and its labelled source ranges once, plus only the additional original sources outside that coverage. Current original sources still verify the entire covered-range digest; the prior text cannot replace an unavailable original during validation.
 
 ### 4. Persistence and reuse
 
 ```python
 class CompactionRecord(BaseModel):
+    model_call_id: str                            # generating auxiliary logical call ID
     preparation_ordinal: int; part_position: int    # >= 0; not journal entry positions
     config_digest: str                            # effective context configuration
     summary_profile_id: str; summary_profile_revision: str
@@ -188,7 +189,18 @@ Preparation and use records bind the same logical main model_call_id and are dis
 
 `CompactionRecord` is the payload of a new `compaction` entry; `ContextUse` is a new `context_use` entry. The engine persists/binds successful summary content through CONTRACT-005, then commits its ref, the auxiliary `model_call` fact and associated change records atomically in the execution journal under the current lease before using that summary. After final main-request validation/estimation it commits `context_use` before sending. Failed appends stop preparation; the request MUST NOT be sent on an uncommitted projection. Records contain no credential. Only the referenced summary history record carries derived content; digests, counts, ranges, and reasons remain facts.
 
-A summary is a lossy derivative, never proof that every fact survives. The model view MUST label it as generated and cite its source entry ranges. Every omission MUST have an explicit marker and source ranges. Originals remain unchanged behind HistoryProvider references, resolved through authorized history paging. Journal positions still identify source messages; they do not require the live store to contain source text. If originals are no longer available, the engine reports unavailable context; it cannot treat a partial derived archive as a complete recovery source.
+The compaction's model_call_id identifies its generating auxiliary call, distinct from the
+preparation's main call ID. Its successful model_call carries preparation_ordinal, part_position
+and compaction_key equal to the compaction's stable journal key. Both facts share one accepted
+batch and the bounded model-call lookup group. Correlation MUST NOT depend on adjacency or captured
+body content. A known accepted successful summary remains successful if later main preparation
+fails; no contradictory second terminal model_call is appended for that auxiliary identity.
+Expected summary content bytes/hash are fixed before provider writes. Providers receive isolated
+copies; a returned ref must bind that exact content and current owner/session. Unknown history
+acknowledgement preserves CommitUnknown and requires fresh reconstruction before further facts or
+cached absence can authorize work.
+
+A summary is a lossy derivative, never proof that every fact survives. The model view MUST label it as generated and cite its source entry ranges. Every omission MUST have an explicit marker and source ranges. The strategy input retains its captured source watermark. An executor materialization view may advance its metadata watermark only after known summary commits to reference their actual positions; the accepted ContextUse retains the original preparation watermark and exact original source ranges. Originals remain unchanged behind HistoryProvider references, resolved through authorized history paging. Journal positions still identify source messages; they do not require the live store to contain source text. If originals are no longer available, the engine reports unavailable context; it cannot treat a partial derived archive as a complete recovery source.
 
 Reuse requires reauthorization of session access and matching source-view, scope, spec, strategy, profile and version digests. A compaction source-view digest covers only its own covered ranges, including immutable HistoryRef ids/digests and the decoded message view: exact post-provider message bytes, positions and attachment metadata. Reuse recomputes that digest for those ranges, so appending unrelated new messages does not invalidate a summary. A context-use source-view digest covers the entire input snapshot. Newly protected positions invalidate any summary that covers them. A changed redaction, actor scope, spec instruction or profile invalidates reuse. Current provider instructions and tool schemas are rebuilt and included in the final estimate, never restored from a summary. The engine adds a current non-executable status notice for unresolved effects and pending interaction outside strategy control; its bytes count in the fixed estimate. A summary may not confer authorization or decide effect/approval state.
 
@@ -253,7 +265,7 @@ The public context_strategy_suite accepts an asynchronous fresh ContextStrategy 
 | Byte/token/call budget exceeded, protected material too large | `context_exhausted` | No | Select explicit larger limits or a different valid strategy |
 | Authoritative history not ready / unavailable | `history_pending` / `history_unavailable` under CONTRACT-005 | Bounded later read | End context preparation without guessing payload or effect |
 | Missing/incompatible source or summary | `context_unavailable` / `context_incompatible` | No | Restore authoritative data or prepare compatible context |
-| Policy denies summary | `context_denied` | No | No auxiliary or main request is sent |
+| Policy denies summary or required caller credential is absent | `context_denied` | No | No auxiliary or main request is sent |
 | Strategy/estimator error, summary failure, timeout or bad terminal response | `context_failed` | No | Preserve originals; report metadata-only reason |
 | Append failure / lost lease | `StoreError` / `LeaseLost` | No | No uncommitted context is used; normal store recovery |
 

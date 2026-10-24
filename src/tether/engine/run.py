@@ -31,6 +31,7 @@ from tether.types.history import HistoryProvider
 from .attempts import JournalAttemptRecorder
 from .context import ContextBoundary
 from .context.attempts import CheckedRecorder
+from .context.services import ContextServices
 from .context.step import ContextStep
 from .governance import Governance
 from .tools import ToolExecutor
@@ -56,6 +57,7 @@ class Run:
         self.attempt_factory = attempt_factory
         self.history_provider = history_provider
         self.context = context
+        self.context_services = ContextServices(model, limits, history_provider, attempt_factory)
         self.preparation: ContextStep | None = None
         self.recorder: AttemptRecorder | None = None
         self.current_call: str | None = None
@@ -73,7 +75,12 @@ class Run:
         await self.gov.authorize("call_model", "model:" + request.model)
         if self.preparation is None or self.preparation.used:
             self.preparation = ContextStep(
-                self.context, self.gov, self.executor, request.model, self.result_turn_ids
+                self.context,
+                self.gov,
+                self.executor,
+                request.model,
+                self.result_turn_ids,
+                self.context_services,
             )
         step = self.preparation
         async with step.guarded():
@@ -178,7 +185,12 @@ class Run:
             await self.gov.authorize("read_session", self.gov.log.session.id)
             if self.runner is None and not recovered_final:
                 self.preparation = ContextStep(
-                    self.context, self.gov, self.executor, self.template.model, self.result_turn_ids
+                    self.context,
+                    self.gov,
+                    self.executor,
+                    self.template.model,
+                    self.result_turn_ids,
+                    self.context_services,
                 )
                 async with self.preparation.guarded():
                     messages = await self.preparation.capture()

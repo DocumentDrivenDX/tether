@@ -104,6 +104,7 @@ def plan(*parts, name="fixture"):
 
 def compaction():
     return CompactionRecord(
+        model_call_id="fabricated-summary-call",
         preparation_ordinal=0,
         part_position=0,
         config_digest=digest("config"),

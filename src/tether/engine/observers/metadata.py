@@ -77,6 +77,7 @@ ENUMS = {
 }
 KINDS = {
     "context_use": "x.context.prepared",
+    "compaction": "x.context.compaction",
     "x.context.failed": "x.context.failed",
     "authorization": "authorization",
     "model_call": "model_call",
@@ -156,7 +157,7 @@ def _fields(entry: Entry) -> dict[str, JsonValue]:
 def _links(entry: Entry) -> dict[str, JsonValue]:
     facts = entry.facts
     detail: dict[str, JsonValue] = {}
-    if entry.kind in {"context_use", "x.context.failed"}:
+    if entry.kind in {"context_use", "compaction", "x.context.failed"}:
         return context_detail(entry)
     if entry.kind == "authorization":
         resource = facts.get("resource")

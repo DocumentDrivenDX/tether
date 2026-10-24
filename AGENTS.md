@@ -278,17 +278,23 @@ returned/raised/cancelled observations describe waits, never effect proof or out
 Only known committed policy denial becomes RetrievalDenied. Provider observation namespaces are
 pinned/validated; unknown or mutated IDs are omitted with a secondary counter. Never forward raw
 provider dictionaries or unknown x.* facts into audit. Source-addressed main-request context preparation now supplies accepted metadata observations;
-summary and full slice9a qualification remain work.
+summary fidelity and full slice9a qualification remain work.
 
 
 Context foundation helpers live in tether.context and tether.types.context (CONTRACT-004).
 They provide strict copied source plans, complete-group/protected coverage, provider provenance,
 fixed omission markers, Full/Tail planners and fabricated bounded doubles/conformance fixtures.
-They confer no authority; Engine now integrates main-request Full/Tail preparation. Keep untouched original source
-snapshots and require unique ordered provenance for fresh provider objects. Provider omissions are
+They confer no authority; Engine now integrates main-request Full/Tail preparation. Keep untouched
+original source snapshots and require unique ordered provenance for fresh provider objects. Provider omissions are
 engine-owned IDs without pre-redaction content; validate visible plans before merged final coverage.
 Engine commits lease-owned preparation/context-use facts, reconstructs dense ordinals on restart,
 and mirrors accepted context metadata. Initial hydration and retry admission share a finite deadline;
-custom attempt recorders cannot bypass context rechecks. Summarizing execution, actual wire estimators,
+custom attempt recorders cannot bypass context rechecks. Governed tool-free summary execution and
+accepted-summary reuse now share ModelPort, policy,
+physical attempts, usage and the preparation deadline. Compaction facts bind the generating call;
+content precedes atomic provenance and actual indices precede materialization. Preserve unknown
+history acknowledgement through cleanup, frozen pre-write hashes and known successful terminals.
+The opt-in SummarizingContext preserves user messages by default. Actual wire estimators,
 attachment codecs and provisional stream integration remain qualification work. Explicit context
-configuration and an estimator are required; fabricated_context is a fabricated test composition only. Never treat fixed-token fixture conformance as wire evidence.
+configuration and an estimator are required; fabricated_context is a fabricated test composition only.
+Never treat fixed-token fixture conformance as wire evidence.
