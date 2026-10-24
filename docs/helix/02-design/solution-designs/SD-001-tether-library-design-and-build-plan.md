@@ -733,3 +733,32 @@ pytest; wheel/sdist byte-match all128 tested package Python sources. Review clos
 metadata, conditional report, cross-loop capacity and swallowed-exception qualification gaps.
 Engine delivery/wiring, failure/content/acceptance/worker proof and real OTel transport remain
 separate work. No recording-double result is a real receiver claim.
+
+
+Engine observer integration first adds bounded delivery and guarded tracing helpers, then accepted
+metadata registries and Engine/Governance hooks. Configure pending callback/queue count, packet
+bytes, bounded dedup, delivery and shutdown waits explicitly. A delivery timeout retains the single
+physical emission slot until actual exit; clean task contexts prevent first-actor trace inheritance.
+One caller deadline covers cleanup, while physical/store release proceeds independently of a
+stalled observational emission. Barrier tests cover commit-before-callback cancellation, changed
+actors in a queued event, cross-thread callback admission, close during emission and worker exit
+after canceled waits. Distinguish executor-function exit, returned-awaitable completion and accepted
+result. No callback captures Actor/credential/span-manager objects or authorizes new effects.
+
+
+The delivery helper retains one loop-owned timer while pending callbacks, the runner or actual
+emission remain. This explicit strong owner survives asyncio's weak task tracking after bounded
+close. The timer carries a clean context, renews at one-second intervals only while work remains,
+and is canceled on drain; default disabled delivery starts none. A private-Future/weakref regression
+covers dropped caller ownership after both deadlines, then collection after actual exit. Removing
+the retention owner makes that regression fail. This helper evidence does not qualify Engine wiring.
+
+
+Slice6 observer delivery/tracing helpers now have scoped execution evidence:1029 cases in33
+bounded groups,92.26% branch-inclusive coverage and strict typing0 pass the unchanged full gate.
+Afterward only the lifetime regression was strengthened; all37 helper tests pass with unchanged
+package sources. A disabled-retention negative control is detected. Fresh hash-locked base/OpenAI
+installs pass observer and prior logical suites, and all131 package sources match wheel/sdist.
+Independent read-only review found no remaining helper blocker after strong ownership was added.
+Engine/Governance/session wiring, operational content/actor/worker qualification and real OTel
+receiver proof remain separate work; no helper result claims those integrations are complete.
