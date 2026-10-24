@@ -8,7 +8,7 @@ reference CLI/terminal clients are planned in later build slices.
 **Status: gated execution, local durability and partial Client commands (slices 2–4 subset).** Pydantic AI Agent now runs tools through
 Tether's policy, validation, approval and commit gates. Model doubles and shared codecs remain
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
-Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Explicit durable resume is implemented for the qualified local profile. Provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Explicit durable resume is implemented for the qualified local profile. Provisional text production, Postgres session storage and reference clients remain unfinished. Optional PostgreSQL18 history is available as a separate content authority. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
 
 ## Development
 
@@ -201,3 +201,24 @@ permission, copies verified content before atomic journal restoration, and prese
 unknown effects and closure. A retry with conflicting reference or creation metadata refuses.
 Reference-preserving restore currently requires compatible original provider/codec addresses.
 See [archive conformance](tests/test_archive_ports.py) and [Client journeys](tests/test_client_archive.py).
+
+
+Optional PostgreSQL18 content history uses `tether[postgres]` and
+`tether.stores.postgres.PostgresHistory`. Supply a `ConnectionSource(actor, session_id)` async
+context manager that borrows an idle psycopg async connection. The application owns its pool,
+credential refresh, roles and RLS. Tether owns each short transaction and refuses ambient ones.
+Run `migrate(source, actor=maintenance_actor, schema="tether")` explicitly, then
+`DatabaseRoot.open(source, actor=bootstrap_actor, schema="tether")`; ordinary opening verifies
+schema/revision, namespace and durability settings without migration. Use the resulting history
+with the existing JSONL journal and close the database root explicitly. It never closes your pool.
+`migration_sql(schema)` exports the fresh-schema plain SQL statements; apply the complete sequence
+in one transaction. Existing managed schemas use `migrate` for verification, and conflicting or
+drifted tables refuse rather than receiving implicit repair.
+
+This checkpoint qualifies PostgreSQL18.6 with logged ordinary tables, `fsync=on`,
+`full_page_writes=on` and `synchronous_commit=on`. It preserves canonical bytes, immutable
+keys and ordered read statuses. Cancellation/timeouts retain actual connection work, and
+release failures after possible commit remain uncertain. Independent roots share namespace
+worker ownership. PostgreSQL session transactions/fencing, multi-process takeover, RLS deployment
+proof and embedded-server convenience remain slice5 work. The development suite runs pinned
+PostgreSQL18 wheels; that dependency does not enter the base or postgres runtime extra.

@@ -257,3 +257,9 @@ predicates and original immutable content identity. Pairing adapters does not im
 transaction: content-before-reference remains required unless a distinct combined-transaction
 profile is implemented and qualified. Current connection/loop/namespace lifetime is never stored
 in a history record.
+
+The initial PostgreSQL18 history profile stores canonical record bytes and their digest, with
+owner/session/key addresses represented without PostgreSQL JSONB/text payload narrowing.
+Equal-key equal-content retries return the original reference; conflicting immutable writes
+refuse. PostgresHistory can compose with the local JSONL journal. That mixed profile still
+commits content before journal references and makes no combined database transaction claim.

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from postgres_support import database as database
+from postgres_support import postgres_server as postgres_server
 
 from tether.history.jsonl import JsonlHistory
 from tether.stores.memory import MemoryFiles
@@ -20,9 +22,15 @@ def anyio_backend():
     return "asyncio"
 
 
+@pytest.fixture(params=["memory", "postgres"])
+async def history(request, database):
+    if request.param == "postgres":
+        return database.history
+    return await JsonlHistory.open(MemoryFiles())
+
+
 @pytest.mark.parametrize("kind", ["assistant", "summary", "none"])
-async def test_exchange_binding_preserves_component_and_full_record_digests(kind):
-    history = await JsonlHistory.open(MemoryFiles())
+async def test_exchange_binding_preserves_component_and_full_record_digests(kind, history):
     actor = Actor(id="owner")
     identity = AttemptIdentity(
         session_id="session",
@@ -86,8 +94,7 @@ async def test_exchange_binding_preserves_component_and_full_record_digests(kind
         )
 
 
-async def test_unobserved_exchange_and_unknown_refs_do_not_become_empty_ready_sources():
-    history = await JsonlHistory.open(MemoryFiles())
+async def test_unobserved_exchange_and_unknown_refs_do_not_become_empty_ready_sources(history):
     actor = Actor(id="owner")
     ref = await history.put(
         actor=actor,

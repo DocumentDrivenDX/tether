@@ -568,3 +568,18 @@ Postgres. Then add injected async acquisition, explicit SQL migrations and share
 paired journal/history adapters, live transaction/fencing/uncertain-commit/restart suites and real
 multiprocess tests. Applications retain pool/role/RLS/maintenance choices. Caller failure cannot
 fall back to service authority; no copied consumer synchronous service-pool code proves this.
+
+
+Slice5's first SQL checkpoint implements DatabaseRoot, explicit revision1 plain-SQL migration
+and PostgresHistory behind the optional postgres extra. The source borrows idle async connections;
+Tether owns transaction completion and retains actual acquisition/commit/release work through
+finite caller waits and cancellation. Migrations refuse unmanaged or drifted structures, including
+unlogged tables. Ordinary opening verifies schema/revision/checksum, namespace and selected
+PostgreSQL18 durability settings. History stores canonical byte envelopes, immutable scoped keys,
+ordered failure slots and a shared exchange/source codec; failed-envelope bytes still count toward
+aggregate read bounds. Real database cases cover those boundaries and a public Agent approval
+journey after reopening independent JSONL journal/Postgres history roots. This is useful without
+claiming PostgresSessionStore. Next implement transactional session entries/projections/feed,
+leases and fencing, then qualify true multiprocess takeover/stale writes/uncertain acknowledgments,
+restart and deployment RLS. Embedded-server convenience and broader Client/testkit/performance
+closure remain selected work; pinned development server wheels are test infrastructure only.

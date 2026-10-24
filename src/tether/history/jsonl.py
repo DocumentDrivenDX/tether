@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 
-from tether.types import Message, ModelResponse
 from tether.types.canonical import canonical, digest
 from tether.types.execution import Actor, EntryConflict, HistoryRef
 from tether.types.history import (
@@ -16,6 +15,7 @@ from tether.types.history import (
     HistoryValue,
     StoredHistory,
 )
+from tether.types.history_codec import exchange_source, verify_exchange
 from tether.types.storage import IntegrityError, JournalFiles, StoreError
 
 CODEC = "tether-history-v1"
@@ -139,44 +139,18 @@ class JsonlHistory:
         ref, _ = indexed
         value = await self._read(ref, actor)
         record = value.record
-        if (
-            record is None
-            or record.kind != "model_exchange"
-            or ref.sha256 != binding.exchange_sha256
-        ):
+        if record is None or ref.sha256 != binding.exchange_sha256:
             raise IntegrityError("exchange_integrity")
-        if digest(record.request) != binding.request_digest or (
-            (digest(record.response) if record.response is not None else None)
-            != binding.response_digest
-        ):
-            raise IntegrityError("exchange_integrity")
+        verify_exchange(binding, record)
         source = await self._source(actor, binding, record)
         return ExchangeRefs(exchange=ref, source=source)
 
     async def _source(
         self, actor: Actor, binding: ExchangeBinding, record: HistoryRecord
     ) -> HistoryRef | None:
-        if binding.response_kind == "none":
-            if binding.source_sha256 is not None:
-                raise IntegrityError("source_integrity")
+        source = exchange_source(binding, record)
+        if source is None:
             return None
-        try:
-            response = ModelResponse.model_validate(record.response)
-        except ValueError:
-            raise IntegrityError("source_integrity") from None
-        if binding.response_kind == "summary":
-            if response.tool_calls:
-                raise IntegrityError("summary_has_tools")
-            source = HistoryRecord(kind="summary", summary=response.content)
-        else:
-            source = HistoryRecord(
-                kind="message",
-                message=Message(
-                    role="assistant", content=response.content, tool_calls=response.tool_calls
-                ),
-            )
-        if digest(source.model_dump(mode="json")) != binding.source_sha256:
-            raise IntegrityError("source_integrity")
         return await self.put(
             actor=actor,
             session_id=binding.identity.session_id,
