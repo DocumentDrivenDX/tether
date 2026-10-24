@@ -828,3 +828,26 @@ A disabled-retainer negative control detects premature task collection. Independ
 review found no remaining blocker after live-descendant draining and cancellation-failure
 fixes; reviewer did not rerun tests. Installed-artifact qualification is recorded in the
 execution receipt; broader Q5/Q7 remains open.
+
+
+The next slice6 worker checkpoint instruments selected tool.run dispatch through immutable scalar
+identity captured only after known intent acceptance. It preserves original replay intent/source
+identity and gives each physical dispatch a new UUID. Distinguish waiter, actual initial function/body
+and retained operation completion; late lifecycle packets have no journal/result authority. Enter/exit
+span contexts within the actual task/thread, preserve sync offloading and keep default omission free
+of descriptor construction, event serialization and observer tasks. Qualify actual Agent safe replay
+and read-only dispatch, queued/admission cancellation, late return/raise, returned awaitables,
+current approval principal, exact/unknown intent acceptance, copied parent context, tracer/sink failure
+and root release while a sink remains active. This checkpoint does not complete nonjournal Client,
+retrieval/context instrumentation, real OTel receiver or broader Q5/Q7/release qualification.
+
+The tool/worker lifecycle checkpoint passes1085 cases in34 bounded groups at92.46% branch
+coverage with strict typing0 and all unchanged gates. Its28 targeted cases qualify actual
+thread/Task parent contexts, safe replay with original intent and distinct dispatch IDs, read-only
+Agent dispatch without an intent, current approval principal/phase, unknown/mismatched intent
+acknowledgments, queued/pre-entry cancellation, late return/raise, returned awaitables, observer
+failures and root release while a sink remains active. Another106 affected Agent/approval,
+ownership and recovery cases passed before the final three targeted additions; the full gate
+includes all cases. Independent source review found no concrete blocker; reviewer did not rerun
+tests. Installed-artifact evidence belongs to the execution receipt. This remains scoped lifecycle
+evidence rather than complete Q5/Q7, Client/retrieval/context, OTel or release qualification.

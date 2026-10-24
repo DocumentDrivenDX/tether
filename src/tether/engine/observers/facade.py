@@ -7,6 +7,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from threading import Lock
+from uuid import uuid4
 from weakref import ReferenceType, ref
 
 from tether.types import ModelRequest, TokenUsage
@@ -17,6 +18,7 @@ from tether.types.usage import UsageLedger
 from .delivery import AuditDelivery
 from .metadata import Scope, record, text
 from .tracing import GuardedTracer
+from .worker import Dispatch, WorkerObservation
 
 
 class Observers:
@@ -30,6 +32,7 @@ class Observers:
         self.delivery = AuditDelivery(audit, self.limits)
         self.tracer = GuardedTracer(tracer)
         self.enabled = audit is not None
+        self.workers_enabled = audit is not None or tracer is not None
         self._gates: OrderedDict[int, tuple[ReferenceType[NewEntry], TraceIds | None]] = (
             OrderedDict()
         )
@@ -99,6 +102,34 @@ class Observers:
                                 span.set_attribute("tether." + field, count)
                 except BaseException:
                     self.failed()
+
+    def worker(
+        self,
+        *,
+        scope: Scope,
+        source_turn_id: str | None,
+        source_position: int,
+        call_position: int,
+        invocation_id: str,
+        intent_position: int | None,
+    ) -> WorkerObservation | None:
+        if not self.workers_enabled:
+            return None
+        try:
+            dispatch = Dispatch(
+                scope=scope,
+                source_turn_id=source_turn_id,
+                source_position=source_position,
+                call_position=call_position,
+                invocation_id=invocation_id,
+                intent_position=intent_position,
+                attempt_id=str(uuid4()),
+                ids=self.tracer.current_ids(),
+            )
+            return WorkerObservation(dispatch, self.delivery, self.tracer)
+        except BaseException:
+            self.failed()
+            return None
 
     def accepted(
         self,

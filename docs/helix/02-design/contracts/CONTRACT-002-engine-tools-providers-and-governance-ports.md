@@ -681,3 +681,29 @@ This Engine accepted-journal checkpoint does not qualify nonjournal Client read/
 operation auditing, physical executor lifecycle, tool/retrieval/context spans, or real OTel transport.
 Those remain required integration work in the build plan; reads MUST NOT append fictitious facts or
 manufacture journal positions to fill their observation gap.
+
+
+Tool dispatch observations capture an immutable scalar descriptor after known required intent
+acceptance: owner/current principal/session, source turn/index and call position, accepting phase,
+invocation, optional exact accepted intent position, spec/version and a new dispatch-attempt UUID.
+Replay retains its original intent position; safe read-only dispatch has no invented intent.
+Internal Governance.fact returns the exact accepted Entry after validation, preserving ignored-return
+callers. An unknown or mismatched required intent cannot construct a dispatch observation or run a tool.
+
+The tool waiter span is tether.tool_call. Actual initial body spans are tether.executor_function
+inside the worker thread and tether.async_body inside the executing Task. A queued cancellation or
+Task cancelled before body entry emits no body entered/exited claim. Returned awaitable adoption
+remains separately owned; raw/body exit does not establish operation completion or accepted success.
+Lifecycle kinds x.executor.entered/exited/outstanding/completed/refused use fixed scalar fields and
+closed outcomes returned/raised/cancelled. The descriptor and callbacks contain no Actor, credential,
+arguments, output, exception object/text or span manager. Body trace IDs are copied values only.
+Each observational event ID digests ["tether.worker.v1", owner, session_id, source_position,
+worker_attempt_id, phase]; separate dispatches of one invocation have distinct identities.
+
+Outstanding reports the completion proxy observed live after waiter cancellation; it is neither a
+durable status nor a claim that the body stopped. Nearby outstanding and exited events are valid
+observations and delivery order across threads confers no execution authority. Completion hooks run
+in clean contexts, classify terminal state without exposing its content, and never commit a late
+result. Existing bounded delivery owns admission/drop counters. Observer sealing can drop late
+metadata explicitly; observers cannot retain storage after actual execution drains. No new public
+port, exporter or Agent runner is introduced by these internal hooks.

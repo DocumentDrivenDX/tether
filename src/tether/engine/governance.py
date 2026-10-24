@@ -90,11 +90,11 @@ class Governance:
         key: str | None = None,
         source_turn_id: str | None = None,
         **facts: object,
-    ) -> None:
+    ) -> Entry:
         entry = NewEntry.model_validate(
             {"kind": kind, "turn_id": source_turn_id or self.turn_id, "key": key, "facts": facts}
         )
-        await self.commit([entry])
+        return (await self.commit([entry]))[0]
 
     async def commit(self, entries: Sequence[NewEntry]) -> tuple[Entry, ...]:
         accepted = await self.log.append(entries)
