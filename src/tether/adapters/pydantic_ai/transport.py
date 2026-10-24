@@ -23,6 +23,7 @@ from tether.types import (
     ResponseReceipt,
 )
 
+from .native import NATIVE_CODEC
 from .wire import observed_usage, validate_wire
 
 
@@ -76,6 +77,15 @@ class AttemptTransport(httpx.AsyncBaseTransport):
         recorder = self.request.attempts
         if recorder is None or self.attempt_count >= 1:
             raise ModelAttemptDenied("attempt_limit")
+        request.headers = httpx.Headers(
+            {
+                "host": request.url.netloc.decode("ascii"),
+                "content-type": "application/json",
+                "content-length": str(len(request.content)),
+                "accept": "application/json",
+                "accept-encoding": "identity",
+            }
+        )
         identity = await recorder.reserve()
         validate_identity(self.request, identity)
         tags = self.request.tags.model_dump(mode="json") | identity.model_dump(
@@ -98,7 +108,7 @@ class AttemptTransport(httpx.AsyncBaseTransport):
             identity,
             request_digest=digest(wire),
             wire_request=wire,
-            codec="openai-chat-text-tools-v1",
+            codec=NATIVE_CODEC,
         )
         if authorization is not None:
             request.headers["authorization"] = authorization

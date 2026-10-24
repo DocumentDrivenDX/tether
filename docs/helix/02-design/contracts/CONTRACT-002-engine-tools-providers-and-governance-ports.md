@@ -255,7 +255,7 @@ class ResultGuard(Protocol):
 
 | Rule | Requirement |
 |------|-------------|
-| Output snapshot | Before any awaited guard or provider hook, the engine independently validates and copies the complete ToolOutput, including refs and facts. Guards inspect this owned snapshot; retained tool objects cannot change accepted metadata. Byte limits cover the complete output. After-hook changes re-run guards over text and retained refs. |
+| Output snapshot | Before any awaited guard or provider hook, the engine independently validates and copies the complete ToolOutput, including refs and facts. Guards inspect this owned snapshot; retained tool objects cannot change accepted metadata. Byte limits cover the complete output. After-hook changes re-run guards over text and retained refs while preserving the original tool facts. Providers cannot replace that guard context. |
 | No mandatory guard | The engine runs the guards it is given, in order. The default list is empty. The optional `tether.guards` package ships a rules-based injection heuristic and `default_guards()`; the optional `tether.scope` package ships the bound-context guard (ADR-017). |
 | Not a security boundary | A guard is a heuristic or a check the application chose. The documents MUST NOT describe the injection heuristic as protection against prompt injection; policy, scope, and approval are the controls. |
 | Fail closed | A guard that raises withholds the result with reason `<id>_unavailable`. |

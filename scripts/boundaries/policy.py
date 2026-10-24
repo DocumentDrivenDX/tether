@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 PROVIDER_EXTRAS = {
     "openai": "openai",
+    "tiktoken": "openai",
     "anthropic": "anthropic",
     "claude_agent_sdk": "claude-agent",
     "google.genai": "google",
@@ -54,6 +55,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
         "pydantic",
         "httpx",
         "httpx2",
+        "tiktoken",
         "anyio",
     ),
     "tether.adapters.openai_compat": (

@@ -138,7 +138,7 @@ graph TD
 | tether.sessions | Tether task ownership, lease/recovery orchestration, change bus and summary projections | Tether | types, ports, engine, AnyIO | Native provider SDKs, UI clients, environment |
 | tether.client | Owner-authorized list/page/snapshot/follow/commands | Client | types, sessions | SDK state, adapter/store internals |
 | tether.history | Source refs, history mediation, JSONL content, readiness/correlation helpers | HistoryProvider types and JsonlHistory | types, ports, standard library, AnyIO | Agent execution, provider SDKs, environment |
-| tether.adapters.pydantic_ai | Native/compatible model implementations; provider settings, wire/errors/receipts and attempt mediation | ModelPort implementations with Tether-facing payloads | types, ports, canonical model helpers, shared runtime codecs, Pydantic AI model/provider APIs; explicitly selected optional provider SDK closure | Engine/session implementations, SDK types in public core payloads, implicit SDK retries or identity fallback |
+| tether.adapters.pydantic_ai | Native/compatible model implementations; provider settings, wire/errors/receipts and attempt mediation | ModelPort implementations with Tether-facing payloads | types, ports, canonical model helpers, shared runtime codecs, Pydantic AI model/provider APIs; explicitly selected optional provider SDK closure and local tiktoken vocabulary counting | Engine/session implementations, SDK types in public core payloads, implicit SDK retries or identity fallback |
 | tether.adapters.openai_compat | Compatible-server configuration/profile over the selected model integration | OpenAICompatModel/profile as specified by the adapter design | types, ports, adapters.pydantic_ai | A second default HTTPX/SSE protocol implementation, hosted-only behavior |
 | tether.adapters.databricks | Gateway configuration and authorized external-history reader; owns databricks.sdk imports | Gateway profile/history integration | types, ports, history, selected model/profile adapters, its extra | Engine/session internals, default-install platform dependency |
 | tether.stores.jsonl | Single-writer execution journal, atomic batches, index rebuild and local fencing | JsonlSessionStore | types, ports, stores.projections, standard library, AnyIO | Agent/provider SDKs, environment |
@@ -323,5 +323,11 @@ Agent-derived history must equal the complete current authorized projection befo
 original refs. Tool results are independently copied before guards; withheld output clears refs and
 provider hooks can only remove refs. Summary inputs carry metadata inside untrusted source JSON.
 Artifact storage, retrieval and native media transport belong to separately composed profiles.
-Actual wire estimators, streaming and broader profile/fidelity qualification remain work;
-no second Agent loop exists.
+The optional compatible adapter now shares native SDK serialization with an offline estimator.
+Explicit local vocabulary/profile inputs and tiktoken stay in the optional adapter closure. Estimates
+cover complete native JSON plus configured framing and are labelled approximate. Bounded CPU
+admission and cancellation-resistant executor completion retain Engine session ownership until actual
+exit. Context conformance suites use that existing Worker ownership for factory lifetime after
+caller deadlines. Physical egress rebuilds headers from explicit URL/body, identity and correlation;
+ambient SDK headers confer no configuration or authority at that boundary. Streaming, server-specific
+framing and broader profile/fidelity qualification remain work; no second Agent loop exists.

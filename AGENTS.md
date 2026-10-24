@@ -299,6 +299,12 @@ metadata-only text codec; original refs remain authoritative, complete ordered S
 verify before restoration, and tool output is copied before awaited guards. Withheld output clears
 refs; result hooks may only remove them. Summary source JSON carries metadata, never loaded artifact
 bytes. Artifact fetching and native media transport require explicit separate profiles. Actual wire
-estimators and provisional stream integration remain qualification work. Explicit context
+estimation now has an optional native-JSON BPE profile: explicit verified local vocabulary and framing,
+no registry/download/credential/physical-attempt use, copied tier/codec/library bindings and approximate
+quality only. Count admission is bounded; clean-context offloads retain raw executor completion and
+session fencing through cancellation. Constructor compilation is explicit synchronous setup, outside
+the Engine deadline. Public context suites retain abandoned callback/factory ownership through existing
+Workers. Native egress rebuilds explicit headers; ambient SDK defaults cannot reach physical egress.
+Server framing/count fidelity and provisional stream integration remain qualification work. Explicit context
 configuration and an estimator are required; fabricated_context is a fabricated test composition only.
 Never treat fixed-token fixture conformance as wire evidence.
