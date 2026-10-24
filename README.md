@@ -237,5 +237,15 @@ takeover, stale operations and killed-client recovery; paired SQL Agent/Client c
 restart, safe/unsafe resume, manual resolution and archive/restore. A fabricated application-owned
 unprivileged-role RLS profile demonstrates credential refresh and denied-caller refusal. This does
 not qualify arbitrary deployment roles, downstream exactly-once effects or OS power loss.
-Embedded-server convenience and broader release/profile coverage remain work. The development suite runs pinned
-PostgreSQL18 wheels; that dependency does not enter the base or postgres runtime extra.
+Optional `tether[embedded-postgres]` adds the same pinned PostgreSQL18 binaries used by the
+qualification suite. `EmbeddedPostgres.start(EmbeddedConfig(...))` requires an explicit bootstrap_user,
+absolute data_dir/runtime_dir, startup_seconds/shutdown_seconds/poll_seconds and max_roots. Its
+endpoint supplies Unix socket connection fields; create your own source, run migrations explicitly,
+and register roots through `server.open_root(source, actor=actor, schema="tether")`. Close the helper
+with `await server.aclose()`. False means retained cleanup is still draining physical work. Persistent
+data is preserved; unmanaged directories and existing native servers refuse adoption. The helper
+uses local trust authentication within its private runtime directory and disables TCP listening.
+The selected binary profile is non-root macOS arm64 or Linux arm64/x86_64, Python 3.11–3.13; other
+profiles refuse. Parent death can leave a server requiring explicit operator cleanup. Server binaries
+stay out of the base and postgres-only runtime extras. See CONTRACT-003 for the lifecycle contract.
+Broader release/profile coverage remains work.

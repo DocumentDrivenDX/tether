@@ -301,3 +301,12 @@ worker tracking, so one root can close without closing siblings or detaching phy
 Separate-client-process and paired SQL Agent journeys qualify the selected PostgreSQL18 profile;
 arbitrary deployment policy, external exactly-once behavior, power-cut proof, embedded lifecycle
 and performance targets require their own evidence.
+
+
+The optional embedded server owns an explicit local subprocess lifetime around the selected
+PostgreSQL18 binaries, not pgserver's cached server singleton. Its data-directory lock and managed
+marker confer only local helper ownership. Persistent data, explicit runtime directories and
+registered DatabaseRoots avoid hidden pool or role ownership. Startup and shutdown retain actual
+process/acquisition work through caller cancellation; stop follows physical root/worker drain.
+Unmanaged or already-running directories refuse instead of adoption. The selected profile is
+POSIX/non-root; no external server administration or automatic migration is added.

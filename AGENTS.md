@@ -201,3 +201,14 @@ including lease-holder bytes; stable keys consume no extra prefix budget. Post-c
 and final heartbeat failures poison the old handle as CommitUnknown, except terminal LeaseLost.
 Cache publication follows retained executor staging and a current lease check. Metadata-only
 release never clears actual worker ownership; cleanup preserves an existing primary exception.
+
+
+Optional EmbeddedPostgres owns only the selected binary subprocess and canonical data-directory
+lock. Keep its marker inside PGDATA; refuse unmanaged/partial/orphan servers without adoption,
+repair or PID-based termination. Explicit config supplies persistent/runtime paths, bootstrap user
+and finite waits. TCP is disabled; Unix socket trust lives inside the owned private runtime folder.
+No pool, role selection, implicit migration or data-deletion API belongs here. Root openings race
+shutdown safely: register, seal and refuse publication. Retain canceled initdb through normal actual
+completion, plus unreturned acquisitions and physical workers, before native shutdown and lock
+release. Runtime cleanup errors after process exit still release the data lock. Base/postgres-only
+profiles must remain independent of server binaries and the cached pgserver Python lifecycle.

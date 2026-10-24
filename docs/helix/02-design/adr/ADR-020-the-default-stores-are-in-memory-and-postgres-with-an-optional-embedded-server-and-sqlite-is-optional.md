@@ -40,10 +40,12 @@ We will ship JSONL history as the default and specify a paired single-writer JSO
 - Reference clients compose the two local adapters with one root-owner service. No server is required. Their file roots and fsync/durability modes are explicit settings. The configured restart promise holds only when both content and journal meet it.
 - `InMemoryStore` and `InMemoryHistory` declare `durability=none`. Their demo uses `resume="off"`; they never claim persistence across process death.
 - `PostgresStore` retains atomic facts/refs/summary/change commits, row-token fencing and cross-process leases. It uses asynchronous psycopg; LISTEN/NOTIFY is optional with bounded polling fallback. Migration code and every psycopg import remain in that adapter.
-- Optional embedded Postgres remains a way to run the deployment-equivalent journal locally and qualify PostgreSQL 18. It is not required by the local JSONL quickstart. The gateway history provider composes with either journal.
+- Optional embedded Postgres uses the qualified PostgreSQL18 binary payload with an explicit asynchronous helper lifetime. Persistent data and runtime paths, bootstrap username and finite caller waits are required configuration. The helper registers borrowed database roots and stops only after their physical work drains. It creates no pool, selects no application role and runs no implicit migration. It is not required by the local JSONL quickstart. The gateway history provider composes with either journal.
 - SQLite remains optional if a consumer selects it. No object-relational mapper or migration framework is required by this decision.
 
-**Provisional risk**: JSONL framing, writer ownership, crash recovery and index rebuilding are designed, not implemented or measured. The file profile must pass the same applicable LiveStore conformance and real-process fault tests before any durability claim. Shared/network filesystems and multiple writer processes are unsupported until separately qualified; Postgres is the selected alternative for those needs.
+The local file profile remains limited to its qualified single-writer filesystem. Shared/network
+filesystems and multiple writer processes require separate qualification; Postgres supplies the
+selected multiprocess alternative. Neither profile implies power-cut proof.
 
 ## Why We Chose This
 
@@ -58,6 +60,15 @@ It adds server startup for a file-backed desktop-style use case. Postgres remain
 ### Over claiming a plain append file is automatically transactional
 
 A journal batch, integrity chain, acknowledged fsync boundary, root lock and rebuild rules are required. The capabilities stay scoped to the tested local profile.
+
+### Over the cached synchronous embedded-server helper
+
+The pinned binary package's get_server caches a server by canonical data directory, counts process
+PIDs rather than consumers, and registers cleanup before all startup steps complete. Its public
+cleanup surface cannot reliably express canceled partial startup or several borrowed database roots.
+Tether therefore owns a small retained subprocess lifetime around the same binary payload. This adds
+process and filesystem qualification work, while preserving application-owned acquisition and roles.
+The helper refuses orphan servers and unmanaged data rather than adopting or administering them.
 
 ## Consequences
 
