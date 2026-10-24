@@ -221,3 +221,11 @@ retry costs before the next egress. Local/SQL summaries and restart reconstructi
 attempt-keyed reducer; summary storage shape/revision stays unchanged. Custom test recorders retain
 logical totals but explicitly leave physical coverage incomplete. Cassette-v1 final responses do
 not qualify physical retry-observation equivalence. Metadata-only audit/tracing remains slice6 work.
+
+
+Telemetry contract1 now has neutral types/ports, no-op defaults and bounded testing doubles/suites.
+Tracer context operations remain pure/nonblocking; no SDK objects or invented no-op ids enter core.
+Reports list actual conditional checks; fabricated trace ids are not receiver proof. Collecting
+records have explicit capacity/byte bounds and copied snapshots across caller loops. Engine
+operational wiring, bounded delivery, failure/content and physical-worker qualification remain
+slice6 work; preserve the trusted acceptance frontier and actual worker/storage ownership.

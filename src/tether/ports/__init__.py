@@ -17,6 +17,9 @@ from tether.types.execution import TurnLog as TurnLog
 from tether.types.history import HistoryProvider as HistoryProvider
 from tether.types.storage import JournalFiles as JournalFiles
 from tether.types.storage import SessionStore as SessionStore
+from tether.types.telemetry import AuditSink as AuditSink
+from tether.types.telemetry import Span as Span
+from tether.types.telemetry import Tracer as Tracer
 
 
 class ModelPort(Protocol):

@@ -263,10 +263,36 @@ class ResultGuard(Protocol):
 ### 6. Telemetry
 
 ```python
-class AuditContext(BaseModel):  actor: str; session_id: str | None; trace_id: str | None; span_id: str | None; spec_id: str | None; spec_version: str | None
+TraceScalar = str | int | float | bool
+class TraceIds(BaseModel):
+    trace_id: str                         # 32 lowercase hex, nonzero
+    span_id: str                          # 16 lowercase hex, nonzero
+    trace_flags: int = 0                  # strict uint8, actual trace flags
+class AuditContext(BaseModel):
+    actor: str                           # owner / policy subject, never a credential
+    event_id: str                        # stable opaque observational identity
+    principal: str | None = None          # current effective model principal
+    session_id: str | None = None
+    trace_id: str | None = None           # paired real context, same rules as TraceIds
+    span_id: str | None = None
+    spec_id: str | None = None
+    spec_version: str | None = None
 class AuditSink(Protocol):
     async def emit(self, *, context: AuditContext, kind: str, detail: dict[str, JsonValue]) -> None: ...
-class Tracer(Protocol): ...                          # synchronous: start_as_current_span, current_ids, set_current_attribute
+class Span(Protocol):
+    @property
+    def ids(self) -> TraceIds | None: ...
+    @property
+    def traceparent(self) -> str | None: ...
+    def set_attribute(self, name: str, value: TraceScalar) -> None: ...
+    def error(self, reason: str) -> None: ...
+class Tracer(Protocol):
+    def start_as_current_span(self, name: str, *,
+                              attributes: Mapping[str, TraceScalar] | None = None
+                              ) -> AbstractContextManager[Span]: ...
+    def current_ids(self) -> TraceIds | None: ...
+    def set_current_attribute(self, name: str, value: TraceScalar) -> None: ...
+
 ```
 
 | Rule | Requirement |
@@ -276,7 +302,7 @@ class Tracer(Protocol): ...                          # synchronous: start_as_cur
 | Content | Spans and audit entries MUST NOT carry message or tool content, argument values of a denied or invalid call, or a credential. Content capture is a separate, opt-in provider and is off by default. |
 | Usage | A model call's token usage is recorded on the span, the audit entry, and the session log (CONTRACT-003). |
 | Written by the engine | Only the engine writes audit entries and spans for engine decisions; an extension's own audit entries use its namespace. |
-| Defaults | `NullTracer` and `ListAuditSink` ship; an OpenTelemetry adapter ships as an extra. |
+| Defaults | `NullTracer` and `NoopAuditSink` perform no I/O and retain no records. Bounded `ListAuditSink` and explicitly configured recording trace doubles ship in the test kit. An OpenTelemetry adapter remains a separately qualified extra. |
 
 ### 7. The trust model
 
@@ -491,3 +517,69 @@ separate and no credentials or unrestricted actor attributes. Tool wait spans MU
 physical completion after cancellation; outstanding/exit observations retain captured identifiers.
 Per-attempt usage uses CONTRACT-005's shared typed reduction, including current purpose, retries,
 missing usage and optional subcounts. OTel exporter/receiver proof remains separately qualified P1.
+
+
+Telemetry contract version1 uses the interfaces in section6. Tracer/span operations are pure,
+nonblocking synchronous context operations; export and sink I/O is asynchronous and external.
+Span enter/exit MUST occur in the same task/context. Nested spans preserve the injected tracer's
+actual parent across awaits; copied worker context MUST NOT alter the caller's context. A disabled
+tracer returns None for ids/traceparent even under unrelated ambient instrumentation. A recording
+test tracer requires an explicitly supplied id factory; fabricated test ids prove context structure,
+not an OTel ingestion path. Traceparent uses the supplied real trace flags; ids are never turn ids.
+
+AuditContext contains copied identifier values. Trace/span ids are both absent or both valid;
+partial, zero and malformed ids refuse construction. Null context, finite collecting capacity and
+explicit overflow are conformance cases. The sink receives an owned event snapshot; application
+sink code may mutate that packet, but MUST NOT gain mutable journal/actor/credential objects.
+Application fixtures expose captured records for reusable audit_sink_suite/tracer_suite checks;
+no pytest runtime dependency or default exporter is required. External delivery, ingestion and
+shutdown proof remains separate from logical port conformance.
+
+Accepted-event id version1 is the canonical digest of ["tether.audit.v1", owner, session_id,
+accepted_entry_position, semantic_phase]. Session creation uses a separate genesis phase and no
+journal position. Pure physical worker-exit observations link the captured accepted intent position,
+physical worker-attempt id and lifecycle phase; they do not require a journal append after lease
+closure and do not assert durable acceptance. A canceled tool wait is never a physical exit.
+
+
+The test-kit fixture API is explicit and uses only Tether-owned records:
+
+```python
+class AuditRecord(Payload):
+    context: AuditContext
+    kind: str
+    detail: dict[str, JsonValue]
+class TraceObservation(Payload):
+    name: str
+    ids: TraceIds
+    parent: TraceIds | None
+    attributes: dict[str, TraceScalar]
+    error_reason: str | None
+    finished: bool                        # span context closed, not a physical worker exit
+    overflow: int
+@dataclass(frozen=True)
+class AuditSinkFixture:
+    sink: AuditSink
+    read: Callable[[], Awaitable[tuple[AuditRecord, ...]]]
+    captures: bool
+@dataclass(frozen=True)
+class TracerFixture:
+    tracer: Tracer
+    read: Callable[[], Awaitable[tuple[TraceObservation, ...]]]
+    captures: bool
+```
+
+Factories return fresh async context-managed fixtures. A capturing audit fixture has room for at
+least two events; a capturing tracer fixture has room for six completed spans. The application
+owns fixture setup, receiver flushing and resource cleanup. Both suites accept a finite positive
+`timeout_seconds` (default10) and return SuiteReport with captures capability and required external
+proof. Captured values retained beyond emit and exposed by read MUST be snapshots; caller reuse
+or mutation MUST NOT change earlier retained records. Logical conformance is not receiver proof.
+
+ListAuditSink requires explicit positive capacity and uses max_record_bytes (default16384) over
+canonical encoded records. Capacity drops increment overflow; byte-limit drops increment oversized.
+Both retain no dropped packet. RecordingTracer requires an explicit id factory and positive capacity;
+max_attributes (default32) and max_value_bytes (default1024) bound retained names/values. Attribute
+or span-capacity drops increment their corresponding overflow counters. Invalid/nonfinite metadata,
+invalid reason codes, changed child trace identity, and updates to a closed recording span refuse
+with bounded static codes. Context-manager failure records no automatic exception/status text.
