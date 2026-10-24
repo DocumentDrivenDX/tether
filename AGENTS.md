@@ -89,8 +89,12 @@ current READ_CALL_PAYLOAD at aggregate disclosure as well as individual hydratio
 currently accepts immediate writable history with all record kinds and durability at least
 that of the journal; external/eventual profiles require separate qualification. Async context
 close retains storage ownership until actual worker exit. Persisted follow uses bounded independent replay workers and per-variant current authorization;
-retention gaps reset beyond a captured owner watermark. Task-owned Client commands,
-provisional stream production,
+retention gaps reset beyond a captured owner watermark. Client send/cancel now use bounded
+owned tasks, shielded completion waits, canonical request retries with a lease-protected recheck,
+current-source result materialization and supervised lease heartbeats. Finish in-flight heartbeats
+before lease release; cleanup retains ownership even after bounded/canceled shutdown. Explicit
+command/session/default spec ids must resolve to a supplied unambiguous pinned spec. Confirmation,
+resume/update/close/resolve commands, provisional stream production,
 full safe-invocation recovery/manual resolution, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.

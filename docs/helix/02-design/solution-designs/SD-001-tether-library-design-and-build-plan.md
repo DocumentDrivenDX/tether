@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-24
   authoring:
     home: repo
   links:
@@ -329,13 +329,18 @@ history and retains root ownership until actual workers exit. SDK instrumentatio
 disabled against ambient `Agent.instrument_all` configuration. Persisted follow now has bounded
 independent replay workers, owner watermark capture, per-variant current policy, whole-commit
 markers and retained-window reset. Shutdown wakes idle followers and handles canceled/timed-out
-follower cleanup. Task-owned commands, request deduplication, heartbeats and remaining command
-race qualification stay in this slice; provisional text/reset/coalescing remain slice 9a.
-The turn-command acceptance seam now binds the journal lease id, computes canonical input
-identity, prepares content before atomic supersession/start/input commit, and signals known
-acceptance before SDK setup. Result-content variants remain distinct from the single journal
-result so orphan content cannot block unknown closure. This seam alone is not Client.send,
-request retry/result reconstruction or task/heartbeat supervision.
+follower cleanup. Client send/cancel now run as bounded Tether-owned tasks, return after atomic
+acceptance, and shield the task from consumer-wait cancellation. Canonical request retries are
+checked again under the lease; completed/restarted outcomes come from current authorized
+originals and pending inspection, not cached task content. A finite read deadline begins after
+execution. Lease heartbeats are supervised and stopped cooperatively so in-flight journal writes
+finish before lease release; bounded shutdown retains ownership through deferred cleanup.
+Real root/composition restart retries, stale handle cancellation and post-acceptance setup failure
+have source regressions. External active-turn result following remains unqualified; selected
+local recovery reports interrupted state, and result lookup without a local task refuses a still
+running turn. Confirmation/resume/update/close/resolve and remaining command race qualification
+stay in this slice; provisional text/reset/coalescing remain slice 9a. The Agent remains the only
+model/tool iterator. Full qualification status is in the execution record.
 
 ### Consumer boundary review and implementation plan
 

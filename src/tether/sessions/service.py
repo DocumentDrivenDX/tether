@@ -12,6 +12,7 @@ from tether.types.storage import RecoveredTurn, SessionStore, Unsupported
 
 from .access import SessionAccess
 from .feed import Followers
+from .turns import OwnedTurns
 
 
 class SessionService:
@@ -23,6 +24,7 @@ class SessionService:
         history: HistoryProvider,
         limits: ClientLimits,
         resume: Literal["off", "report", "auto"] = "report",
+        default_spec: str | None = None,
     ) -> None:
         if resume != "off" and (
             store.capabilities.durability == "none" or not store.capabilities.fencing
@@ -44,6 +46,7 @@ class SessionService:
         self.engine, self.store, self.history, self.limits = engine, store, history, limits
         self.access = SessionAccess(store, history, engine.policy, limits)
         self.followers = Followers(self.access)
+        self.turns = OwnedTurns(self.access, engine, default_spec)
         self.resume_mode = resume
         self.recovered: tuple[RecoveredTurn, ...] = ()
         self.closed = False
@@ -65,6 +68,7 @@ class SessionService:
 
     async def _finish_close(self) -> None:
         await self.engine.aclose()
+        await self.turns.wait_closed()
         await self.followers.close()
         await self.engine.wait_closed()
         self.drained = await self.store.aclose()
@@ -79,13 +83,15 @@ class SessionService:
         if self.closed:
             return self.drained
         self.access.seal()
+        self.turns.seal()
         self.closed = True
         try:
             async with asyncio.timeout(self.limits.shutdown_timeout_seconds):
-                engine_drained = await self.engine.aclose()
+                await self.engine.aclose()
+                await self.turns.wait_closed()
                 await self.followers.close()
-                if engine_drained:
-                    self.drained = await self.store.aclose()
+                await self.engine.wait_closed()
+                self.drained = await self.store.aclose()
         except TimeoutError:
             self.drained = False
         finally:

@@ -2,8 +2,11 @@
 
 import hashlib
 import json
+from collections.abc import Sequence
 
 from pydantic import JsonValue
+
+from tether.types import AttachmentRef
 
 
 def canonical(value: JsonValue) -> bytes:
@@ -14,3 +17,13 @@ def canonical(value: JsonValue) -> bytes:
 
 def digest(value: JsonValue) -> str:
     return hashlib.sha256(canonical(value)).hexdigest()
+
+
+def input_digest(text: str, attachments: Sequence[AttachmentRef], spec: str | None) -> str:
+    return digest(
+        {
+            "text": text,
+            "attachments": [v.model_dump(mode="json") for v in attachments],
+            "spec": spec,
+        }
+    )

@@ -4,7 +4,7 @@
   "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
   "authority": "Explicit owner instruction in integration-lead session; includes source control, merge and Tether-session coordination.",
   "status": "active",
-  "branch": "codex/tether-archive-disclosure",
+  "branch": "codex/tether-client-jobs",
   "baseline_commit": "d680c4d",
   "completed_slices": [
     0,
@@ -52,14 +52,14 @@
     "mcp_disposition": "MCP is P2 and outside selected 0.1 slices. Consumer adoption/MCP Apps require separate qualification; do not silently promote advisory scope.",
     "inventory": "Recent app inventory reconfirmed the integration-lead and read-only MCP/durability chats; both have role-specific titles."
   },
-  "next_action": "Finish task-owned Client send/handles, canonical request retry and journal-derived results, heartbeat supervision, then confirm/cancel/update/close/resolve and remaining slice-4 qualification. Merge each reviewed/tested PR promptly; continue every remaining build-plan slice.",
+  "next_action": "Finish and merge owned-turn command qualification, then implement remaining Client commands and lifecycle races and all remaining selected build-plan slices; merge each reviewed/tested PR promptly.",
   "qualification_limits": [
     "Only local POSIX single-writer JSONL is implemented; Postgres cross-process profile is slice 5.",
     "No OS power-cut guarantee is inferred from process-exit tests.",
     "Started-invocation recovery, manual resolve and actual-worker/lease-loss qualification remain slice 9.",
     "Live Gateway/profile credentials and real server correspondence are not supplied or qualified."
   ],
-  "source_control": "PRs 1 through 4 merged promptly after review/testing. Archive disclosure and bounded-suite changes are the next checkpoint; no open PR stack.",
+  "source_control": "PRs1\u20135 merged promptly after review/testing; no open PR stack. Client owned-turn commands are the next checkpoint.",
   "metering": "Active goal has no user-specified token/time ceiling; runtime metering is available via get_goal; no invented total-budget claim.",
   "boundary_review": {
     "status": "Sub-agent review complete; sanitized plan recorded and omissions corrected.",
@@ -120,7 +120,7 @@
       "src/tether/adapters/pydantic_ai/compatible.py": "93f32199be4e1202c7d4c5296daff5dc8fe3bec54f4d8a918f0fd88a115c4c47",
       "src/tether/adapters/pydantic_ai/transport.py": "dda2d7bdffd3b912de82abb275a90c28e581c7936da2c9b8e8a728bf4595d951",
       "src/tether/adapters/pydantic_ai/wire.py": "9c52f9ed19254f9401cb66044bed577aa25f8393710ff7347ab4122ab81b4e68",
-      "src/tether/client/__init__.py": "ac8aeb3d18a6037976097043468917f3ff3a762a1489207d335fc7f2edd6d785",
+      "src/tether/client/__init__.py": "cda8b0a3744811ea4b0bd7ac96a72f0402a518adc9f19b3455b4f89e709d3230",
       "src/tether/client/reads.py": "ce9c9eab896b34c94c8c8185d7cdafdee8f24685ba12c9c0beb7ce2dc4a770d3",
       "src/tether/engine/__init__.py": "1183b25c405d18ddd5000e54431da6c561552093767396994431aaa46c156837",
       "src/tether/engine/agent.py": "98732daffef6982dcf3e48f2020acc8c4cb420b67f2c7e6e2e0a7591b7ebb65f",
@@ -131,7 +131,7 @@
       "src/tether/engine/reconstruction.py": "109ab2d7031f0db9d42c814717763a8cfdb1fc1375b3543c5cf9f916edc7044f",
       "src/tether/engine/results.py": "e09d02bee7bb2a6c12909e468702e7a35b5d128e252eba602912a5afa449d9f2",
       "src/tether/engine/run.py": "b34c5efaf978858bbd1171f9fb062cfdbaac80ec31375504668c9d1b8d47a314",
-      "src/tether/engine/starts.py": "d05bef2f59d3c2e4b5b72f9c685381c893d036a87c9ec8975a474d31701d3e7d",
+      "src/tether/engine/starts.py": "ca2f383c77bd157027fc8a507f335e9cb4e011f8b1297ca3b28f2a59ca271078",
       "src/tether/engine/tools.py": "d121651cb4c105264270343a35726c6d8290139b2a1c9d712bf6f657130b9525",
       "src/tether/engine/workers.py": "1e8b4d5c5fb8fca7f8fd0f7f924188372e27af69f978cdd1ad776104ab0cc362",
       "src/tether/history/__init__.py": "ea68cfb69401288cdddcf789a03641aeb637b3c1e4316fda0d20d904ab775443",
@@ -157,7 +157,10 @@
       "src/tether/sessions/content.py": "dff71596c8dd337fa52761264dd122d8f654800ed0b7f504a15656cb7fd0fd9c",
       "src/tether/sessions/disclosure.py": "08bf4ae4f193be0974d8507fb6ce4c8d5e4803ec39f8b31efc278dd80ec6f9f5",
       "src/tether/sessions/feed.py": "72de57fc1961df836cfbe94fedc767ff65685f0835a07ee8eb16897de534a728",
-      "src/tether/sessions/service.py": "14ce5db491bcad1fe70c2a882c971fe8155052477fbba6ad5a4680336fc07a8d",
+      "src/tether/sessions/outcomes.py": "400849b823bf34991bed4a04648e34019fd493d6c9c0126714021360610949d2",
+      "src/tether/sessions/service.py": "6e652e28a53f4e2d412eba1a4209d1385adbf85d93c162778e90d716890a599e",
+      "src/tether/sessions/supervision.py": "b0aea368f3d0d6635588a9127b9af5c55489c6c9ddcbd5a0c793c3bd9d3eecb9",
+      "src/tether/sessions/turns.py": "11469ad1bb30e51f8bc9d6f0125a47afc787d35fa2109cc32f906cbd90f93465",
       "src/tether/stores/__init__.py": "cf4260a2846fcdb5a97e6e421684e82781bd6b53d5df40c519e1574bcb9c9eaf",
       "src/tether/stores/jsonl/__init__.py": "d6fbd524a6cbde19ebb6f5015810cb964f15b0b016a24c8429be9aa679a461d4",
       "src/tether/stores/jsonl/files.py": "8163b99bc42247be5bf83b81db4a5821b1c58f00b6c1f0629286c15c9d16e64c",
@@ -171,11 +174,11 @@
       "src/tether/testing/__init__.py": "50f56407ca46e6fe037b6ca044bcd03cc1d1e7bac7b4b774ae30a675dc349100",
       "src/tether/testing/execution.py": "679873123161c8ea0b2b288b7211bd213657eb08fd94a8c4f749b6a8d5b3c99b",
       "src/tether/types/__init__.py": "56cbb9baa19db76bf8831a79fd7fea68d7cdc558bfae1f92ddfc18de4ad57c4a",
-      "src/tether/types/canonical.py": "b6fc0999bb80038619b33e077b2fb720c101410b3443ae640f2ffe1767bcc033",
-      "src/tether/types/client.py": "4089c61051f2495f89f88672d037b5d4dadba3c5690783e8f24a76a661080c1a",
+      "src/tether/types/canonical.py": "7d03b335504d256004c999bb9e85a1e3fb844727922031f249de63072e16dce2",
+      "src/tether/types/client.py": "b4c19414b9b51b92c7636d7d60d043dcf1d581ac069f4bf4375bd60ed1f01c07",
       "src/tether/types/execution.py": "fbd8247b994e896b5a0f4e09bb209c24ca38ae0cfab9d8755605fb63c6f16b51",
       "src/tether/types/history.py": "486eb935a8742eca3a78202806e6cdbf955e29f3c3e7a780e39ba9e1bbcd6209",
-      "src/tether/types/storage.py": "108ef9092bdf300bda90e932a12de3fb43310cc79a659a9fdb56cec51dc0427c",
+      "src/tether/types/storage.py": "f086e7873e12c61d3d791d4554f7d9f7a51b0d5485f1fa00d5953af54c433ea7",
       "src/tether/types/tooling.py": "43e1d6d00a588ed33388f72e44b36d1a74df90063d7242f17f88579a4e976735",
       "tests/conftest.py": "1bc289fc6a0327939ff34366bd294642abac3dcf32b3e938f65f9ba9c3648e16",
       "tests/test_adapter_limits.py": "a88b3f1e0c2b6a5390a2c6e0d04bc0f5809eaa9e95a6c2f519b836c4de831a92",
@@ -186,6 +189,7 @@
       "tests/test_client_follow.py": "25fc8cea4ae19717eda67a91352e0f47bbd8da0779a09d3dd5ec64b70ccdca6b",
       "tests/test_client_lifecycle.py": "0ad46dfe78b6cad00e76d38f7ceae845a53bcf38b48ce8e889f1ff9ec3ed3dab",
       "tests/test_client_reads.py": "2dc9407d9c4913799d28a1f85b125cab6733fc423d42607ddd1bba2115daeaa5",
+      "tests/test_client_turns.py": "c407410ac6de9ffb51f720a73b148c8eaf39276475c0a63e059568c31c7d59c4",
       "tests/test_commands.py": "740bf9aee1e2be86508d2f36311c5701c72d0da98cd5ea2bfb00f42e69654d40",
       "tests/test_compatible_adapter.py": "a99a865a10f7088691ccf80d1652bbff3164653ecc4b52c8e85aa7affc2fe55f",
       "tests/test_dependencies.py": "03453c7bb2fa68f45ae554f4ee30d82b836c541aa90b1887eec7c6889c0c7df1",
@@ -249,13 +253,33 @@
       ],
       "review": "Independent read-only review reproduced the disclosure/kind gaps and re-inspected fixes and provider isolation; no residual finding. No independent reexecution claim.",
       "limits": "ArchiveTransfer remains a selected local reference-closure helper; complete ArchiveSource/Sink and external/eventual profile composition remain later qualification.",
-      "installed_artifacts": "Pass: fresh reviewed-source wheel/sdist, clean base (foundation SDK count0) and optional OpenAI extra (count1), offline Agent/replay/gates, durable restart and public Client journeys. Artifact version0.0.0.post15.dev0+8f4c5a5 is precommit working-source metadata, not an exact8f checkout; source hashes below identify the built source."
+      "installed_artifacts": "Pass: fresh reviewed-source wheel/sdist, clean base (foundation SDK count0) and optional OpenAI extra (count1), offline Agent/replay/gates, durable restart and public Client journeys. Artifact version0.0.0.post15.dev0+8f4c5a5 is precommit working-source metadata, not an exact8f checkout; source hashes in the PR5 committed receipt identify that built source."
     },
     "suite_orchestration": {
       "status": "Reviewed; complete shared make check passed all356 cases in12 groups and unchanged aggregate85 floor (92.26%). Static and negative-control gates passed. Focused runner/recipe cases also pass.",
       "semantics": "Public pytest collection inventories every exact node once; groups preserve order with at most 32 cases and 64KiB node ids. Coverage is erased, accumulates across collection and every group, and enforces unchanged global branch/source floor85. Every child retains default180 seconds; empty/duplicate/malformed inventory or any failed stage refuses success.",
       "negative_control": "Real synthetic project with passing assertions but missing branch fails floor85; both branches pass100. Includes existing pytest-cov addopts to exercise no-cov/outer-coverage coexistence.",
       "review": "Independent read-only review found no actionable inventory/failure/coverage defect. No independent reexecution claim."
+    },
+    "owned_turns": {
+      "status": "Implemented and independently reviewed; complete make check passed all403 cases in13 bounded groups at92.18% branch-inclusive coverage, zero strict typing errors, lint/format, unchanged size/shape/architectural/dependency gates and negative controls; macOS/Python3.11.17.",
+      "implemented": [
+        "Finite task-owned send with known durable acceptance before return; copied actor/spec/input and explicit unambiguous spec selection",
+        "Shared canonical accepted-input digest and lease-protected duplicate/conflicting request recheck; local restart uses indexed journal outcome without Agent reexecution",
+        "Consumer result waits shield owned execution; explicit cancel is turn-bound and pending cancellation does not decline approval",
+        "Every live/retry result materializes current authorized originals and current pending bindings under one post-execution read deadline",
+        "Fenced heartbeat supervision; finish in-flight writes cooperatively before releasing lease; shielded cleanup retains actual ownership through repeated cancellation",
+        "Bounded/canceled composition shutdown seals jobs and retains store/root until jobs, heartbeat writes and actual workers exit"
+      ],
+      "review": "Independent read-only review reproduced cached-result source disclosure after revocation. Fixed by uniform current-source materialization; fix re-review of disclosure, retry race and cooperative heartbeat/cleanup found no additional defect. No independent full reexecution claim. Focused real-JSONL testing also exposed cancellation of an in-flight heartbeat poisoning the writer; cooperative/shielded cleanup now passes the exact in-flight heartbeat/root-retention proof.",
+      "regressions": "Current credential/source denial, superseded approval, same/conflicting stale-empty key lookup, acceptance failure/retry, waiter cancellation, lease loss, active-task limits, pre-acceptance shutdown, heartbeat/root retention, old-handle cancellation, actual local root/composition restart and post-acceptance SDK setup failure.",
+      "limits": "Partial command facade: confirm/resume/update/close/resolve/create/archive composition still pending. A request owned by an external active task without a local handle reports TurnInProgress on result reconstruction; no multiprocess continuation claim. No alternate Agent loop. Complete typed command-error conformance, including refining WorkerOutstanding mapping at the public facade, remains required before full Client/release qualification.",
+      "installed_artifacts": "Pass: fresh reviewed-source wheel/sdist version0.0.0.post19.dev0+d32c105; clean base (foundation SDK count0) and optional OpenAI extra (count1), network-disabled Agent/replay/gates/durable restart/Client reads plus public Client.send/result/canonical retry with one Agent call. Version is precommit working-source metadata, not an exactd32 checkout; current source hashes identify tested implementation.",
+      "installed_journey_driver_sha256": "1a878ea688f94b50c5bdd02158e6082994c260a90da1249e697b4fd3b170d7ad",
+      "installed_artifact_sha256": {
+        "tether-0.0.0.post19.dev0+d32c105.tar.gz": "ba8abf3eb1a300671d278f519984f988e8f0d75bedae3ab3582a421339dcea61",
+        "tether-0.0.0.post19.dev0+d32c105-py3-none-any.whl": "56da5bb21e139609bbd143d3cfb2508696e06a956f5164e1c446d30e46240e43"
+      }
     }
   },
   "merged_pull_requests": [
@@ -290,6 +314,14 @@
       "merge_commit": "6c9b9e4f8303149cda24c0138f07132b41776be6",
       "status": "merged",
       "qualification": "Source Python3.11 full gate 326/92.15%; exact-head Python3.13 static gates plus all 326 cases through external bounded orchestration, 92.13%. Fresh reviewed-source base/extra installed journeys passed. Hosted Ubuntu3.11/3.13 passed; hosted macOS queued at merge. Two earlier monolithic pytest children timed out at unchanged 180 seconds without assertion failures."
+    },
+    {
+      "number": 5,
+      "url": "https://github.com/DocumentDrivenDX/tether/pull/5",
+      "head": "ce4bae1b1323adc4465dc46e56d67f32593e2c01",
+      "merge_commit": "d32c1052bc91de0f4d0dd22a0aae97deb869475e",
+      "status": "merged",
+      "qualification": "Full local macOS/Python3.11 gate356/92.26%; fresh reviewed-source clean base and optional OpenAI-extra installed journeys passed. Independent archive/runner review found no residual defect. Hosted jobs queued at merge; no hosted matrix pass claim."
     }
   ]
 }
