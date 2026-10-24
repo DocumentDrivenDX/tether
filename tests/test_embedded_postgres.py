@@ -1,5 +1,6 @@
 """Real optional PostgreSQL18 startup/persistence; all application actors are fabricated."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -24,7 +25,7 @@ def anyio_backend():
 @pytest.fixture
 async def config(tmp_path):
     with TemporaryDirectory(prefix="te-", dir="/tmp") as directory:
-        yield EmbeddedConfig(
+        configured = EmbeddedConfig(
             bootstrap_user="fabricated_admin",
             data_dir=tmp_path / "data",
             runtime_dir=Path(directory),
@@ -33,6 +34,15 @@ async def config(tmp_path):
             poll_seconds=0.02,
             max_roots=4,
         )
+        try:
+            yield configured
+        finally:
+            from tether.stores.postgres.embedded.server import _LIVE
+
+            for owner in tuple(_LIVE):
+                if owner.config.data_dir.resolve() == configured.data_dir.resolve():
+                    owner._seal()
+                    await asyncio.wait_for(asyncio.shield(owner._ensure_close()), 20)
 
 
 def acquisition(endpoint):

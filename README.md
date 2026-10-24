@@ -249,3 +249,23 @@ The selected binary profile is non-root macOS arm64 or Linux arm64/x86_64, Pytho
 profiles refuse. Parent death can leave a server requiring explicit operator cleanup. Server binaries
 stay out of the base and postgres-only runtime extras. See CONTRACT-003 for the lifecycle contract.
 Broader release/profile coverage remains work.
+
+
+Reusable port checks are available from `tether.testing.conformance`. Await
+`live_store_suite(factory)` with an async context-manager factory yielding
+`LiveStoreFixture(unbound_store, actor, foreign_actor)`. Use an isolated fabricated namespace;
+a durable factory reopens that same namespace on its next entry. The factory owns explicit
+migrations, connections and cleanup. The same suite runs against memory, JSONL and PostgreSQL.
+
+`archive_suite(factory)` passes a fabricated immutable snapshot to an async factory yielding
+`ArchiveFixture(source, actor, foreign_actor, sink=None)`. Supply current actors and credentials;
+source and sink remain independent. A source-only fixture preloads the snapshot. A supplied sink
+is exercised even when the source facade is read-only. Suite inputs use independent copies so
+provider mutation cannot rewrite the expected result.
+
+Each metadata-only SuiteReport lists executed checks, declared source/store and optional sink
+capabilities, and `required_external` qualifications. These logical checks do not confer full
+fault, process or release qualification. Keep backend corruption/unknown acknowledgment, physical
+worker, contended snapshot/approval and process-fencing suites alongside them. The base package
+adds no pytest dependency; a pytest/anyio test may simply await either suite. See CONTRACT-003
+for fixture shapes, bounds and the complete-profile obligations.
