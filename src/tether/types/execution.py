@@ -167,6 +167,13 @@ class Answer(Payload):
     note: str | None = None
 
 
+class TurnStart(Payload):
+    turn_id: str = Field(min_length=1)
+    request_id: str | None = Field(default=None, min_length=1)
+    requested_spec: str | None = None
+    attachments: tuple[AttachmentRef, ...] = ()
+
+
 class TurnResult(Payload):
     turn_id: str
     stop_reason: str
@@ -240,7 +247,10 @@ class Policy(Protocol):
 
 
 class TurnLog(Protocol):
-    """Slice 2 subset: accepted entries supplied by the owning session handle."""
+    """Accepted entries and the optional lease-bound logical turn identity."""
+
+    @property
+    def turn_id(self) -> str | None: ...
 
     @property
     def session(self) -> SessionState: ...

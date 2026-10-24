@@ -72,12 +72,12 @@ async def test_close_keeps_root_owned_until_actual_tool_exit(
     root = await JsonlRoot.open(tmp_path)
     store, history = await JsonlSessionStore.open(root), await JsonlHistory.open(root)
     actor, tool = Actor(id="owner"), DemoTool()
-    entered, release = Event(), Event()
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
 
     def blocked(ctx, args):
-        entered.set()
-        if not release.wait(5):
-            raise TimeoutError("fabricated_worker_deadline")
+        loop.call_soon_threadsafe(entered.set)
+        release.wait()  # Always released by the test's finally, never by a fixture timer.
         return "Fabricated effect completed"
 
     monkeypatch.setattr(tool, "run", blocked)
@@ -108,7 +108,7 @@ async def test_close_keeps_root_owned_until_actual_tool_exit(
 
     task = asyncio.create_task(run())
     try:
-        assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 2), 3)
+        await actual_entry(entered, task)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
@@ -175,3 +175,17 @@ async def test_recovery_refuses_weaker_or_unqualified_history(
         assert await engine.aclose()
         assert await store.aclose()
         assert await files.aclose()
+
+
+async def actual_entry(entered, turn):
+    # Entry is a barrier, not a filesystem startup latency assertion.
+    ready = asyncio.create_task(entered.wait())
+    try:
+        done, _ = await asyncio.wait((ready, turn), timeout=10, return_when=asyncio.FIRST_COMPLETED)
+        if turn in done:
+            await turn
+            raise AssertionError("turn_finished_before_tool_entry")
+        assert ready in done
+    finally:
+        ready.cancel()
+        await asyncio.gather(ready, return_exceptions=True)

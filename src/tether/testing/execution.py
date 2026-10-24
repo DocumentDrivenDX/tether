@@ -13,7 +13,8 @@ from tether.types.execution import Actor, Entry, EntryConflict, HistoryRef, NewE
 class MemoryTurnLog:
     durability = "none"
 
-    def __init__(self, session: SessionState) -> None:
+    def __init__(self, session: SessionState, *, turn_id: str | None = None) -> None:
+        self.turn_id = turn_id
         self.session = session
         self._entries: list[Entry] = []
 

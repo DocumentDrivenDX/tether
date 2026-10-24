@@ -331,6 +331,11 @@ independent replay workers, owner watermark capture, per-variant current policy,
 markers and retained-window reset. Shutdown wakes idle followers and handles canceled/timed-out
 follower cleanup. Task-owned commands, request deduplication, heartbeats and remaining command
 race qualification stay in this slice; provisional text/reset/coalescing remain slice 9a.
+The turn-command acceptance seam now binds the journal lease id, computes canonical input
+identity, prepares content before atomic supersession/start/input commit, and signals known
+acceptance before SDK setup. Result-content variants remain distinct from the single journal
+result so orphan content cannot block unknown closure. This seam alone is not Client.send,
+request retry/result reconstruction or task/heartbeat supervision.
 
 ### Consumer boundary review and implementation plan
 
