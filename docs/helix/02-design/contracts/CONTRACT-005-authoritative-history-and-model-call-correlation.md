@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-24
   authoring:
     home: repo
   links:
@@ -168,7 +168,8 @@ class AttemptRecorder(Protocol):
     async def start(self, identity: AttemptIdentity, *, request_digest: str,
                     wire_request: JsonValue, codec: str = "model-port-v1") -> None: ...
     async def observe(self, identity: AttemptIdentity, receipt: ResponseReceipt, *,
-                      wire_response: JsonValue | None = None) -> None: ...
+                      wire_response: JsonValue | None = None,
+                      usage: TokenUsage | None = None) -> None: ...
 ```
 
 The recorder is also the explicit authorized capture path for a local exchange provider: adapters pass their credential-free wire request/response representations under a named codec. JSONL persists them through HistoryProvider; Gateway mode records correlation/expected digests without creating a mandatory second payload store. Stream codecs state whether they capture terminal assembly, raw chunks or both and may not label a partial capture complete. ContextUse.request_digest describes the pre-adapter model request; ExchangeBinding.request_digest describes the codec-qualified wire request. Neither digest is substituted for the other.
@@ -263,3 +264,35 @@ owner/session/key addresses represented without PostgreSQL JSONB/text payload na
 Equal-key equal-content retries return the original reference; conflicting immutable writes
 refuse. PostgresHistory can compose with the local JSONL journal. That mixed profile still
 commits content before journal references and makes no combined database transaction claim.
+
+
+### Typed physical usage observations
+
+Model-port version 2 adds keyword-only `usage: TokenUsage | None = None` to AttemptRecorder.observe.
+Implementations MUST accept it. HistoryProvider contract 2 is unchanged. The adapter supplies typed
+provider-reported usage for that physical identity; the engine MUST NOT parse raw wire content to
+infer accounting. Header-only, failed, malformed or missing observations MAY have None. Known zero
+is distinct from missing. Repeated absent observations MUST NOT erase known usage; equal known
+observations count once; conflicting known totals MUST refuse. Cache/reasoning fields remain
+optional subcounts and MUST NOT be added to input/output totals again. An absent optional
+subcount MUST preserve a previously known value; a later known subcount enriches the observation
+without adding the base totals again. Conflicting known subcounts MUST refuse.
+
+A known committed model_receipt carries the typed usage alongside its original AttemptIdentity.
+Prepared attempts count as missing until a known observation resolves them. Every physical retry
+has its own key and consumes shared budgets before a later egress decision. Logical model_call
+facts MAY resolve the final attempt for compatibility, but MUST NOT duplicate an already known
+physical observation. A legacy logical fact with no physical identity remains a logical fallback;
+it MUST NOT claim per-attempt completeness for an unknown retry chain. Existing receipts lacking
+usage remain valid missing observations; journal formats and history codecs are not rewritten.
+New logical facts emitted with a custom test recorder carry attempts_complete=False. They retain
+known final usage and a stable missing-coverage marker; the marker adds no logical generation.
+Missing or None legacy logical ids use independent entry-position identities; other invalid ids refuse.
+
+Session totals, reconstructed UsageSoFar and later audit/span usage MUST use the same attempt-keyed
+reduction. UsageSoFar.model_calls counts logical generations across purposes, summary_calls is its
+summary subset, and steps counts answer generations. Purpose comes from the actual attempt identity
+(answer, summary or correction); a retry cannot silently become answer-purpose accounting. Runtime
+per-purpose totals retain missingness independently; persisted session summaries retain their
+existing overall totals/complete fields. No new summary column or automatic schema migration is
+selected by this extension.

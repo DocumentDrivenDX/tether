@@ -15,6 +15,7 @@ from tether.types import (
     ResponseReceipt,
     StreamItem,
     TextDelta,
+    TokenUsage,
 )
 
 
@@ -25,6 +26,7 @@ class ListAttemptRecorder:
         self.tags = tags.model_copy(deep=True)
         self.reserved: list[AttemptIdentity] = []
         self.started: list[tuple[AttemptIdentity, str, JsonValue, str]] = []
+        self.observed_usage: list[TokenUsage | None] = []
         self.observed: list[tuple[AttemptIdentity, ResponseReceipt, JsonValue | None]] = []
 
     async def reserve(self) -> AttemptIdentity:
@@ -58,10 +60,12 @@ class ListAttemptRecorder:
         receipt: ResponseReceipt,
         *,
         wire_response: JsonValue | None = None,
+        usage: TokenUsage | None = None,
     ) -> None:
         if not any(x[0] == identity for x in self.started):
             raise ValueError("attempt_not_started")
         self.observed.append((identity, receipt, wire_response))
+        self.observed_usage.append(usage.model_copy(deep=True) if usage is not None else None)
 
 
 async def prepare_fixture(request: ModelRequest) -> AttemptIdentity | None:
@@ -87,7 +91,7 @@ async def observe_fixture(
             request_id_source="none",
         )
         await request.attempts.observe(
-            identity, receipt, wire_response=response.model_dump(mode="json")
+            identity, receipt, wire_response=response.model_dump(mode="json"), usage=response.usage
         )
 
 
@@ -120,9 +124,9 @@ class ScriptedModel:
             if isinstance(item, Exception):
                 if (
                     isinstance(item, ModelUnavailable)
-                    and item.receipt
-                    and request.attempts
-                    and identity
+                    and item.receipt is not None
+                    and request.attempts is not None
+                    and identity is not None
                 ):
                     await request.attempts.observe(identity, item.receipt)
                 raise item

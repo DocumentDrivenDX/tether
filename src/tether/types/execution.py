@@ -16,6 +16,7 @@ from tether.types import (
     Payload,
     PositiveInt,
     PositiveSeconds,
+    TokenUsage,
     ToolCall,
 )
 from tether.types.lifetime import WorkerLifetime
@@ -73,6 +74,8 @@ class UsageSoFar(Payload):
     model_calls: int = 0
     summary_calls: int = 0
     usage_complete: bool = True
+    by_purpose: dict[str, TokenUsage] = Field(default_factory=dict)
+    missing_by_purpose: dict[str, int] = Field(default_factory=dict)
 
 
 class AuthzRequest(Payload):

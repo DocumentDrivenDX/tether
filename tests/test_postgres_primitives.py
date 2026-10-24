@@ -357,3 +357,46 @@ async def test_noncanonical_existing_entry_refuses_without_mutation(database, en
             (journal.owner, summary.id.encode()),
         )
         assert await cursor.fetchall() == [(corrupted,)]
+
+
+async def test_typed_receipts_enrich_usage_atomically_and_match_reconstruction(database):
+    from test_attempt_usage import event
+
+    from tether.engine.reconstruction import restored_usage
+
+    h = database
+    journal = Journal(h.root, h.actor)
+    initial = SessionInit()
+    summary = await journal.create(initial, str(uuid4()))
+    partial = TokenUsage(input_tokens=8, output_tokens=3)
+    full = partial.model_copy(update={"cache_read_tokens": 4})
+    facts = [
+        event("model_attempt", 0),
+        event("model_receipt", 1),
+        event("model_receipt", 2, usage=partial),
+        event("model_receipt", 3, usage=full),
+        event("model_call", 4, usage=partial),
+        event("model_receipt", 5, usage=full),
+    ]
+    values = [NewEntry.model_validate(e.model_dump(exclude={"index", "at"})) for e in facts]
+    accepted = ()
+    oracle = create_index(summary.id, h.actor.id, initial, summary.created_at)
+    for value in values:
+        entries, frame = await append(journal, summary.id, [value])
+        accepted += entries
+        for entry in entries:
+            oracle.apply(entry)
+        usage = restored_usage(accepted, "turn")
+        assert frame.projection.summary.usage == oracle.summary.usage
+        assert frame.projection.summary.usage.input_tokens == usage.input_tokens
+        assert frame.projection.summary.usage_complete == usage.usage_complete
+    before = await contents(journal, summary.id)
+    assert before[1].projection.summary.usage == full
+    conflict = event("model_receipt", 6, usage=full.model_copy(update={"cache_read_tokens": 5}))
+    with pytest.raises(IntegrityError, match="usage_changed"):
+        await append(
+            journal,
+            summary.id,
+            [NewEntry.model_validate(conflict.model_dump(exclude={"index", "at"}))],
+        )
+    assert await contents(journal, summary.id) == before

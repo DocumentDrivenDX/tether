@@ -10,6 +10,7 @@ from tether.ports import ModelPort
 from tether.runtime.pydantic_ai.gated import GatedAgent
 from tether.types import (
     AttemptRecorder,
+    JsonValue,
     Message,
     ModelAttemptDenied,
     ModelExecutionLimits,
@@ -92,7 +93,7 @@ class Run:
         )
         self.recorder = (
             self.attempt_factory(tags)
-            if self.attempt_factory
+            if self.attempt_factory is not None
             else JournalAttemptRecorder(
                 self.gov, tags, request.model, self.history_provider, self.messages
             )
@@ -135,13 +136,7 @@ class Run:
                         "status": "ok",
                         "model_call_id": self.current_call,
                         "purpose": "answer",
-                        "attempt_ids": list(self.recorder.started)
-                        if isinstance(self.recorder, JournalAttemptRecorder)
-                        else [],
-                        "exchange_ref": self.recorder.latest_exchange.model_dump(mode="json")
-                        if isinstance(self.recorder, JournalAttemptRecorder)
-                        and self.recorder.latest_exchange
-                        else None,
+                        **self.attempt_facts(),
                         "finish_reason": response.finish_reason,
                         "usage": response.usage.model_dump(mode="json") if response.usage else None,
                     },
@@ -149,23 +144,17 @@ class Run:
             ]
         )
         self.executor.bind(accepted[0])
-        usage = self.gov.usage
-        self.gov.usage = usage.model_copy(
-            update={
-                "steps": self.steps,
-                "model_calls": usage.model_calls + 1,
-                "input_tokens": usage.input_tokens
-                + (response.usage.input_tokens if response.usage else 0),
-                "output_tokens": usage.output_tokens
-                + (response.usage.output_tokens if response.usage else 0),
-                "usage_complete": (
-                    self.recorder.baseline_usage_complete and len(self.recorder.started) == 1
-                    if isinstance(self.recorder, JournalAttemptRecorder)
-                    else usage.usage_complete
-                )
-                and response.usage is not None,
-            }
-        )
+
+    def attempt_facts(self) -> dict[str, JsonValue]:
+        recorder = self.recorder
+        journal = isinstance(recorder, JournalAttemptRecorder)
+        return {
+            "attempts_complete": journal,
+            "attempt_ids": list(recorder.started) if journal else [],
+            "exchange_ref": recorder.latest_exchange.model_dump(mode="json")
+            if journal and recorder.latest_exchange is not None
+            else None,
+        }
 
     async def finish(
         self, continuing: bool = False, *, recovered_final: bool = False
@@ -201,12 +190,20 @@ class Run:
             stop, reason = "model_denied", error.reason
         except ModelUnavailable as error:
             stop, reason = "model_unavailable", error.reason
-            await self.gov.fact(
-                "model_call",
-                status="error",
-                reason=reason,
-                model_call_id=self.current_call,
-                purpose="answer",
+            await self.gov.commit(
+                [
+                    NewEntry(
+                        kind="model_call",
+                        turn_id=self.gov.turn_id,
+                        facts={
+                            "status": "error",
+                            "reason": reason,
+                            "model_call_id": self.current_call,
+                            "purpose": "answer",
+                            **self.attempt_facts(),
+                        },
+                    )
+                ]
             )
         except asyncio.CancelledError:
             await asyncio.shield(self.gov.fact("turn_ended", stop_reason="cancelled"))

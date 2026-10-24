@@ -8,7 +8,7 @@ from psycopg import sql
 from tether.stores.indexing import entry_groups, ledger_change
 from tether.stores.projection import finish_summary, new_projection
 from tether.stores.projections import SessionIndex, create_index
-from tether.stores.usage import add_usage, usage_change, usage_value
+from tether.stores.usage import add_usage, usage_change, usage_observations
 from tether.types import TokenUsage
 from tether.types.canonical import canonical, digest
 from tether.types.execution import (
@@ -103,7 +103,7 @@ class Journal(Rows):
         await self.groups(connection, sid, entry)
         await self.ledger(connection, sid, entry)
         frame.projection.metadata(entry)
-        if entry.kind in {"model_call", "model_attempt"}:
+        if entry.kind in {"model_call", "model_attempt", "model_receipt"}:
             await self.usage(connection, frame, entry)
         counts: list[int] = []
         for name in ("pending", "effects"):
@@ -176,7 +176,12 @@ class Journal(Rows):
             )
 
     async def usage(self, connection: Connection, frame: Frame, entry: Entry) -> None:
-        key, value = usage_value(entry)
+        for key, value in usage_observations(entry):
+            await self._usage_value(connection, frame, key, value)
+
+    async def _usage_value(
+        self, connection: Connection, frame: Frame, key: str, value: TokenUsage | None
+    ) -> None:
         address = (self.owner, frame.projection.state.id.encode(), key.encode())
         cursor = await connection.execute(
             sql.SQL(

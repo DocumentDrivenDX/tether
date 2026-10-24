@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-24
   authoring:
     home: repo
   links:
@@ -181,3 +181,10 @@ Conformance includes prepared-before-egress correlation, unique physical attempt
 - The required protocol integration supports the declared OpenAI-compatible chat-completions subset, which local and self-hosted servers implement; the name denotes the wire protocol, not an SDK or a service. Which servers it works with is established by the adapter's conformance matrix, not by this contract.
 - A model port is deliberately small: the loop needs a stream that ends in a response, and a way to name the failure. A single method keeps every adapter and every double to one behavior to get right; callers that want a whole response use `complete`. Provider features beyond that stay in the adapter.
 - `RequestTags` exists so a provider or gateway that attributes calls by header can do so, and so a provider's log can be reconciled with the session record. How an adapter renders the tags (for example into a `User-Agent`) is the adapter's concern.
+
+
+Model-port version 2 adds typed per-physical-attempt usage to the excluded AttemptRecorder.observe
+callback (CONTRACT-005). Native adapters and scripted/recording/replay doubles MUST forward known
+TokenUsage without parsing it in the engine. This changes callback implementations, not the stream
+shape or cassette-v1 response format. An old cassette lacking retry observations does not establish
+physical-retry audit equivalence; complete cassette/attempt qualification remains a separate gate.

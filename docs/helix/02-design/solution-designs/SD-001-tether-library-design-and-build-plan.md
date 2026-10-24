@@ -685,3 +685,32 @@ Correct the stale read-path wording: get may use bounded indexed pending/source 
 persisted-byte integrity/scope validation remains mandatory. No transcript scan is introduced.
 Complete-profile Q4/Q6 and later Q3/stream/history matrices stay open until their own evidence passes;
 proposed performance budget acceptance remains P1 while asynchronous/bounded behavior stays P0.
+
+
+Slice 6 first closes typed physical usage accounting before operational telemetry wiring. Extend
+AttemptRecorder.observe under model-port version 2, forward typed native/double observations and
+reduce by original physical identity with a shared pure owner. Reuse the adapter's existing bounded
+wire usage codec; engine code never parses raw responses. Share totals/completeness with SQL/local
+projections, current policy usage and restart reconstruction; keep summary storage shape/revision
+unchanged. Preserve per-purpose runtime totals and known/missing subcounts without counting final
+logical usage twice. Honor explicitly supplied port objects even when they are falsey.
+
+Then port the inspected metadata-only identity/contextvar/exception-suppression and content-marker
+test patterns into neutral tracer/audit ports, no-op defaults and bounded collecting dummies. Do not
+port domain fields, synchronous sinks, environment builders, global providers or exporter/browser
+services into base. Declare field/type/event registries and finite observational ownership before
+engine wiring. Known-commit event identities and acceptance-before-delivery protect existing client
+frontiers. Qualify current actors, approval/resume, cancellation/unknown commits, sink/tracer errors,
+physical-worker outstanding/exit and privacy markers; ship reusable audit/tracer port checks.
+Optional OTel still needs a distinct real receiver proof. Neither checkpoint adds an agent loop.
+
+
+Slice6 physical-usage prerequisite now has local execution evidence in the release record:
+model-port2 observations, shared accepted-fact totals/missingness, actual-purpose policy budgets,
+terminal failures and restart reconstruction. The unchanged final gate passes958 cases in30 groups
+with 91.99% branch-inclusive coverage and strict typing0. Fresh hash-locked base/OpenAI/postgres/
+embedded installs exercise installed Agent usage; SQL profiles also exercise typed receipt totals
+and the public logical storage suite. Package sources match the tested tree in both wheel/sdist.
+Review corrected optional-count enrichment, terminal-error phantom missingness and legacy null-id
+collisions. Custom recorder coverage remains explicitly incomplete; cassette-v1 is no physical-retry
+proof. This checkpoint does not complete audit/tracing or broader release/profile qualification.

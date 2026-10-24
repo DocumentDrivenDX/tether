@@ -104,3 +104,13 @@ def wire_call(value: dict[str, JsonValue], limits: ModelExecutionLimits) -> Tool
     return ToolCall.model_validate(
         dict(id=value["id"], name=function["name"], arguments=arguments(raw))
     )
+
+
+def observed_usage(data: bytes) -> TokenUsage | None:
+    """Retain valid typed usage even when the bounded response output is invalid."""
+    try:
+        value: JsonValue = json.loads(data, object_pairs_hook=json_object)
+        canonical(value)
+        return usage_from_wire(value.get("usage")) if isinstance(value, dict) else None
+    except (ModelUnavailable, ValueError, UnicodeError):
+        return None

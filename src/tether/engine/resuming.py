@@ -21,7 +21,7 @@ from tether.types.tooling import definition, tool_spec
 
 from .governance import Governance
 from .inspection import normalize_pending
-from .reconstruction import pending_bindings, restore_pending, restored_usage
+from .reconstruction import pending_bindings, restore_pending
 from .recovery import plan_resume, resume_chain
 from .results import prepare_result
 from .run import Run
@@ -207,7 +207,7 @@ async def accept(
 
 async def restore(run: Run, plan: ResumePlan) -> None:
     chain = frozenset(resume_chain(run.gov.log.entries, run.gov.turn_id))
-    run.gov.usage = restored_usage(run.gov.log.entries, chain)
+    run.gov.configure_usage(chain)
     run.steps = run.gov.usage.steps
     run.result_turn_ids = chain
     pending = pending_bindings(run)
