@@ -326,8 +326,11 @@ use current authorization, verified history and finite explicit limits. Aggregat
 permission is rechecked before disclosure; denial preserves receipts and redacts all raw
 observations. Async composition enforces loop affinity, rejects weaker/unqualified recovery
 history and retains root ownership until actual workers exit. SDK instrumentation is explicitly
-disabled against ambient `Agent.instrument_all` configuration. Task-owned commands, request
-deduplication, heartbeat/follow lifecycle and remaining race qualification stay in this slice.
+disabled against ambient `Agent.instrument_all` configuration. Persisted follow now has bounded
+independent replay workers, owner watermark capture, per-variant current policy, whole-commit
+markers and retained-window reset. Shutdown wakes idle followers and handles canceled/timed-out
+follower cleanup. Task-owned commands, request deduplication, heartbeats and remaining command
+race qualification stay in this slice; provisional text/reset/coalescing remain slice 9a.
 
 ### Consumer boundary review and implementation plan
 

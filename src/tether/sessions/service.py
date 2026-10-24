@@ -11,6 +11,7 @@ from tether.types.history import HistoryProvider
 from tether.types.storage import RecoveredTurn, SessionStore, Unsupported
 
 from .access import SessionAccess
+from .feed import Followers
 
 
 class SessionService:
@@ -42,6 +43,7 @@ class SessionService:
             raise Unsupported("auto_resume_unqualified")
         self.engine, self.store, self.history, self.limits = engine, store, history, limits
         self.access = SessionAccess(store, history, engine.policy, limits)
+        self.followers = Followers(self.access)
         self.resume_mode = resume
         self.recovered: tuple[RecoveredTurn, ...] = ()
         self.closed = False
@@ -62,6 +64,8 @@ class SessionService:
         await self.aclose()
 
     async def _finish_close(self) -> None:
+        await self.engine.aclose()
+        await self.followers.close()
         await self.engine.wait_closed()
         self.drained = await self.store.aclose()
 
@@ -78,8 +82,9 @@ class SessionService:
         self.closed = True
         try:
             async with asyncio.timeout(self.limits.shutdown_timeout_seconds):
-                self.drained = await self.engine.aclose()
-                if self.drained:
+                engine_drained = await self.engine.aclose()
+                await self.followers.close()
+                if engine_drained:
                     self.drained = await self.store.aclose()
         except TimeoutError:
             self.drained = False
