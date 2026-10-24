@@ -109,6 +109,13 @@ class SessionAccess:
                     self.size(value)
             return value
 
+    async def watermark(self, actor: Actor) -> int:
+        self.check()
+        async with asyncio.timeout(self.limits.read_timeout_seconds):
+            position = await self.store.watermark(actor.id)
+        self.position(position)
+        return position
+
     async def hydrate(self, actor: Actor, session_id: str, ref: HistoryRef) -> HistoryValue:
         await self.authorize(actor, session_id)
         if ref.kind == "model_exchange" and not await self.allowed(

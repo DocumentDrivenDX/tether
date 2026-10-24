@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Generic, Literal, Protocol, TypeVar
@@ -184,6 +184,12 @@ class PersistedChange(Payload):
     entries: tuple[Entry, ...]
 
 
+class ChangeFeed(Protocol):
+    def __aiter__(self) -> AsyncIterator[PersistedChange]: ...
+    def __anext__(self) -> Awaitable[PersistedChange]: ...
+    def aclose(self) -> Awaitable[None]: ...
+
+
 class RecoveredTurn(Payload):
     session_id: str
     turn_id: str
@@ -230,9 +236,11 @@ class SessionStore(Protocol):
     async def effects(
         self, session_id: str, owner: str, *, start: int = 0, limit: int = 50
     ) -> EffectPage: ...
+    async def watermark(self, owner: str) -> int: ...
+
     def changes(
         self, owner: str, *, session_id: str | None = None, since: int | None = None
-    ) -> AsyncIterator[PersistedChange]: ...
+    ) -> ChangeFeed: ...
     async def update(self, session_id: str, owner: str, patch: SessionPatch) -> SessionSummary: ...
     async def lookup(
         self,

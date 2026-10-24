@@ -83,7 +83,9 @@ metadata, history, attempt detail and verified pending reads. Raw exchange paylo
 current READ_CALL_PAYLOAD at aggregate disclosure as well as individual hydration. Recovery
 currently accepts immediate writable history with all record kinds and durability at least
 that of the journal; external/eventual profiles require separate qualification. Async context
-close retains storage ownership until actual worker exit. Task-owned Client commands/follow,
+close retains storage ownership until actual worker exit. Persisted follow uses bounded independent replay workers and per-variant current authorization;
+retention gaps reset beyond a captured owner watermark. Task-owned Client commands,
+provisional stream production,
 full safe-invocation recovery/manual resolution, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.

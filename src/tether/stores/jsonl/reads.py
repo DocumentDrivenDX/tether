@@ -161,6 +161,11 @@ class SessionReads:
                 next_start=entries[limit].index if len(entries) > limit else None,
             )
 
+    async def watermark(self, owner: str) -> int:
+        self._limit(1)
+        async with self.lock:
+            return self.sequences.get(owner, 0)
+
     async def changes(
         self, owner: str, *, session_id: str | None = None, since: int | None = None
     ) -> AsyncGenerator[PersistedChange, None]:
