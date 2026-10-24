@@ -48,10 +48,11 @@ class Frame:
 
 
 class Rows:
-    def __init__(self, root: DatabaseRoot, actor: Actor) -> None:
+    def __init__(self, root: DatabaseRoot, actor: Actor, *, owner: str | None = None) -> None:
         root.check_loop()
         self.root, self.actor = root, copy_actor(actor)
-        self.owner = actor.id.encode()
+        self.owner_id = actor.id if owner is None else owner
+        self.owner = self.owner_id.encode()
 
     def table(self, name: str) -> sql.Identifier:
         return sql.Identifier(self.root.schema, name)
@@ -105,7 +106,7 @@ class Rows:
         if not isinstance(row[0], bytes) or not isinstance(row[1], bytes):
             raise StoreError("projection_read_bytes")
         try:
-            summary = summary_row(row[0], session_id.encode(), self.actor.id)
+            summary = summary_row(row[0], session_id.encode(), self.owner_id)
         except ValueError:
             raise IntegrityError("projection_integrity") from None
         await self.metadata_matches(connection, summary)
@@ -131,7 +132,7 @@ class Rows:
         if not isinstance(row[0], bytes) or not isinstance(row[1], bytes):
             raise StoreError("projection_read_bytes")
         try:
-            summary = summary_row(row[0], session_id.encode(), self.actor.id)
+            summary = summary_row(row[0], session_id.encode(), self.owner_id)
             stored = StoredProjection.model_validate_json(row[1])
         except ValueError:
             raise IntegrityError("projection_integrity") from None
@@ -149,15 +150,15 @@ class Rows:
             (summary.title or "").casefold().encode(),
             [tag.encode() for tag in summary.tags],
         )
-        if row[2:9] != expected or summary.id != session_id or summary.owner != self.actor.id:
+        if row[2:9] != expected or summary.id != session_id or summary.owner != self.owner_id:
             raise IntegrityError("projection_integrity")
         expected_state = new_projection(
-            session_id, self.actor.id, stored.init, summary.created_at
+            session_id, self.owner_id, stored.init, summary.created_at
         ).state
         if (
             stored.state != expected_state
             or stored.state.id != session_id
-            or stored.state.owner != self.actor.id
+            or stored.state.owner != self.owner_id
             or stored.init.ref != summary.ref
             or stored.init.title != summary.title
             or stored.init.tags != summary.tags
@@ -189,23 +190,30 @@ class Rows:
             await self.head(connection, write=True)
             if init.ref is not None:
                 cursor = await connection.execute(
-                    sql.SQL("SELECT id FROM {} WHERE owner=%s AND ref=%s").format(
-                        self.table("sessions")
-                    ),
-                    (self.owner, init.ref.encode()),
+                    sql.SQL(
+                        "SELECT CASE WHEN octet_length(id)<=%s THEN id END "
+                        "FROM {} WHERE owner=%s AND ref=%s"
+                    ).format(self.table("sessions")),
+                    (self.root.limits.max_batch_bytes, self.owner, init.ref.encode()),
                 )
                 row = await cursor.fetchone()
-                if row is not None and isinstance(row[0], bytes):
-                    frame = await self.frame(connection, row[0].decode(), write=False)
+                if row is not None:
+                    if not isinstance(row[0], bytes):
+                        raise StoreError("session_identity_bytes")
+                    try:
+                        existing_id = row[0].decode()
+                    except UnicodeDecodeError:
+                        raise IntegrityError("session_identity_integrity") from None
+                    frame = await self.frame(connection, existing_id, write=False)
                     return frame.projection.summary
             frame = Frame(
-                new_projection(session_id, self.actor.id, init, await self.clock(connection))
+                new_projection(session_id, self.owner_id, init, await self.clock(connection))
             )
             await self.insert(connection, frame)
             await self.publish(connection, frame, ())
             return frame.projection.summary
 
-        return await self.root.run(self.actor, session_id, create, write=True)
+        return await self.root.run(self.actor, None, create, write=True)
 
     async def insert(self, connection: Connection, frame: Frame) -> None:
         summary = frame.projection.summary
@@ -258,7 +266,11 @@ class Rows:
             seq=seq, session_id=summary.id, kind="updated", summary=summary, entries=entries
         )
         content = canonical(change.model_dump(mode="json"))
-        if len(content) + len(frame.content()) > self.root.limits.max_batch_bytes:
+        holder_bytes = len(frame.lease_turn.encode()) if frame.lease_turn is not None else 0
+        frame_bytes = (
+            len(canonical(summary.model_dump(mode="json"))) + len(frame.content()) + holder_bytes
+        )
+        if max(frame_bytes, len(content) + len(frame.content())) > self.root.limits.max_batch_bytes:
             raise StoreError("journal_write_bytes")
         updated = await connection.execute(
             sql.SQL(
@@ -279,7 +291,7 @@ class Rows:
         )
         if updated.rowcount != 1:
             raise IntegrityError("projection_publish_missing")
-        frame.bytes_used = len(canonical(summary.model_dump(mode="json"))) + len(frame.content())
+        frame.bytes_used = frame_bytes
         await connection.execute(
             sql.SQL("INSERT INTO {} VALUES (%s,%s,%s,%s)").format(self.table("changes")),
             (self.owner, seq, summary.id.encode(), content),
@@ -336,7 +348,7 @@ class Rows:
                 or not isinstance(row[1], bytes)
             ):
                 raise StoreError("projection_read_bytes")
-            confirmation = pending(row, sid, self.actor.id)
+            confirmation = pending(row, sid, self.owner_id)
         if bool(confirmation) != frame.projection.summary.pending:
             raise IntegrityError("pending_integrity")
         projection = frame.projection

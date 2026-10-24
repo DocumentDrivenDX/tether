@@ -13,7 +13,14 @@ from tether.types.execution import (
     NewEntry,
     SessionState,
 )
-from tether.types.storage import IntegrityError, SessionInit, SessionSummary, SessionView, SpecRef
+from tether.types.storage import (
+    IntegrityError,
+    SessionInit,
+    SessionPatch,
+    SessionSummary,
+    SessionView,
+    SpecRef,
+)
 
 from .indexing import entry_groups, ledger_change, pending_confirmation
 from .projection import Projection, finish_summary, new_projection
@@ -129,3 +136,24 @@ class SessionIndex:
 def create_index(session_id: str, owner: str, init: SessionInit, at: datetime) -> SessionIndex:
     projection = new_projection(session_id, owner, init, at)
     return SessionIndex(state=projection.state, init=projection.init, summary=projection.summary)
+
+
+def patch_entries(patch: SessionPatch) -> tuple[NewEntry, ...]:
+    changes = patch.model_dump(mode="json", exclude_unset=True)
+    values: list[NewEntry] = []
+    for key in ("title", "tags"):
+        if key in changes and (key == "title" or changes[key] is not None):
+            values.append(
+                NewEntry.model_validate(
+                    {
+                        "kind": "session",
+                        "facts": {
+                            "event": "titled" if key == "title" else "tagged",
+                            "value": changes[key],
+                        },
+                    }
+                )
+            )
+    if patch.settings is not None:
+        values.append(NewEntry(kind="settings", facts={"changes": patch.settings}))
+    return tuple(values)

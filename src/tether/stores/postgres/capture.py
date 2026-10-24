@@ -8,7 +8,7 @@ from tether.stores.projections import SessionIndex, create_index
 from tether.types.storage import IntegrityError, SessionView, StoreError
 
 from . import row_codec
-from .leases import Leases, Token, fence
+from .leases import Leases, Prefix, Token, fence
 from .rows import Connection, Frame
 
 
@@ -98,10 +98,13 @@ class Capture(Leases):
         raise StoreError("turn_snapshot_batches")
 
     async def reconstruct(self, token: Token) -> SessionIndex:
+        return (await self.load(token))[0]
+
+    async def load(self, token: Token) -> tuple[SessionIndex, Prefix]:
         captured = await self.capture(token)
         index = await self.root.prepare(token.session_id, lambda: rebuild(captured))
         await self.heartbeat(token)
-        return index
+        return index, Prefix(len(captured.rows), sum(len(data) for _, data in captured.rows))
 
 
 def prefix(rows: list[tuple[object, ...]], start: int) -> tuple[tuple[int, bytes], ...]:

@@ -647,3 +647,54 @@ change occurs. Closing one root seals only that root's admission; sibling roots 
 Namespace worker ownership survives final-root close while physical workers still run, so a
 replacement root inherits the same busy markers. A release failure after a possible commit
 remains uncertain, and caller cancellation does not prove an operation stopped.
+
+
+### Optional PostgreSQL composition and recovery extension
+
+`tether.stores.postgres.PostgresSessionStore(root, *, actor=None, maintenance=None)` implements
+the SessionStore surface over an opened DatabaseRoot. `PostgresHistory(root)` implements its
+independent content port; roots MAY be shared or separate. Root construction performs no caller
+lookup. A root without a caller binding MUST refuse caller operations with
+`ExecutionDenied("caller_scope_required")`. `for_actor(actor)` returns the concrete borrowed
+PostgreSQL facade, preserving the current live credential. Rebinding a borrowed facade MUST
+retain its owner. Owner/ref create acquires owner scope (`session_id=None`), since an existing
+ref can identify a session different from a proposed new id.
+
+Root `recover(now=aware_datetime)` requires explicitly supplied maintenance authority. Acquisition
+MUST receive that original actor/credential, never a fabricated actor named after a target owner.
+The optional bound `recover_owner(now=aware_datetime)` limits enumeration/mutation to actor.id;
+it MUST NOT expose global recovery. Recovery is one transaction. The selected profile bounds
+candidates by `StorageLimits.page_limit`, candidate owner/id bytes and aggregate returned
+RecoveredTurn bytes by `max_batch_bytes`. Overflow raises StoreError before commit and MUST NOT
+report partial success. An expired logical phase is interrupted independently of the lease-job id;
+pending approval and unknown-effect facts remain authoritative. Naive datetimes refuse.
+
+A leased execution prefix MUST remain count/byte bounded as it grows. Stable-key retries add no
+row bytes or count. SQL checks the final frame, including lease-holder identity, together with
+retained and inserted canonical row bytes before commit. A proven bound rejection writes nothing.
+After known append commit, failed/canceled local staging or final validation MUST seal the handle
+and report CommitUnknown (caller cancellation remains cancellation); LeaseLost remains terminal.
+Cached state cannot authorize continued dispatch after these failures. Reopen reconstructs facts.
+
+DatabaseRoot close MUST seal execution admission through that root before awaiting shutdown.
+Independent roots share a concrete namespace actual-worker registry but retain separate admission
+gates. Closing one root MUST NOT seal sibling submissions or erase retained workers. Already
+admitted preparation MUST either register its physical Future or refuse before executor submission.
+Fresh-token lease cleanup MAY clear metadata while physical work remains; it MUST retain actual
+worker ownership and block local replacement until actual exit. Stale cleanup MUST NOT alter a
+replacement lease. Cleanup failure MUST preserve an already-active primary exception; it MUST NOT
+substitute maintenance credentials.
+
+Example composition (application-supplied `source`, actors and opened database):
+
+```python
+store = PostgresSessionStore(database, maintenance=maintenance_actor)
+caller = store.for_actor(actor)
+session = await caller.create(actor.id, SessionInit(ref="fabricated"))
+# For a restricted maintenance deployment, use the explicit owner extension:
+recovered = await caller.recover_owner(now=aware_now)
+```
+
+These optional adapter additions do not change SESSION_CONTRACT_VERSION4 or require other stores
+to implement recover_owner. Application pools, authentication refresh, role/RLS configuration,
+external effect fencing and deployment lifetime remain outside the library.

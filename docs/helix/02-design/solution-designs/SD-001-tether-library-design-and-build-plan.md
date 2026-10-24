@@ -624,3 +624,22 @@ validity before yielding. Shared group and usage reconstruction avoids repeated 
 with no measured scale claim. Next compose a poisonable leased TurnLog, caller-bound public
 facades and explicit maintenance recovery, then qualify real-process loss and the full SQL
 Agent/Client lifecycle before declaring the cross-process store capability.
+
+
+The public SQL composition checkpoint joins the indexed primitives through caller-bound
+PostgresSessionStore, poisonable leased handles and explicit root/owner recovery. Maintenance
+acquisition identity remains separate from verified row ownership. Global recovery refuses
+candidate/result overflow atomically; bounded capture and live prefixes cannot grow past their
+selected limits. Cache staging runs as retained pure work, followed by current lease validation.
+Post-commit failures cannot masquerade as rejected appends. Root admission gates share actual
+worker tracking without closing sibling roots. Shared metadata patch translation remains in the
+existing pure projection owner; no import boundary is widened.
+
+Qualification uses real separate Python processes for exclusivity, expired takeover, stale
+append/heartbeat/release and killed-client intent recovery. Actual paired SQL Agent/Client journeys
+cover approval after root restart, safe/unsafe intent/result resume, manual resolution, close and
+archive/restore without execution. An application-owned unprivileged-role RLS profile demonstrates
+owner isolation, live credential refresh and no service fallback after caller refusal. Those
+fixtures establish selected correspondence, not arbitrary deployment policy, external exactly-once
+effects, server power-cut behavior or performance targets. Next complete embedded convenience and
+complete-profile Client/testkit/performance closure, then continue remaining selected slices.

@@ -199,7 +199,7 @@ async def test_release_failure_after_commit_is_unknown_and_retry_finds_content(d
 async def test_shared_namespace_survives_root_close_and_outstanding_workers(database):
     h = database
     sibling = await DatabaseRoot.open(h.source, actor=h.actor, schema=h.schema)
-    assert sibling.workers is h.root.workers
+    assert sibling.workers.active is h.root.workers.active
     pending = asyncio.get_running_loop().create_future()
     h.root.workers.retain("session", pending)
     assert not await h.root.aclose()
@@ -207,7 +207,7 @@ async def test_shared_namespace_survives_root_close_and_outstanding_workers(data
     assert await sibling.run(h.actor, None, lambda connection: connection.execute("SELECT 1"))
     assert not await sibling.aclose()
     replacement = await DatabaseRoot.open(h.source, actor=h.actor, schema=h.schema)
-    assert replacement.workers is h.root.workers
+    assert replacement.workers.active is h.root.workers.active
     assert replacement.workers.busy("session")
     pending.set_result(None)
     await asyncio.sleep(0)
