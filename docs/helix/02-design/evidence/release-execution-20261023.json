@@ -4,7 +4,7 @@
   "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
   "authority": "Explicit owner instruction in integration-lead session; includes source control, merge and Tether-session coordination.",
   "status": "active",
-  "branch": "codex/tether-client-confirm",
+  "branch": "codex/tether-client-metadata",
   "baseline_commit": "d680c4d",
   "completed_slices": [
     0,
@@ -52,14 +52,14 @@
     "mcp_disposition": "MCP is P2 and outside selected 0.1 slices. Consumer adoption/MCP Apps require separate qualification; do not silently promote advisory scope.",
     "inventory": "Recent app inventory reconfirmed the integration-lead and read-only MCP/durability chats; both have role-specific titles."
   },
-  "next_action": "Merge reviewed/tested confirmation, then implement remaining Client create/update/close/resolve/resume, typed command errors and lifecycle qualification; continue all remaining selected slices.",
+  "next_action": "Merge reviewed/tested metadata commands, then implement close/resolve/resume and complete typed command/lifecycle qualification; continue all remaining selected slices.",
   "qualification_limits": [
     "Only local POSIX single-writer JSONL is implemented; Postgres cross-process profile is slice 5.",
     "No OS power-cut guarantee is inferred from process-exit tests.",
     "Started-invocation recovery, manual resolve and actual-worker/lease-loss qualification remain slice 9.",
     "Live Gateway/profile credentials and real server correspondence are not supplied or qualified."
   ],
-  "source_control": "PRs 1\u20136 merged promptly after review/testing; confirmation is the next independently reviewed/tested checkpoint. No open PR stack.",
+  "source_control": "PRs1\u20137 merged promptly after review/testing; metadata commands are the next independently reviewed/tested checkpoint. No open PR stack.",
   "metering": "Active goal has no user-specified token/time ceiling; runtime metering is available via get_goal; no invented total-budget claim.",
   "boundary_review": {
     "status": "Sub-agent review complete; sanitized plan recorded and omissions corrected.",
@@ -95,7 +95,7 @@
       "Public SDK instrumentation disabled explicitly against ambient Agent.instrument_all"
     ],
     "checks": "Historical PR 2 source full gate: 298 tests, 91.84% branch-inclusive coverage, 0 strict Pyright errors, Ruff/format, unchanged shape/size gates, architectural negative controls and base foundation SDK count 0; macOS/Python 3.11.17. Later checkpoints are recorded separately below.",
-    "remaining": "Create/update/close/resolve/resume, complete typed command errors and remaining lifecycle qualification. Live text/reset/coalescing, capability rendering and external history/link profiles remain assigned to later slices.",
+    "remaining": "Close/resolve/resume, complete typed command errors and remaining lifecycle qualification. Cancellation must not advertise explicit resume under ADR-010; remaining recovery implementation will distinguish explicit cancellation from interruption. Live text/reset/coalescing, capability rendering and external history/link profiles remain assigned to later slices.",
     "source_sha256": {
       "src/tether/__init__.py": "3a91ddd3e8447a96d53ce2d5101db3ab4b6facf5ebb345590ef38ad7bdae136b",
       "src/tether/adapters/__init__.py": "0184c3382a18050fb990b51ade8d63b6e6a09604110fc301896cb0ba521d350a",
@@ -104,7 +104,7 @@
       "src/tether/adapters/pydantic_ai/compatible.py": "93f32199be4e1202c7d4c5296daff5dc8fe3bec54f4d8a918f0fd88a115c4c47",
       "src/tether/adapters/pydantic_ai/transport.py": "dda2d7bdffd3b912de82abb275a90c28e581c7936da2c9b8e8a728bf4595d951",
       "src/tether/adapters/pydantic_ai/wire.py": "9c52f9ed19254f9401cb66044bed577aa25f8393710ff7347ab4122ab81b4e68",
-      "src/tether/client/__init__.py": "7c1083dd9dda59982fefb9d17dd1d13bc2f4b6c890780a59a8d75bc9b613f1c8",
+      "src/tether/client/__init__.py": "cbf1e0fc107154bc2f5d15010fe24142f5222d48e71b16c77410f61411caa61e",
       "src/tether/client/reads.py": "ce9c9eab896b34c94c8c8185d7cdafdee8f24685ba12c9c0beb7ce2dc4a770d3",
       "src/tether/engine/__init__.py": "1183b25c405d18ddd5000e54431da6c561552093767396994431aaa46c156837",
       "src/tether/engine/agent.py": "ffd9dcde30b75a6e3d99b5c6cd6087179c4a10e71fce236c5fd94554a3dd453e",
@@ -142,6 +142,7 @@
       "src/tether/sessions/content.py": "dff71596c8dd337fa52761264dd122d8f654800ed0b7f504a15656cb7fd0fd9c",
       "src/tether/sessions/disclosure.py": "08bf4ae4f193be0974d8507fb6ce4c8d5e4803ec39f8b31efc278dd80ec6f9f5",
       "src/tether/sessions/feed.py": "72de57fc1961df836cfbe94fedc767ff65685f0835a07ee8eb16897de534a728",
+      "src/tether/sessions/metadata.py": "c556f908d13ca95cd4e09d50846b1587a53a2afa9ec561d6413c9e1e4a995c89",
       "src/tether/sessions/outcomes.py": "4404e3108b7237a25960808890888b66ecd4f8650b39dd71831e8a5ef7e0e7e4",
       "src/tether/sessions/service.py": "6e652e28a53f4e2d412eba1a4209d1385adbf85d93c162778e90d716890a599e",
       "src/tether/sessions/supervision.py": "b0aea368f3d0d6635588a9127b9af5c55489c6c9ddcbd5a0c793c3bd9d3eecb9",
@@ -160,7 +161,7 @@
       "src/tether/testing/execution.py": "679873123161c8ea0b2b288b7211bd213657eb08fd94a8c4f749b6a8d5b3c99b",
       "src/tether/types/__init__.py": "56cbb9baa19db76bf8831a79fd7fea68d7cdc558bfae1f92ddfc18de4ad57c4a",
       "src/tether/types/canonical.py": "7d03b335504d256004c999bb9e85a1e3fb844727922031f249de63072e16dce2",
-      "src/tether/types/client.py": "b4c19414b9b51b92c7636d7d60d043dcf1d581ac069f4bf4375bd60ed1f01c07",
+      "src/tether/types/client.py": "4f4b02724fbfc48d666c16aa82e09789e232bd803320d53820db1135b123b4d2",
       "src/tether/types/execution.py": "fbd8247b994e896b5a0f4e09bb209c24ca38ae0cfab9d8755605fb63c6f16b51",
       "src/tether/types/history.py": "486eb935a8742eca3a78202806e6cdbf955e29f3c3e7a780e39ba9e1bbcd6209",
       "src/tether/types/storage.py": "f086e7873e12c61d3d791d4554f7d9f7a51b0d5485f1fa00d5953af54c433ea7",
@@ -191,6 +192,7 @@
       "tests/test_client_confirm.py": "5c30fa5675d8842a799d2114ca3cc467c9e9958e84880b0bb3bbb9901486cc48",
       "tests/test_client_follow.py": "25fc8cea4ae19717eda67a91352e0f47bbd8da0779a09d3dd5ec64b70ccdca6b",
       "tests/test_client_lifecycle.py": "0ad46dfe78b6cad00e76d38f7ceae845a53bcf38b48ce8e889f1ff9ec3ed3dab",
+      "tests/test_client_metadata.py": "5f986b2c5e1be9c032375617f86785fb2004babdfe7770d3fbd9599f9ea59e22",
       "tests/test_client_reads.py": "2dc9407d9c4913799d28a1f85b125cab6733fc423d42607ddd1bba2115daeaa5",
       "tests/test_client_turns.py": "2047adb729b4c4541a23c86dd8270106ee43b087d256aa94f953bb6c1373ddc9",
       "tests/test_commands.py": "740bf9aee1e2be86508d2f36311c5701c72d0da98cd5ea2bfb00f42e69654d40",
@@ -296,13 +298,33 @@
         "New input clears interrupted resumable projection"
       ],
       "review": "Independent read-only review found stale retained-handle outcome during continuation; fixed with passing regressions across memory/JSONL. Follow-up review including notes found no residual defect; no independent full reexecution claim.",
-      "installed_artifacts": "Pass: fresh working-source wheel/sdist version0.0.0.post21.dev0+4d9e4c3, clean base SDK count0 and optional OpenAI extra count1, network-disabled Agent/replay/gates/restart/read journeys plus public send\u2192pending\u2192confirm\u2192final\u2192canonical retry, two model calls and one new tool effect. Version metadata names precommit base, not an exact4d9 checkout; this receipt source hashes identify built source.",
+      "installed_artifacts": "Pass: fresh working-source wheel/sdist version0.0.0.post21.dev0+4d9e4c3, clean base SDK count0 and optional OpenAI extra count1, network-disabled Agent/replay/gates/restart/read journeys plus public send\u2192pending\u2192confirm\u2192final\u2192canonical retry, two model calls and one new tool effect. Version metadata names precommit base, not an exact4d9 checkout; source hashes in the PR7 committed receipt identify that built source.",
       "limits": "Remaining commands, typed WorkerOutstanding conformance, full safe recovery, external active tasks and later profile/stream/context qualification remain unfinished. Agent remains the only model/tool iterator.",
       "installed_journey_driver_sha256": "b4fad99c910460efe98036d34789064cb76e0808b881c6e90331fc595d38205d",
       "installed_artifact_sha256": {
         ".gitignore": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
         "tether-0.0.0.post21.dev0+4d9e4c3-py3-none-any.whl": "3d9a39c7185accc7edf5f48a707c2765a032eb2949bf346ff15dacd7facc26b0",
         "tether-0.0.0.post21.dev0+4d9e4c3.tar.gz": "b8f10a3d08ef7a924efc79b3bf3849036fc766d8dab80c412f30597edf867165"
+      }
+    },
+    "metadata_commands": {
+      "status": "Implemented and independently reviewed; complete make check passed455 cases in15 bounded groups,92.24% branch-inclusive coverage, strict Pyright0 errors, lint/format, unchanged shape/size/layer/dependency gates and negative controls; macOS/Python3.11.17.",
+      "implemented": [
+        "Owner-scoped reference-idempotent creation with supplied spec/title/tags/settings",
+        "Copied, finite-size requests and current read authorization before mutation and after store return",
+        "Store-owned update lease; active/closed session refusals; no nested lease",
+        "Omitted title preserves, explicit None clears; supplied tags replace and settings merge",
+        "Managed held settings refused before any policy/store work, preserving the governed binder boundary"
+      ],
+      "review": "Independent read-only review found generic settings could replace binder-managed held context; fixed with exact no-state/no-feed regressions. Re-review found no residual defect; no independent execution claim.",
+      "tests": "22 cases across memory/JSONL cover same-ref concurrent create, owner separation, omitted/cleared title, settings merge/feed, current policy and revocation during lookup/disclosure, active/closed updates, request bounds, managed context and copied mutable inputs.",
+      "installed_artifacts": "Pass: fresh working-source wheel/sdist version0.0.0.post23.dev0+9e17584, clean base SDK count0 and optional OpenAI extra count1. Offline public create/ref retry/update/clear/settings read plus send/confirm/retry and baseline Agent/replay/gates/restart/read journeys passed. Metadata version names precommit base, not an exact9e17584 checkout; current source hashes identify built source.",
+      "limits": "No new scope semantics or settings policy action; internal governed binding remains separate. Complete Client, archive composition and later profiles remain unfinished.",
+      "installed_journey_driver_sha256": "c80b1200cdf279389911c06074985c15ec7a8c4d0ee9cda2c2edebadd14a542f",
+      "installed_artifact_sha256": {
+        ".gitignore": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+        "tether-0.0.0.post23.dev0+9e17584-py3-none-any.whl": "6b2bd382dc3de36cdf8ed47416f433850317032afa8b5ef06773f4deb213fdda",
+        "tether-0.0.0.post23.dev0+9e17584.tar.gz": "12ee0c19cbf87ddc2f2377d622274952f24ddaaf439acf3d7dd143950173f05d"
       }
     }
   },
@@ -354,6 +376,14 @@
       "merge_commit": "4d9e4c383c9ca5405278e2e343f4f08d1046420b",
       "status": "merged",
       "qualification": "Full local macOS/Python3.11 gate403/92.18%; fresh reviewed-source clean base and optional OpenAI-extra public send/result/retry installed journeys passed. Independent review found no residual defect. Hosted Ubuntu3.11/3.13 running and macOS queued at merge; no hosted pass claim."
+    },
+    {
+      "number": 7,
+      "url": "https://github.com/DocumentDrivenDX/tether/pull/7",
+      "head": "c873f766dc0722e0ef80b5296ebde38525ee928b",
+      "merge_commit": "9e175842b7215e45a739e06ff1825b3af0b93ad5",
+      "status": "merged",
+      "qualification": "Full local macOS/Python3.11 gate433/92.09%; fresh reviewed-source base/extra public confirmation/retry journeys passed. Independent review found no residual defect. Hosted Ubuntu3.11/3.13 subsequently passed; macOS remained queued."
     }
   ]
 }

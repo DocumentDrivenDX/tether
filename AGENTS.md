@@ -97,7 +97,9 @@ command/session/default spec ids must resolve to a supplied unambiguous pinned s
 and running projection before fallible continuation, and refreshes current principal/credential.
 Optional approval notes use bounded immutable history outside executable inputs and audit facts.
 Retained successful handles follow accepted continuations; late answers cannot repeat effects.
-Create/resume/update/close/resolve commands, provisional stream production,
+Create/update use bounded copied owner-authorized requests; the store serializes updates.
+Omitted title preserves it, explicit None clears it; public settings refuse managed held context.
+Resume/close/resolve commands, provisional stream production,
 full safe-invocation recovery/manual resolution, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.

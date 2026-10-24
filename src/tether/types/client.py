@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Literal, Protocol
 
 from tether.types import AttemptIdentity, Payload, PositiveInt, PositiveSeconds, ResponseReceipt
 from tether.types.execution import Entry, TurnResult
 from tether.types.history import HistoryStatus, HistoryValue
 from tether.types.storage import SessionSummary, StoreError
+
+
+class Unset(Enum):
+    omitted = "omitted"
+
+
+UNSET = Unset.omitted
 
 
 class ReadLimit(StoreError):

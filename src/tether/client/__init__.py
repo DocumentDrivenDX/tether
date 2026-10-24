@@ -1,12 +1,14 @@
 """Owner-bound Client facade."""
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 
 from tether.sessions import content
+from tether.sessions.metadata import MetadataCommands
 from tether.sessions.service import SessionService
-from tether.types import AttachmentRef
-from tether.types.client import Change, TurnHandle
+from tether.types import AttachmentRef, JsonValue
+from tether.types.client import UNSET, Change, TurnHandle, Unset
 from tether.types.execution import Actor, Answer, PendingConfirmation
+from tether.types.storage import SessionInit, SessionPatch, SessionSummary
 
 from .reads import ClientReads
 
@@ -15,6 +17,7 @@ class Client(ClientReads):
     def __init__(self, service: SessionService, actor: Actor) -> None:
         super().__init__(service.access, actor)
         self._service = service
+        self._metadata = MetadataCommands(service.access)
 
     async def pending(self, session_id: str) -> PendingConfirmation | None:
         return await self._access.metadata(
@@ -53,3 +56,38 @@ class Client(ClientReads):
         answer: Answer,
     ) -> TurnHandle | None:
         return await self._service.turns.confirm(self._actor, session_id, invocation_id, answer)
+
+    async def create(
+        self,
+        *,
+        ref: str | None = None,
+        spec: str | None = None,
+        title: str | None = None,
+        tags: Sequence[str] = (),
+        settings: Mapping[str, JsonValue] | None = None,
+    ) -> SessionSummary:
+        return await self._metadata.create(
+            self._actor,
+            SessionInit(
+                ref=ref, spec=spec, title=title, tags=tuple(tags), settings=dict(settings or {})
+            ),
+        )
+
+    async def update(
+        self,
+        session_id: str,
+        *,
+        title: str | Unset | None = UNSET,
+        tags: Sequence[str] | None = None,
+        settings: Mapping[str, JsonValue] | None = None,
+    ) -> SessionSummary:
+        changes: dict[str, JsonValue] = {}
+        if not isinstance(title, Unset):
+            changes["title"] = title
+        if tags is not None:
+            changes["tags"] = list(tags)
+        if settings is not None:
+            changes["settings"] = dict(settings)
+        return await self._metadata.update(
+            self._actor, session_id, SessionPatch.model_validate(changes)
+        )
