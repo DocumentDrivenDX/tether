@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 
-from tether.types import Message, TokenUsage
+from tether.types import AttemptIdentity, Message, TokenUsage
 from tether.types.canonical import digest
 from tether.types.execution import (
     AgentSpec,
@@ -129,22 +129,47 @@ def requested_turn(entries: Sequence[Entry], invocation_id: str) -> str | None:
     return requested
 
 
-def restored_usage(entries: Sequence[Entry], turn_id: str) -> UsageSoFar:
-    calls = [e for e in entries if e.kind == "model_call" and e.turn_id == turn_id]
+def restored_usage(entries: Sequence[Entry], turn_id: str | frozenset[str]) -> UsageSoFar:
+    ids = frozenset({turn_id}) if isinstance(turn_id, str) else turn_id
+    calls = [e for e in entries if e.kind == "model_call" and e.turn_id in ids]
+    prepared = _prepared_ids(entries, ids)
+    main = {_model_id(e) for e in calls if e.facts.get("purpose", "answer") == "answer"}
+    steps = len(main | prepared)
     usages = [
         TokenUsage.model_validate(e.facts["usage"])
         for e in calls
         if e.facts.get("usage") is not None
     ]
-    complete = len(usages) == len(calls) and all(_single_attempt(e) for e in calls)
+    complete = (
+        len(usages) == len(calls) and all(_single_attempt(e) for e in calls) and prepared <= main
+    )
     return UsageSoFar(
-        steps=sum(e.facts.get("purpose", "answer") == "answer" for e in calls),
-        model_calls=sum(e.facts.get("purpose", "answer") != "summary" for e in calls),
+        steps=steps,
+        model_calls=steps
+        + sum(e.facts.get("purpose", "answer") not in {"answer", "summary"} for e in calls),
         summary_calls=sum(e.facts.get("purpose") == "summary" for e in calls),
         input_tokens=sum(u.input_tokens for u in usages),
         output_tokens=sum(u.output_tokens for u in usages),
         usage_complete=complete,
     )
+
+
+def _prepared_ids(entries: Sequence[Entry], ids: frozenset[str]) -> set[str]:
+    attempts = [
+        AttemptIdentity.model_validate(e.facts.get("identity"))
+        for e in entries
+        if e.kind == "model_attempt" and e.turn_id in ids
+    ]
+    return {a.model_call_id for a in attempts if a.purpose == "answer"}
+
+
+def _model_id(entry: Entry) -> str:
+    value = entry.facts.get("model_call_id")
+    if value is None:
+        return "entry:" + str(entry.index)
+    if not isinstance(value, str):
+        raise ExecutionDenied("model_call_integrity")
+    return value
 
 
 def _single_attempt(entry: Entry) -> bool:

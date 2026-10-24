@@ -88,3 +88,9 @@ Direct Python tools/application objects remain an embedding requirement. The app
 ## Concern Impact
 
 The hexagonal-architecture concern permits the selected internal runtime integration to depend on pydantic-ai-slim; public payloads and external I/O ports remain Tether-owned. Record this explicit interpretation/override in concerns.md. ADR-012 keeps foundation-model SDKs optional and isolated. Async-only Tether APIs, trusted-extension limits and no environment reads remain in force. Agent selection is accepted; provider/store/profile support claims remain separately qualified.
+
+
+Contract version 3 adds a concrete storage-scoped actual-worker lifetime shared by leased logs,
+stores and file roots. Replacement Engines and pending-inspection workers participate in the same
+ownership boundary; cancellation cannot authorize another effect or release the root early.
+Provider hook signatures remain compatible with versions 1 and 2. Agent remains the only iterator.

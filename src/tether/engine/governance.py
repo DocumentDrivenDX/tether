@@ -67,9 +67,16 @@ class Governance:
             }
         )
 
-    async def fact(self, kind: str, *, key: str | None = None, **facts: object) -> None:
+    async def fact(
+        self,
+        kind: str,
+        *,
+        key: str | None = None,
+        source_turn_id: str | None = None,
+        **facts: object,
+    ) -> None:
         entry = NewEntry.model_validate(
-            {"kind": kind, "turn_id": self.turn_id, "key": key, "facts": facts}
+            {"kind": kind, "turn_id": source_turn_id or self.turn_id, "key": key, "facts": facts}
         )
         await self.commit([entry])
 
@@ -140,6 +147,11 @@ class Governance:
         await self.commit([entry])
         if not entry.facts["allowed"]:
             raise ExecutionDenied(str(entry.facts["reason"]))
+
+    async def messages(self) -> tuple[Message, ...]:
+        return tuple(
+            [await self.read(e.history_ref) for e in self.log.entries if e.kind == "message"]
+        )
 
     async def read(self, ref: object) -> Message:
         from tether.types.execution import HistoryRef

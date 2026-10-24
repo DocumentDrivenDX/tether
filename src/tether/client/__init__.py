@@ -113,3 +113,6 @@ class Client(ClientReads):
             session_id,
             Resolution(invocation_id=invocation_id, outcome=outcome, reason=reason),
         )
+
+    async def resume(self, session_id: str) -> TurnHandle:
+        return await self._service.turns.resume(self._actor, session_id)

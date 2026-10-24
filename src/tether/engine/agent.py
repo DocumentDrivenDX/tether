@@ -40,13 +40,16 @@ from tether.types.execution import (
     copy_actor,
 )
 from tether.types.history import HistoryProvider
+from tether.types.lifetime import WorkerLifetime
 from tether.types.tooling import tool_spec
 
+from . import resuming
 from .closing import close_session
 from .confirmations import approval_entries
 from .governance import AllowAll, Governance, utc_now
 from .inspection import describe_pending
 from .reconstruction import pinned_spec, requested_turn, restore_pending, restored_usage
+from .recovery import resume_chain
 from .resolution import resolve
 from .run import Run
 from .starts import accept_input
@@ -104,6 +107,7 @@ class Engine:
             raise ExecutionDenied("engine_closed")
         if actor.id != log.session.owner:
             raise ExecutionDenied("denied")
+        self.workers.scopes[log.session.id] = log.workers
         if log.session.id in self._running or self.workers.busy(log.session.id):
             raise WorkerOutstanding("worker_outstanding")
         self._running.add(log.session.id)
@@ -232,6 +236,9 @@ class Engine:
         return await self._restore(actor, log, invocation_id)
 
     async def _restore(self, actor: Actor, log: TurnLog, invocation_id: str) -> Run | None:
+        self.workers.scopes[log.session.id] = log.workers
+        if self.workers.busy(log.session.id):
+            raise WorkerOutstanding("worker_outstanding")
         source_turn = requested_turn(log.entries, invocation_id)
         if source_turn is None:
             return None
@@ -240,7 +247,9 @@ class Engine:
             actor, log, self.history, self.policy, source_turn, self.limits, self.clock
         )
         run = self._create(gov, spec)
-        gov.usage = restored_usage(log.entries, source_turn)
+        chain = frozenset(resume_chain(log.entries, source_turn))
+        gov.usage = restored_usage(log.entries, chain)
+        run.result_turn_ids = chain
         run.steps = gov.usage.steps
         if not await restore_pending(run, invocation_id):
             return None
@@ -248,7 +257,14 @@ class Engine:
         return run
 
     async def inspect_pending(
-        self, actor: Actor, session: SessionState, source: Entry, request: Entry, proposal: Message
+        self,
+        actor: Actor,
+        session: SessionState,
+        source: Entry,
+        request: Entry,
+        proposal: Message,
+        *,
+        lifetime: WorkerLifetime,
     ) -> PendingConfirmation:
         self._bind_loop()
         try:
@@ -264,6 +280,7 @@ class Engine:
             raise ExecutionDenied("policy_denied") from None
         if not decision.allowed or actor.id != session.owner:
             raise ExecutionDenied("policy_denied")
+        self.workers.scopes[session.id] = lifetime
         return await describe_pending(
             actor,
             session,
@@ -275,6 +292,42 @@ class Engine:
             self.workers,
             self.limits,
         )
+
+    async def resume(
+        self,
+        actor: Actor,
+        log: TurnLog,
+        *,
+        accepted: Callable[[], None] | None = None,
+    ) -> TurnResult:
+        self._enter(actor, log)
+        try:
+            gov = Governance(
+                copy_actor(actor),
+                log,
+                self.history,
+                self.policy,
+                log.turn_id or str(uuid4()),
+                self.limits,
+                self.clock,
+            )
+            await resuming.decisions(gov)
+            plan = await resuming.planned(gov, self.registry, self.workers)
+            spec = pinned_spec(log.entries, self._specs)
+            await resuming.accept(gov, plan, spec, self.registry, self.workers)
+            self._runs.pop(log.session.id, None)
+            if accepted is not None:
+                accepted()
+            run = self._create(gov, spec)
+            await resuming.restore(run, plan)
+            self._runs[log.session.id] = run
+            return await run.finish(
+                continuing=bool(run.deferred_ids), recovered_final=not plan.steps
+            )
+        finally:
+            self._running.discard(log.session.id)
+            if not self._running:
+                self._idle.set()
 
     async def close_session(self, actor: Actor, log: TurnLog) -> None:
         self._enter(actor, log)

@@ -18,8 +18,9 @@ from tether.types import (
     PositiveSeconds,
     ToolCall,
 )
+from tether.types.lifetime import WorkerLifetime
 
-ENGINE_CONTRACT_VERSION = 2
+ENGINE_CONTRACT_VERSION = 3
 
 HistoryStatus = Literal[
     "ready",
@@ -140,6 +141,7 @@ class ExecutionLimits(Payload):
     max_workers: PositiveInt = 8
     shutdown_timeout_seconds: PositiveSeconds = 1
     approval_ttl_seconds: PositiveSeconds | None = None
+    max_resumes: PositiveInt = 3
 
 
 class ApprovalBinding(Payload):
@@ -253,6 +255,9 @@ class TurnLog(Protocol):
     def turn_id(self) -> str | None: ...
 
     @property
+    def workers(self) -> WorkerLifetime: ...
+
+    @property
     def session(self) -> SessionState: ...
 
     @property
@@ -340,6 +345,10 @@ class Resolution(Payload):
 
 
 class NotInterrupted(ExecutionDenied):
+    pass
+
+
+class ResumeLimit(ExecutionDenied):
     pass
 
 

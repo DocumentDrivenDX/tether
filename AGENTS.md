@@ -109,8 +109,15 @@ Volatile MemoryHistory refs carry and verify owner/session/message scope.
 Pure plan_resume uses scoped dense journal facts and immutable digest/replay declarations;
 no schema hook, content hydration or dispatch runs inside the planner. Session identity comes
 from the leased log. Canceled/superseded ancestry and malformed source identity refuse planning.
-Resume commands, provisional stream production,
-full safe-invocation recovery, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
+Explicit Client/Engine resume now uses public Agent deferred results, current READ_SESSION/RESUME,
+scoped original sources, bounded resume ancestry, same-intent safe retries and cumulative model budgets.
+Pending approvals move to the accepted phase without approval; changed bindings close invalid.
+Invocation intents/results retain original proposal attribution; recovery attempts use the new phase.
+TurnLog, SessionStore and JournalFiles share a concrete WorkerLifetime per storage namespace.
+All sync offloads, including pending inspection/reconstruction, retain executor futures until actual
+exit; lease acquisition refuses outstanding workers across Engine replacement. Shutdown seals new
+submissions and keeps root ownership until physical completion. Independent roots do not couple.
+Provisional stream production, broader process/storage fault qualification, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.
 The new-input seam adopts the lease turn id, prepares content before atomic supersession/start/

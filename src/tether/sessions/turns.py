@@ -18,11 +18,12 @@ from tether.types.execution import (
     AgentSpec,
     Answer,
     ExecutionDenied,
+    NotInterrupted,
     TurnResult,
     TurnStart,
     copy_actor,
 )
-from tether.types.storage import SessionClosed, TurnInProgress, UnknownSession
+from tether.types.storage import SessionClosed, TurnInProgress, UnknownSession, Unsupported
 
 from .access import SessionAccess
 from .outcomes import read_outcome
@@ -205,6 +206,46 @@ class OwnedTurns:
         if not accepted:
             return None
         return Handle(self, actor, session_id, job.start.turn_id, job.task)
+
+    async def resume(self, actor: Actor, session_id: str) -> TurnHandle:
+        self.access.check()
+        actor = copy_actor(actor)
+        capabilities = self.access.store.capabilities
+        if capabilities.durability == "none" or not capabilities.fencing:
+            raise Unsupported("unsupported_store")
+        view = await self.access.metadata(
+            actor, session_id, lambda: self.access.store.get(session_id, actor.id)
+        )
+        if view is None:
+            raise UnknownSession("unknown_session")
+        if view.summary.status == "closed":
+            raise SessionClosed("session_closed")
+        if session_id in self.jobs or view.summary.status == "running":
+            raise TurnInProgress("turn_in_progress")
+        if not view.summary.resumable or view.summary.status != "interrupted":
+            raise NotInterrupted("not_interrupted")
+        job = self._launch(
+            session_id,
+            TurnStart(turn_id=str(uuid4())),
+            "resume",
+            lambda job: self._resume(actor, session_id, job),
+        )
+        return await self._accepted(actor, session_id, job)
+
+    async def _resume(self, actor: Actor, session_id: str, job: Job) -> TurnResult:
+        try:
+            async with self.access.store.turn(
+                session_id, actor.id, turn_id=job.start.turn_id
+            ) as log:
+                return await supervise(
+                    self.engine.resume(actor, log, accepted=job.accept),
+                    log,
+                    self.access.limits.heartbeat_interval_seconds,
+                )
+        except BaseException as error:
+            if not job.ready.done():
+                job.ready.set_exception(error)
+            raise
 
     async def _pending_turn(self, actor: Actor, session_id: str, invocation_id: str) -> str | None:
         async with asyncio.timeout(self.access.limits.read_timeout_seconds):

@@ -11,7 +11,15 @@ from uuid import uuid4
 
 from tether.stores.projections import SessionIndex, create_index
 from tether.types.canonical import canonical
-from tether.types.execution import Clock, CommitUnknown, Entry, NewEntry, SessionState
+from tether.types.execution import (
+    Clock,
+    CommitUnknown,
+    Entry,
+    NewEntry,
+    SessionState,
+    WorkerOutstanding,
+)
+from tether.types.lifetime import WorkerLifetime
 from tether.types.storage import (
     IntegrityError,
     JournalEvent,
@@ -43,6 +51,10 @@ class JsonlSessionStore(SessionReads):
         )
         self.leases = Leases(clock, files.limits.lease_seconds)
         self._index_bytes = 0
+
+    @property
+    def workers(self) -> WorkerLifetime:
+        return self.files.workers
 
     async def aclose(self) -> bool:
         self._check_loop()
@@ -240,6 +252,8 @@ class JsonlSessionStore(SessionReads):
             data = self.owned(session_id, owner)
             if data.summary.status == "closed":
                 raise SessionClosed("session_closed")
+            if self.files.workers.busy(session_id):
+                raise WorkerOutstanding("worker_outstanding")
             await self._recover_one(session_id, self.clock())
             lease = self.leases.next(session_id, turn_id)
             await self._commit(
@@ -359,6 +373,10 @@ class TurnHandle:
     ) -> None:
         self.store, self.session_id, self.owner = store, session_id, owner
         self.generation, self.turn_id = generation, turn_id
+
+    @property
+    def workers(self) -> WorkerLifetime:
+        return self.store.files.workers
 
     @property
     def session(self) -> SessionState:

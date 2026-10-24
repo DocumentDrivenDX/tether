@@ -38,13 +38,14 @@ class GatedAgent:
         accept_response: Callable[[ModelResponse], Awaitable[None]],
         execute: Callable[[ToolCall], Awaitable[Message | None]],
         deferred_ids: frozenset[str] = frozenset(),
+        recovery_tools: tuple[ToolSpec, ...] = (),
     ) -> None:
         self._execute = execute
         self._bridge = PortModel(model, request, limits, prepare, accept_response)
         self._agent: Agent[None, str | DeferredToolRequests] = Agent(
             deps_type=type(None),
             model=self._bridge,
-            tools=[self._tool(t) for t in request.tools],
+            tools=[self._tool(t) for t in (*request.tools, *recovery_tools)],
             output_type=[str, DeferredToolRequests],
             retries=0,
         )

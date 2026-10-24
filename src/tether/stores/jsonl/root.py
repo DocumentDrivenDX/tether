@@ -12,6 +12,7 @@ from typing import Literal, TypeVar, cast
 
 from tether.types import JsonValue
 from tether.types.execution import CommitUnknown
+from tether.types.lifetime import WorkerLifetime
 from tether.types.storage import (
     FileHead,
     FileRecord,
@@ -41,6 +42,7 @@ class JsonlRoot:
         self._claimed: set[FileName] = set()
         self._lock_fd: int | None = None
         self._closed, self._poisoned = False, False
+        self.workers = WorkerLifetime(self._maybe_close)
 
     @classmethod
     async def open(cls, path: str | Path, *, limits: StorageLimits | None = None) -> JsonlRoot:
@@ -95,7 +97,10 @@ class JsonlRoot:
         self._active.discard(future)
         if not future.cancelled() and isinstance(future.exception(), IntegrityError):
             self._poisoned = True
-        if self._closed and not self._active:
+        self._maybe_close()
+
+    def _maybe_close(self) -> None:
+        if self._closed and not self._active and not self.workers.active:
             self._finalize_close()
 
     def _path(self, name: FileName) -> Path:
@@ -169,10 +174,10 @@ class JsonlRoot:
     async def aclose(self) -> bool:
         self._check_loop()
         self._closed = True
-        if self._active:
-            _, pending = await asyncio.wait(
-                tuple(self._active), timeout=self.limits.shutdown_seconds
-            )
+        self.workers.closed = True
+        outstanding = (*self._active, *self.workers.active)
+        if outstanding:
+            _, pending = await asyncio.wait(outstanding, timeout=self.limits.shutdown_seconds)
             if pending:
                 return False
         self._finalize_close()

@@ -11,8 +11,9 @@ from pydantic import Field, JsonValue
 
 from tether.types import Payload, PositiveInt, PositiveSeconds, TokenUsage
 from tether.types.execution import Entry, PendingConfirmation, SessionState, TurnLog
+from tether.types.lifetime import WorkerLifetime
 
-SESSION_CONTRACT_VERSION = 2
+SESSION_CONTRACT_VERSION = 3
 
 
 class StoreError(Exception):
@@ -202,6 +203,8 @@ class FileRecord(Payload):
 
 
 class JournalFiles(Protocol):
+    workers: WorkerLifetime
+
     @property
     def durability(self) -> Literal["none", "process", "os"]: ...
 
@@ -226,7 +229,12 @@ class SessionTurnLog(TurnLog, Protocol):
     async def heartbeat(self) -> None: ...
 
 
-class SessionStore(Protocol):
+class WorkerOwner(Protocol):
+    @property
+    def workers(self) -> WorkerLifetime: ...
+
+
+class SessionStore(WorkerOwner, Protocol):
     capabilities: StoreCapabilities
 
     async def aclose(self) -> bool: ...

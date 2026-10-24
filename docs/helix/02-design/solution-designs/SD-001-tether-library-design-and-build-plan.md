@@ -364,9 +364,15 @@ started-unsafe, finished and resolved invocations using explicit owning session 
 immutable tool digest/replay snapshots. It validates dense positions, source scope and interrupted
 ancestry, refuses cancellation/supersession crossings, and never hydrates or dispatches. A matching
 accepted final-answer source can avoid another model step, subject to executor source verification.
-This is planner evidence only. Client/Engine resume acceptance, chain-limit enforcement, safe
-same-intent dispatch, pending-approval rebinding, budget reconstruction and actual Agent restart
-journeys remain required before claiming runtime resume or completing slices 4/9. Consumer recovery
+Client/Engine resume now accepts a durable fenced interrupted session after current read/resume
+policy and source verification, then uses Agent's public deferred-result continuation. Safe retries
+retain original invocation/intent identity and reenter every gate; unsafe starts close unknown.
+Pending approval rebinding grants no approval; changed bindings close invalid. Step and resume-chain
+budgets include prior phases and prepared unaccepted model attempts. Invocation group evidence keeps
+its original proposal turn; retry-attempt facts belong to the recovery phase. Actual executor futures
+share root/session ownership across Engines and pending inspection; root shutdown retains the lock
+until actual exit. Local prefix/reopen journeys qualify this subset. Full recovery/property faults,
+Client archive composition and remaining command races still precede completing slices 4/9. Consumer recovery
 entry seams were inspected; no tested standalone planner was available to port.
 
 ### Consumer boundary review and implementation plan

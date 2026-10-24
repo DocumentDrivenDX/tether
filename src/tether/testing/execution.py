@@ -8,12 +8,14 @@ from datetime import UTC, datetime
 from tether.types import Message
 from tether.types.canonical import digest
 from tether.types.execution import Actor, Entry, EntryConflict, HistoryRef, NewEntry, SessionState
+from tether.types.lifetime import WorkerLifetime
 
 
 class MemoryTurnLog:
     durability = "none"
 
     def __init__(self, session: SessionState, *, turn_id: str | None = None) -> None:
+        self.workers = WorkerLifetime()
         self.turn_id = turn_id
         self.session = session
         self._entries: list[Entry] = []

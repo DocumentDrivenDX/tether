@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
+from contextvars import copy_context
 from threading import Event
 from typing import TypeVar, cast
 
 from tether.types.execution import ExecutionDenied
+from tether.types.lifetime import WorkerLifetime
 
 T = TypeVar("T")
 
@@ -17,15 +19,20 @@ class Workers:
     def __init__(self, capacity: int) -> None:
         self.capacity = capacity
         self.closed = False
-        self.active: dict[asyncio.Task[object], str] = {}
+        self.scopes: dict[str, WorkerLifetime] = {}
+        self.local_scope = WorkerLifetime()
+        self.active: dict[asyncio.Future[object], str] = {}
 
     def busy(self, session_id: str) -> bool:
-        return session_id in self.active.values()
+        scope = self.scopes.get(session_id)
+        return session_id in self.active.values() or (scope is not None and scope.busy(session_id))
 
     async def call(
         self, session_id: str, function: Callable[..., T | Awaitable[T]], *args: object
     ) -> T:
-        if self.closed:
+        scope = self.scopes.get(session_id, self.local_scope)
+        scope.check_loop()
+        if self.closed or scope.closed:
             raise ExecutionDenied("engine_closed")
         if inspect.iscoroutinefunction(function):
             return await cast(Awaitable[T], function(*args))
@@ -38,7 +45,11 @@ class Workers:
                 raise ExecutionDenied("worker_cancelled")
             return function(*args)
 
-        task = asyncio.create_task(asyncio.to_thread(invoke))
+        task = cast(
+            asyncio.Future[object],
+            asyncio.get_running_loop().run_in_executor(None, copy_context().run, invoke),
+        )
+        scope.retain(session_id, task)
         self.active[task] = session_id
         task.add_done_callback(self._finished)
         try:
@@ -50,7 +61,7 @@ class Workers:
             return cast(T, await value)
         return cast(T, value)
 
-    def _finished(self, task: asyncio.Task[object]) -> None:
+    def _finished(self, task: asyncio.Future[object]) -> None:
         self.active.pop(task, None)
         if not task.cancelled():
             task.exception()  # Observe a late failure without exposing content.

@@ -383,7 +383,7 @@ The package ships `tether.testing.conformance`, as asynchronous tests run with t
 
 The initial v1 is revised before release, including CONTRACT-004 and `RESOLVE_EFFECT`; no compatibility layer is required.
 
-- Versioning: one integer, `ENGINE_CONTRACT_VERSION=2`. Version 2 adds explicit model principal and the enforced READ_CALL_PAYLOAD action. Existing version-1 providers retain the identical hook surface and are supported; policies must handle the new action or fail closed. A provider declares the version it was written for in `Provider.contract`; the registry refuses a provider above the engine's and accepts a lower one the engine still supports. `AgentSpec.schema_version` versions a specification separately.
+- Versioning: one integer, `ENGINE_CONTRACT_VERSION=3`. Version 3 requires storage-scoped `TurnLog.workers: WorkerLifetime` and an explicit shared lifetime for pending inspection. Version 1/2 provider hooks remain supported unchanged. Version 2 adds explicit model principal and the enforced READ_CALL_PAYLOAD action. Existing version-1 providers retain the identical hook surface and are supported; policies must handle the new action or fail closed. A provider declares the version it was written for in `Provider.contract`; the registry refuses a provider above the engine's and accepts a lower one the engine still supports. `AgentSpec.schema_version` versions a specification separately.
 - Ordering or precedence: the gate sequence of section 8 is normative and overrides any provider's expectation.
 - Backward-compatibility rules: adding an optional method with a default to `Provider`, a new action string the engine does not itself raise, or a new optional field is compatible. Changing a signature, adding a reason the engine reads, reordering the sequence, or tightening a rule is a new version. There is no synchronous form, so asynchrony is not a compatibility axis.
 - Deprecation rules: a removed item is announced one version ahead and kept, with a warning, for that version.
@@ -457,3 +457,11 @@ than selecting a version heuristically. Agent remains the sole model/tool iterat
 New input adopts that id by default and refuses a different supplied id. The acceptance signal
 runs immediately after known input commit, before fallible SDK/run setup. A later setup failure
 is therefore an accepted-turn failure. Specs and supplied start values are copied before await.
+
+
+The concrete `tether.types.lifetime.WorkerLifetime` is process-local ownership, never persisted
+execution evidence. Every leased log for the same storage namespace MUST expose the same handle;
+independent namespaces MUST NOT share handles solely because session ids match. Sync execution and
+validation retain actual executor futures through physical completion. Loop/open checks precede
+submission. Invocation intent/result/message entries use their original proposal turn id, including
+first dispatch or safe replay during recovery; recovery-attempt facts use the accepting phase id.

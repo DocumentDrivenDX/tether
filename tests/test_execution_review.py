@@ -375,12 +375,15 @@ async def test_cancelled_queued_worker_never_calls_function(monkeypatch):
     entered, release = asyncio.Event(), asyncio.Event()
     calls = []
 
-    async def queued(function):
-        entered.set()
-        await release.wait()
-        return function()
+    def queued(executor, function, *args):
+        async def dispatch():
+            entered.set()
+            await release.wait()
+            return function(*args)
 
-    monkeypatch.setattr(asyncio, "to_thread", queued)
+        return asyncio.create_task(dispatch())
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "run_in_executor", queued)
     workers = Workers(1)
     waiting = asyncio.create_task(workers.call("session", lambda: calls.append(True)))
     await asyncio.wait_for(entered.wait(), 2)

@@ -17,6 +17,7 @@ from tether.types import (
     ModelResponse,
     ModelUnavailable,
     RequestTags,
+    ToolSpec,
 )
 from tether.types.execution import (
     ExecutionDenied,
@@ -46,20 +47,16 @@ class Run:
         self.model, self.limits = model, limits
         self.runner: GatedAgent | None = None
         self.steps = 0
+        self.result_turn_ids = frozenset({gov.turn_id})
         self.attempt_factory = attempt_factory
         self.history_provider = history_provider
         self.recorder: AttemptRecorder | None = None
         self.current_call: str | None = None
         self.deferred_ids: frozenset[str] = frozenset()
+        self.recovery_tools: tuple[ToolSpec, ...] = ()
 
     async def messages(self) -> tuple[Message, ...]:
-        return tuple(
-            [
-                await self.gov.read(e.history_ref)
-                for e in self.gov.log.entries
-                if e.kind == "message"
-            ]
-        )
+        return await self.gov.messages()
 
     async def prepare(self, request: ModelRequest) -> ModelRequest:
         if self.executor.workers.closed:
@@ -72,6 +69,10 @@ class Run:
             or request.system != self.executor.spec.instructions
         ):
             raise ExecutionDenied("derived_history_changed")
+        visible = {t.name for t in self.template.tools}
+        request = request.model_copy(
+            update={"tools": tuple(t for t in request.tools if t.name in visible)}
+        )
         request = await narrow_request(
             self.gov,
             self.executor.workers,
@@ -166,11 +167,13 @@ class Run:
             }
         )
 
-    async def finish(self, continuing: bool = False) -> TurnResult:
+    async def finish(
+        self, continuing: bool = False, *, recovered_final: bool = False
+    ) -> TurnResult:
         visible: tuple[Message, ...] = ()
         try:
             await self.gov.authorize("read_session", self.gov.log.session.id)
-            if self.runner is None:
+            if self.runner is None and not recovered_final:
                 request = self.template.model_copy(update={"messages": await self.messages()})
                 self.runner = GatedAgent(
                     self.model,
@@ -180,13 +183,14 @@ class Run:
                     accept_response=self.accept,
                     execute=self.executor.execute,
                     deferred_ids=self.deferred_ids,
+                    recovery_tools=self.recovery_tools,
                 )
-            waiting = await self.runner.run(continuing=continuing)
+            waiting = False if recovered_final else await self._run(continuing)
             visible = tuple(
                 [
                     await self.gov.read(e.history_ref)
                     for e in self.gov.log.entries
-                    if e.kind == "message" and e.turn_id == self.gov.turn_id
+                    if e.kind == "message" and e.turn_id in self.result_turn_ids
                 ]
             )
             stop, reason = ("confirmation_required" if waiting else "final"), None
@@ -215,3 +219,8 @@ class Run:
             pending=tuple(self.executor.pending.values()) if visible else (),
             messages=visible,
         )
+
+    async def _run(self, continuing: bool) -> bool:
+        if self.runner is None:
+            raise ExecutionDenied("missing_runner")
+        return await self.runner.run(continuing=continuing)

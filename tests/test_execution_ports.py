@@ -96,6 +96,8 @@ def test_registry_refuses_conflicts_and_invalid_definitions():
     provider.contract = 2
     assert Registry((), (provider,)).providers == (provider,)
     provider.contract = 3
+    assert Registry((), (provider,)).providers == (provider,)
+    provider.contract = 4
     with pytest.raises(ValueError, match="provider_conflict"):
         Registry((), (provider,))
     tool = DemoTool()
