@@ -4,7 +4,7 @@
   "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
   "authority": "Explicit owner instruction in integration-lead session; includes source control, merge and Tether-session coordination.",
   "status": "active",
-  "branch": "codex/tether-client-resolve",
+  "branch": "codex/tether-agent-resume",
   "baseline_commit": "d680c4d",
   "completed_slices": [
     0,
@@ -52,14 +52,14 @@
     "mcp_disposition": "MCP is P2 and outside selected 0.1 slices. Consumer adoption/MCP Apps require separate qualification; do not silently promote advisory scope.",
     "inventory": "Recent app inventory reconfirmed the integration-lead and read-only MCP/durability chats; both have role-specific titles."
   },
-  "next_action": "Merge reviewed/tested manual resolution, then implement explicit Agent resume, archive composition and remaining lifecycle qualification; continue all remaining selected slices.",
+  "next_action": "Implement task-owned Engine/Client.resume using the qualified pure planner and public Agent deferred continuation. Enforce resume-chain limits, same-intent safe dispatch, original argument/spec/approval gates, pending-phase rebinding and cumulative budgets; qualify restart/prefix/actual-worker races. Then finish archive composition and all remaining selected slices.",
   "qualification_limits": [
     "Only local POSIX single-writer JSONL is implemented; Postgres cross-process profile is slice 5.",
     "No OS power-cut guarantee is inferred from process-exit tests.",
     "Full started-invocation replay, complete actual-worker/lease-loss and recovery profile qualification remain slice9. Manual resolution is now implemented in the selected local Client subset.",
     "Live Gateway/profile credentials and real server correspondence are not supplied or qualified."
   ],
-  "source_control": "PRs1\u20139 merged promptly after review/testing; manual resolution is the next independently reviewed/tested checkpoint. No open PR stack.",
+  "source_control": "PRs1\u201310 merged promptly after review/testing; pure recovery planning is the next reviewed/tested prerequisite. No open PR stack.",
   "metering": "Active goal has no user-specified token/time ceiling; runtime metering is available via get_goal; no invented total-budget claim.",
   "boundary_review": {
     "status": "Sub-agent review complete; sanitized plan recorded and omissions corrected.",
@@ -106,7 +106,7 @@
       "src/tether/adapters/pydantic_ai/wire.py": "9c52f9ed19254f9401cb66044bed577aa25f8393710ff7347ab4122ab81b4e68",
       "src/tether/client/__init__.py": "781f5054326fe2e4de7f1cb7a06d339a68fc7cbf64b8d10e56ed124ddd30a160",
       "src/tether/client/reads.py": "ce9c9eab896b34c94c8c8185d7cdafdee8f24685ba12c9c0beb7ce2dc4a770d3",
-      "src/tether/engine/__init__.py": "1183b25c405d18ddd5000e54431da6c561552093767396994431aaa46c156837",
+      "src/tether/engine/__init__.py": "89352a00677b2cb9c374d9c09a2fa7345d5019d7878c225a40311cc9c16e4592",
       "src/tether/engine/agent.py": "047d1275286bb45a2d68f8199bbb7bed09ce9fcaf02da9e6186e9ae36d3b38b2",
       "src/tether/engine/attempts.py": "54ed20be771f60fe32af288af0e8812b2b7d55f026b6f44649a43068b8e99f07",
       "src/tether/engine/closing.py": "01b245af219cc2062f5cb6fa9a956689173c52d926a460317cabf7e071679805",
@@ -116,6 +116,7 @@
       "src/tether/engine/inspection.py": "2d17153c21c594c542f595bbc67d01af322fddf3239ce97ab1627ae454dcbac2",
       "src/tether/engine/providers.py": "90634017ec07c522af922b403c45562ecc5402f6e6c240924a8bd9e138003dab",
       "src/tether/engine/reconstruction.py": "109ab2d7031f0db9d42c814717763a8cfdb1fc1375b3543c5cf9f916edc7044f",
+      "src/tether/engine/recovery.py": "f8180e1ff688f12f93bd7e5db5e0d18a035911c4a887b6ab5c67787d8cabef62",
       "src/tether/engine/resolution.py": "08c85eb1b72e99a6a227472140d34119f3dd897c9f572b2b76ba9fa645fef581",
       "src/tether/engine/results.py": "e09d02bee7bb2a6c12909e468702e7a35b5d128e252eba602912a5afa449d9f2",
       "src/tether/engine/run.py": "d841b3cf7469d9c89f8634527381fafc7379e362279a4a8e84e1e82852c3f450",
@@ -167,7 +168,7 @@
       "src/tether/types/__init__.py": "56cbb9baa19db76bf8831a79fd7fea68d7cdc558bfae1f92ddfc18de4ad57c4a",
       "src/tether/types/canonical.py": "7d03b335504d256004c999bb9e85a1e3fb844727922031f249de63072e16dce2",
       "src/tether/types/client.py": "4f4b02724fbfc48d666c16aa82e09789e232bd803320d53820db1135b123b4d2",
-      "src/tether/types/execution.py": "17f1bb6f29a0ab748fc3bd02b81983fdf89208066b82ebd6d5db283dad1e358a",
+      "src/tether/types/execution.py": "565bd9b7ad82a789e5f4b3b01a9bf9538fabc4531ac62ebc7828a956b51abd76",
       "src/tether/types/history.py": "486eb935a8742eca3a78202806e6cdbf955e29f3c3e7a780e39ba9e1bbcd6209",
       "src/tether/types/storage.py": "f086e7873e12c61d3d791d4554f7d9f7a51b0d5485f1fa00d5953af54c433ea7",
       "src/tether/types/tooling.py": "43e1d6d00a588ed33388f72e44b36d1a74df90063d7242f17f88579a4e976735",
@@ -215,6 +216,7 @@
       "tests/test_layers.py": "2c8762507d2f345bf012b34662421fbce43d8b8a953664a7c04c0ea6e0da8c2d",
       "tests/test_model_port.py": "db83e2d582b26f7cbf008540a11be5b401b922bdd4db67568fe9c41afb98ed98",
       "tests/test_restart_agent.py": "703a7e7e958148e6f62ee262c0aab2558b795a37fa4e5f8e22bbcc37d8f8bb52",
+      "tests/test_resume_planner.py": "63c864ad75eb056160191c0f33f04228a23b039b0fa01ca48905e801450e061e",
       "tests/test_sdk_instrumentation_boundary.py": "256c383a1ccab7c4cf295c4778bf3f07dd805a4b154250c889851305288a296d",
       "tests/test_session_reads.py": "99ba76d62a27ce37fa95a572682b945b274c23a82ae049a8aae24d1e2d712651",
       "tests/test_storage_faults.py": "e214b4ee63af08809cddb8d23dec934eaca61beb259677c87c27552d96eb51c5",
@@ -368,13 +370,35 @@
       "review": "Independent review reproduced malformed partial-message resolution clearing a barrier around a source-less message; fixed with valid and malformed partial-group regressions. Re-review found a volatile dummy scope gap; dummy fixed and a normal Harness resolution plus forged-profile cases pass. Final bounded read-only re-review found no residual defect. No independent full-suite execution claim.",
       "tests": "38 resolution/volatile cases plus real-worker lifecycle extended to refuse resolution until actual exit. Covers outcomes, idempotency/conflict/races/current policy/owner/known targets, orphan actual output after failed result commit, missing terminal result closure, source preparation failure/revocation and partial-group shape/scope/correlation.",
       "earlier_runs": "First full run deliberately interrupted for the reviewed dummy correction; later static attempts refused test typing/format issues before tests. Those runs are not claimed passed. Final stable complete gate above passed.",
-      "installed_artifacts": "Pass: fresh working-source wheel/sdist version0.0.0.post27.dev0+488ffc3; clean base SDK count0 and optional OpenAI extra count1. Offline installed unknown effect\u2192manual resolve\u2192idempotent retry with unchanged tool/model counts, pending-close and real root/composition reopen retry passed, alongside prior Agent/metadata/confirmation/retry journeys. Version names precommit base, not an exact488ffc3 checkout; current source hashes identify built source.",
+      "installed_artifacts": "Pass: fresh working-source wheel/sdist version0.0.0.post27.dev0+488ffc3; clean base SDK count0 and optional OpenAI extra count1. Offline installed unknown effect\u2192manual resolve\u2192idempotent retry with unchanged tool/model counts, pending-close and real root/composition reopen retry passed, alongside prior Agent/metadata/confirmation/retry journeys. Version names precommit base, not an exact488ffc3 checkout; source hashes in the PR10 committed receipt identify that built source.",
       "limits": "Explicit resume, safe replay, full archive/profile qualification and later slices remain unfinished. No read-only reconciler or alternate Agent loop is implied.",
       "installed_journey_driver_sha256": "1a6beef1ed1f0c3887d9b4a6c945e3b938d7a3144e1e0e442fdb818b796e3411",
       "installed_artifact_sha256": {
         ".gitignore": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
         "tether-0.0.0.post27.dev0+488ffc3-py3-none-any.whl": "77b4ec619319906672087309b12dea3535a6783d9a9dd4dd4464f245c7fcf71e",
         "tether-0.0.0.post27.dev0+488ffc3.tar.gz": "8565a186898a928b6c8026b35118a2c5a10cd08fcbc9274c30bf3f5194b22e33"
+      }
+    },
+    "resume_planner": {
+      "status": "Pure planner prerequisite implemented and independently reviewed; complete make check passed543 cases in17 bounded groups,92.22% branch-inclusive coverage, strict Pyright0 errors, lint/format, unchanged shape/size/layer/dependency gates and negative controls; macOS/Python3.11.17.",
+      "implemented": [
+        "Explicit owning session identity plus immutable ResumeTool digest/replay snapshots; no schema hooks, history reads or tool/model dispatch inside planning",
+        "Dense full-prefix positions, interrupted lifecycle and consecutive interrupted ancestry; cancellation/completed/waiting parents and superseding branches refuse",
+        "Source-session validation before deriving invocation ids, including not-started calls; malformed reserved execution keys refuse",
+        "Not started runs fresh through future gates, started-safe under unchanged declaration is eligible same-id rerun, started unsafe/missing/changed becomes record_interrupted, finished/resolved left alone",
+        "Only a matching accepted original final-answer source permits an empty plan; summaries/unbound terminal facts cannot finish recovery"
+      ],
+      "review": "Independent read-only review reproduced canceled-ancestor and wrong-session unstarted plans. Both fixed with exact ancestry/source regressions. Re-review found no residual defect; no independent full-suite execution claim.",
+      "tests": "36 focused cases pass, covering derived states and original positions, declaration drift, id stability across repeated SDK call ids, terminal/cancel distinctions, malformed ancestry/entry order/reserved keys, source identity and summary/final boundaries. This is pure planner evidence, not live Agent resume qualification.",
+      "contract_correction": "CONTRACT002 planner now receives explicit session_id because entries alone omit their owning identity, and immutable declaration snapshots instead of executable Tool objects. The leased engine must supply/revalidate those inputs before dispatch.",
+      "installed_artifacts": "Pass: fresh working-source wheel/sdist version0.0.0.post29.dev0+413d330; clean base SDK count0 and optional OpenAI extra count1. Installed pure planner classified actual fabricated Agent journal shapes with scoped refs and unchanged tool counts, including accepted-final no-new-model planning, alongside prior durable Agent/Client/resolve/reopen journeys. Version names precommit base, not an exact413d330 checkout; current source hashes identify built source.",
+      "earlier_driver": "An initial external installed-journey driver had an indentation error; corrected driver passed both fresh environments. No initial failed-driver pass is claimed.",
+      "limits": "Client/Engine resume, runtime chain-limit enforcement, safe intent reuse, approval-phase rebinding, cumulative budgets and actual Agent restart/prefix journeys remain unfinished. No inert max_resumes setting is exposed and no second iteration loop is implemented.",
+      "installed_journey_driver_sha256": "56c1a409c6282dbd12e8eb1212dcafd5c9000cce4a778f70279d3e610fca512b",
+      "installed_artifact_sha256": {
+        ".gitignore": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+        "tether-0.0.0.post29.dev0+413d330-py3-none-any.whl": "748069b69e5ce07f73b206aa70633dca01a38a5a706507b04a7029f627230bb3",
+        "tether-0.0.0.post29.dev0+413d330.tar.gz": "4ba3a2e00cc152ad555864b4de6adf9d7be71e713309262f544526cae525f9d4"
       }
     }
   },
@@ -450,6 +474,14 @@
       "merge_commit": "488ffc3503e065b820d698d53310e869db1a97b2",
       "status": "merged",
       "qualification": "Full local macOS/Python3.11 gate469/92.23%; fresh reviewed-source base/extra pending-close/repeat/late-answer journeys passed. Independent review found no residual defect. Hosted jobs queued at merge; no hosted pass claim."
+    },
+    {
+      "number": 10,
+      "url": "https://github.com/DocumentDrivenDX/tether/pull/10",
+      "head": "b43dbf45bdcead2eaa96b5a0f3ec7fa16d850227",
+      "merge_commit": "413d330ebd045abf657bd8030ba6be74baf91e95",
+      "status": "merged",
+      "qualification": "Full local macOS/Python3.11 gate507/92.29%; fresh reviewed-source base/extra unknown\u2192resolve\u2192retry and actual root-reopen installed journeys passed. Independent review found no residual defect after integrity/dummy fixes. Hosted jobs queued at merge; subsequent same-head Ubuntu3.11/3.13 push checks passed, duplicate workflow3.13 running/macOS queued at latest observation."
     }
   ]
 }

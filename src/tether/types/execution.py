@@ -339,6 +339,27 @@ class Resolution(Payload):
     reason: str = Field(min_length=1, max_length=1024)
 
 
+class NotInterrupted(ExecutionDenied):
+    pass
+
+
+class ResumeTool(Payload):
+    tool_digest: str
+    replay: Replay
+
+
+class ResumeStep(Payload):
+    kind: Literal["run", "rerun", "record_interrupted", "model_step"]
+    call_entry_index: int | None = None
+    call_position: int | None = None
+    invocation_id: str | None = None
+
+
+class ResumePlan(Payload):
+    interrupted_turn_id: str
+    steps: tuple[ResumeStep, ...]
+
+
 class CommitUnknown(Exception):
     """Caller must not infer whether the append was accepted."""
 

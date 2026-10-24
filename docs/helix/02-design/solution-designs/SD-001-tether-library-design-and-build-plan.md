@@ -359,6 +359,16 @@ the same scoped refs as durable profiles. Resume and remaining command race qual
 in this slice; provisional text/reset/coalescing remain slice 9a. The Agent remains the only
 model/tool iterator. Full qualification status is in the execution record.
 
+The slice 9 pure recovery planner now classifies journal-derived not-started, started-safe,
+started-unsafe, finished and resolved invocations using explicit owning session identity and
+immutable tool digest/replay snapshots. It validates dense positions, source scope and interrupted
+ancestry, refuses cancellation/supersession crossings, and never hydrates or dispatches. A matching
+accepted final-answer source can avoid another model step, subject to executor source verification.
+This is planner evidence only. Client/Engine resume acceptance, chain-limit enforcement, safe
+same-intent dispatch, pending-approval rebinding, budget reconstruction and actual Agent restart
+journeys remain required before claiming runtime resume or completing slices 4/9. Consumer recovery
+entry seams were inspected; no tested standalone planner was available to port.
+
 ### Consumer boundary review and implementation plan
 
 The consumer integration review identifies missing extension seams, not a reason to replace
