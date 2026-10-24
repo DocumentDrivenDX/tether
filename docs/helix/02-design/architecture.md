@@ -256,3 +256,13 @@ lifetime and an injected async acquisition source; applications own pools, roles
 maintenance identity. SQL owner predicates remain mandatory. Multiple facades/roots for one stable
 namespace share actual-worker ownership. PostgresHistory keeps its own content port and caller
 binding, with content-before-reference independent of journal transactions.
+
+
+The first optional PostgreSQL18 adapter is now authoritative content history only. DatabaseRoot
+borrows application connections and owns short idle-started transactions; migration is explicit.
+It validates logged ordinary tables, column/primary-key profiles, revision/checksum, namespace and
+fsync/full_page_writes/synchronous_commit settings. Canonical byte envelopes preserve supported
+payload semantics. Finite waits retain actual I/O; uncertain source release cannot authorize a
+repeat effect. Namespace registration survives outstanding workers and repeated old-root close.
+The existing JSONL journal can reference PostgresHistory without combining their transactions.
+Postgres execution-store/cross-process claims remain unimplemented until the rest of slice5 passes.

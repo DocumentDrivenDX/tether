@@ -142,3 +142,16 @@ Accepted supersession invalidates derived Run caches before fallible SDK setup.
 Development dependencies include the optional
 provider SDK for tests; it must stay out of the runtime base closure. Do not promote fabricated
 transport checks to live server/profile qualification.
+
+
+Postgres slice5 now has an optional `psycopg` acquisition boundary, explicit fresh-schema SQL
+migrations and immutable `PostgresHistory`, composing independently with the JSONL journal.
+Only PostgreSQL18 logged ordinary tables with fsync/full_page_writes/synchronous_commit enabled
+are selected by this checkpoint. Verify schema columns/primary keys/persistence, revision/checksum
+and namespace on acquisition. Never stamp unmanaged tables or implicitly repair drift. Preserve
+canonical bytes and charge failed-envelope bytes against aggregate reads. Public I/O uses finite
+caller waits with actual acquisition/transaction/source-release tasks retained through cancellation;
+post-commit release failures are unknown. Closing a root seals only its admission, never an external
+pool or sibling root. Old repeated close cannot remove a replacement namespace registry entry.
+PostgresSessionStore, cross-process fencing/takeover, deployment RLS and embedded convenience remain
+unimplemented until separately qualified; do not infer those claims from the history adapter.

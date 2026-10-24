@@ -638,3 +638,12 @@ ownership across roots/facades; independent identities stay isolated. Root shutd
 operations and retains namespace ownership until actual workers/I/O finish, even after bounded
 or canceled close. External pools remain application-owned. These are required profile gates,
 not evidence that Postgres is already implemented or qualified.
+
+The selected Postgres acquisition profile borrows an idle async connection and releases it to
+the application source. Tether owns each transaction; an ambient transaction refuses rather
+than acknowledging a savepoint before its outer commit. Each acquisition verifies the explicit
+schema revision/checksum and stable non-secret namespace identity. No implicit role or search-path
+change occurs. Closing one root seals only that root's admission; sibling roots remain usable.
+Namespace worker ownership survives final-root close while physical workers still run, so a
+replacement root inherits the same busy markers. A release failure after a possible commit
+remains uncertain, and caller cancellation does not prove an operation stopped.

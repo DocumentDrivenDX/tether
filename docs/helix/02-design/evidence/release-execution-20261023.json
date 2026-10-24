@@ -4,7 +4,7 @@
   "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
   "authority": "Explicit owner instruction in integration-lead session; includes source control, merge and Tether-session coordination.",
   "status": "active",
-  "branch": "codex/tether-postgres",
+  "branch": "codex/tether-postgres-history",
   "baseline_commit": "d680c4d",
   "completed_slices": [
     0,
@@ -52,14 +52,14 @@
     "mcp_disposition": "MCP is P2 and outside selected 0.1 slices. Consumer adoption/MCP Apps require separate qualification; do not silently promote advisory scope.",
     "inventory": "Recent app inventory reconfirmed the integration-lead and read-only MCP/durability chats; both have role-specific titles."
   },
-  "next_action": "Merge the reviewed actor-binding bridge promptly, then implement slice5 injected async Postgres acquisition, explicit SQL migrations, shared namespace lifetime, transactions/history/fencing and real database/process qualification. Complete-profile Client conformance/performance and all later selected slices remain.",
+  "next_action": "Merge reviewed/tested Postgres history promptly. Then extract shared projection deltas and implement migration2/indexed transactional PostgresSessionStore, leased logs, polling feed and true multiprocess qualification. Complete-profile Client/testkit/performance and all later selected slices remain.",
   "qualification_limits": [
-    "Only local POSIX single-writer JSONL is implemented; Postgres cross-process profile is slice 5.",
+    "Local POSIX single-writer JSONL execution journal plus optional PostgreSQL18.6 history are implemented; Postgres execution transactions/fencing/cross-process profile remains slice5 work.",
     "No OS power-cut guarantee is inferred from process-exit tests.",
     "Full started-invocation replay, complete actual-worker/lease-loss and recovery profile qualification remain slice9. Manual resolution is now implemented in the selected local Client subset.",
     "Live Gateway/profile credentials and real server correspondence are not supplied or qualified."
   ],
-  "source_control": "PRs1\u201313 merged promptly after review/testing. Caller-binding bridge independently reviewed and locally qualified for immediate merge; no PR stack.",
+  "source_control": "PRs1\u201314 merged promptly after review/testing; optional Postgres history independently reviewed and locally qualified for immediate merge. No PR stack.",
   "metering": "Active goal has no user-specified token/time ceiling; runtime metering is available via get_goal; no invented total-budget claim.",
   "boundary_review": {
     "status": "Sub-agent review complete; sanitized plan recorded and omissions corrected.",
@@ -125,7 +125,7 @@
       "src/tether/engine/tools.py": "7c5763fa1a921d3acc673b15aed46225efaf3063963d63421242be8a7b1020fa",
       "src/tether/engine/workers.py": "1bd602c6e8d04d6baf86abc4411b51d451fcafd21030c3016eb368c1a838ff77",
       "src/tether/history/__init__.py": "ea68cfb69401288cdddcf789a03641aeb637b3c1e4316fda0d20d904ab775443",
-      "src/tether/history/jsonl.py": "1164355a2c6ddcb75ba86358f7ca61ed3f6a634dd845632e05189add082d9ac7",
+      "src/tether/history/jsonl.py": "c82dfa6053b787f270fe18da7fccd8c36edcff36ae32700bb53db9f299739faa",
       "src/tether/history/messages.py": "ee9e0276668caff7f9a96acc8cd03b06f8c32825b789b900eee36ebf609d84e8",
       "src/tether/models/__init__.py": "cd3791958fa21568ef71d08f33977de6be56820259ea179757391962960540e7",
       "src/tether/models/attempts.py": "07559362555e8af1cc278644ca278875474faf2da1604bd90cdd6dc51201e82d",
@@ -166,6 +166,13 @@
       "src/tether/stores/jsonl/root.py": "3e3c83f7a4e9dd15a8835bd14671e9f6eb73ed2bd3578d59affbb08b60c2529b",
       "src/tether/stores/jsonl/store.py": "6fbe43f23167e58749b8693264deed9f6dd51787014c9ac8d6bbe970c9721993",
       "src/tether/stores/memory.py": "a85fe4458aec1211cda722ac5c930d67a8bc2556b5ae95e4ecb1a1bd674f9a92",
+      "src/tether/stores/postgres/__init__.py": "efd1cb2abd639d6dfe90e103599fe3f5c5b2dfa2f69220079be1295b5e8aa1de",
+      "src/tether/stores/postgres/history.py": "726f41b198233849739517d4aa9a18207730a96f878f60edba33c3b49f4e05b3",
+      "src/tether/stores/postgres/io.py": "b02b10fd67ab933cfe7209c7b1eacba20603387d27d929483316b50e7af74f50",
+      "src/tether/stores/postgres/namespace.py": "57840104ab39e4452d6a8e6fbfb4e9bbefaf52508779a21c45d7e29c3dc0c1e8",
+      "src/tether/stores/postgres/root.py": "b52e6bf0808ce49360524cde52f8c8a6e0a81870f0ea2786d1827551f1ee888d",
+      "src/tether/stores/postgres/schema.py": "2754462d33d402bfcc028868ee3b756a53d13500e1b09b5e7641a7692eb515f2",
+      "src/tether/stores/postgres/source.py": "aa7d50b29ea192db836c0c279bc6ceac13bc31ba4c309293f2de7c4c973c5ddf",
       "src/tether/stores/projections.py": "9251130fc65d2a27cd3208b5b2ff143584f4604cfb4526a4358ee7e608c03b80",
       "src/tether/testing/__init__.py": "50f56407ca46e6fe037b6ca044bcd03cc1d1e7bac7b4b774ae30a675dc349100",
       "src/tether/testing/execution.py": "22bbc599a4c62fada2fd46a567eee378b765ed6f8cd6a5621d055e417899da0b",
@@ -177,6 +184,7 @@
       "src/tether/types/client.py": "32fe6be0b17ad2f405d6a2af67c004f51991986b9f2accfdd093eb3c73486347",
       "src/tether/types/execution.py": "a9c1a881e3b07ddc6180fd50d3fb108a5be2ec9fb6ba5d3f272a4722c09fe74c",
       "src/tether/types/history.py": "486eb935a8742eca3a78202806e6cdbf955e29f3c3e7a780e39ba9e1bbcd6209",
+      "src/tether/types/history_codec.py": "6909fe09734e08f4e4cb49b5a515f5f2a4006126abdff783ed159b95f64a44c1",
       "src/tether/types/lifetime.py": "298c24c51f5cc8a427cda22200249874200df02bca3f16abde90fc36d72b2733",
       "src/tether/types/storage.py": "e6d9f18a1d9fecc60831ec2e64466b9230f2459539302efec8da98f38bcb6e89",
       "src/tether/types/tooling.py": "43e1d6d00a588ed33388f72e44b36d1a74df90063d7242f17f88579a4e976735",
@@ -197,6 +205,7 @@
       "scripts/quality.py": "8dd854695eb3d0ff757713efaa40033e5d6c5668c9e8dfa4eeda62d2cca16afd",
       "scripts/test_suite.py": "6a5b7eed7030555e7b48d6e03f1ae5022fdf6e3ade6296628af44914be57e7e7",
       "tests/conftest.py": "1bc289fc6a0327939ff34366bd294642abac3dcf32b3e938f65f9ba9c3648e16",
+      "tests/postgres_support.py": "d4deb0767f148a53e10f8ba35fdbc3feb04f11a0c0962112665cea18bbb76875",
       "tests/test_actor_store.py": "07b51587300f0719879e4e7ebc484324a99954578be13c32810bc74f4ed05779",
       "tests/test_adapter_limits.py": "a88b3f1e0c2b6a5390a2c6e0d04bc0f5809eaa9e95a6c2f519b836c4de831a92",
       "tests/test_agent_bridge.py": "e79ab508288325be3750eabffe734dfa9cafa2e86568f6eabb8cfce11acd0cf0",
@@ -224,9 +233,12 @@
       "tests/test_execution_ports.py": "42e35e2025b9ba8c10d90805a4deb9b585526b543c570e66572b4df12644ba3b",
       "tests/test_execution_review.py": "f6492071027cb123a919463db01b53344f0113ced49cd97076b0590a311ae456",
       "tests/test_gated_execution.py": "19166e072a25bcf73df7328075e75e5aa645448d54d99b0ddc0a262af7eb99af",
-      "tests/test_history_bindings.py": "c626774629d12a4e495b6c4df8e96bc956540fbf82c351f1178275ad987abaee",
+      "tests/test_history_bindings.py": "16bc5d4b569f210bff784cf8973e8bcf653c6d454728ed6da9b9c38037c4b66d",
       "tests/test_layers.py": "2c8762507d2f345bf012b34662421fbce43d8b8a953664a7c04c0ea6e0da8c2d",
       "tests/test_model_port.py": "db83e2d582b26f7cbf008540a11be5b401b922bdd4db67568fe9c41afb98ed98",
+      "tests/test_postgres_agent.py": "fdfe6020ada4d5e9d1eef20a3c395662e2f71b61129f78e40129b3968b80d030",
+      "tests/test_postgres_history.py": "7b826ed883682f53fc8219397bfe774a85ecd078a466452957023adb3f23014c",
+      "tests/test_postgres_lifetime.py": "1a597f07e94188d78a40da6b6068aa77e1fa827f24361cb585d5cb7e22a1e66c",
       "tests/test_restart_agent.py": "703a7e7e958148e6f62ee262c0aab2558b795a37fa4e5f8e22bbcc37d8f8bb52",
       "tests/test_resume_engine.py": "2607d8a9bb7e7cfff89b4a09b90ada0f830269049e0e2e773b06b1ea0272c7a3",
       "tests/test_resume_planner.py": "63c864ad75eb056160191c0f33f04228a23b039b0fa01ca48905e801450e061e",
@@ -567,22 +579,56 @@
       "merge_commit": "69f973c5485fa5c21132417f8082ddc7f7837878",
       "status": "merged",
       "qualification": "Full local macOS/Python3.11 gate648/91.79%; fresh reviewed-source base/extra archive/restore journeys passed. Independent review fixed actor isolation, aggregate disclosure and restore identity. Hosted checks running/queued at merge; no hosted matrix pass claim."
+    },
+    {
+      "number": 14,
+      "url": "https://github.com/DocumentDrivenDX/tether/pull/14",
+      "head": "764f7bbfcbdf9539d65be9499bd537304e8bd9e9",
+      "merge_commit": "7a6830b8b68d4fe842a9b67b82db19e00cdb98c9",
+      "status": "merged",
+      "qualification": "Local macOS/Python3.11 full gate690/91.88%; fresh base/OpenAI-extra installed journeys; independent actor-binding review. No SQL/RLS or hosted matrix claim."
     }
   ],
   "slice_5": {
-    "status": "in progress: caller-bound storage prerequisite qualified; SQL implementation not yet added",
+    "status": "in progress: caller-bound storage and optional PostgreSQL18 history qualified; PostgresSessionStore not yet implemented",
     "actor_binding": {
       "contract_version": 4,
       "checks": "make check passed: 690 tests, 91.88% branch-inclusive coverage; strict Pyright0, Ruff/format, unchanged shape/size/layer/dependency gates and negative controls; macOS/Python3.11.17.",
       "review": "Independent bounded review found no remaining defect after exact foreign-loop factory/get/close regressions. Reviewer independently reproduced safe wrong-loop refusal; did not rerun full suite.",
       "tests": "42 new memory/JSONL cases cover owner mismatch on every facade method, non-owning close, explicit maintenance refusal, distinct same-owner credentials, actor-copy isolation, revocation, acquisition refusal without fallback and foreign-loop refusal before mutation. Existing Client/turn/follower/outcome/archive journeys exercise propagated bindings.",
-      "installed_artifacts": "Fresh working-source wheel/sdist0.0.0.post35.dev0+69f973c passed clean base SDKcount0 and OpenAI-extra SDKcount1 with public Agent/Client/resolve/resume/reopen/archive/restore journeys. Version denotes precommit base; current source hashes identify runtime source. README/AGENTS/receipt prose updated after artifact build.",
+      "installed_artifacts": "Fresh working-source wheel/sdist0.0.0.post35.dev0+69f973c passed clean base SDKcount0 and OpenAI-extra SDKcount1 with public Agent/Client/resolve/resume/reopen/archive/restore journeys. Version denotes precommit base; PR14 committed receipt source hashes identify runtime source. README/AGENTS/receipt prose updated after artifact build.",
       "installed_artifact_sha256": {
         "tether-0.0.0.post35.dev0+69f973c-py3-none-any.whl": "ce40661d6c28931e66d1d840c6dc2a44d842d4887a8bd4cf62756592be263b2b",
         "tether-0.0.0.post35.dev0+69f973c.tar.gz": "a78c742495392ea9cbf645fcb434beb58ccf8f6eec590f976f4fa932e44ebc4b",
         ".gitignore": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1"
       },
       "remaining": "No Postgres/RLS/credential-refresh/namespace-sharing SQL proof inferred from local facades. Qualify injected caller acquisition, maintenance authority, same-database root sharing and physical cleanup with real PostgreSQL18."
+    },
+    "postgres_history": {
+      "status": "Implemented optional canonical-byte history with explicit async acquisition, database root and fresh-schema migration; no Postgres execution-store capability claim.",
+      "checks": "Final exclusive make check passed728 tests/92.16% branch-inclusive coverage, strict Pyright0, Ruff/format, unchanged shape/size/layer/base-dependency gates and negative controls; macOS/Python3.11.17.",
+      "selected_profile": "PostgreSQL18.6, psycopg3.3.6/psycopg-pool3.3.3; logged ordinary metadata/history tables, fsync/on, full_page_writes/on, synchronous_commit/on. Development server binary --version independently confirmed18.6. Python3.11 locally tested; hosted matrix not claimed passed.",
+      "implemented": [
+        "Application-owned idle async connection source receives fresh present actor/session scope; adapter owns transaction commit, no ambient/savepoint acknowledgment, no pool/role/search-path/credential fallback",
+        "Explicit exportable revision1 plain-SQL migration under supplied maintenance actor with serialized acquisition, schema/revision/checksum/persistence/column/primary-key validation; unmanaged or drifted tables refuse without repair",
+        "Stable non-secret namespace identity verified per acquisition; independent roots share process/loop worker lifetime; root admission is independent, old repeated close cannot detach replacement ownership",
+        "Finite caller/capacity/shutdown waits retain actual acquisition/transaction/release tasks through cancellation, bootstrap and held migration locks; post-commit release failure remains unknown",
+        "Canonical byte envelopes and bytea owner/session/key addresses preserve NUL/Unicode/large-number payloads; immutable concurrent equal writes are idempotent, conflicting writes refuse",
+        "Ordered denied/unavailable/integrity slots and finite count/aggregate byte caps before payload transfer; malformed-envelope bytes still charge the budget",
+        "Shared exchange/source codec reused by JSONL and Postgres history; current credential objects remain live and isolated; public history affinity refuses before per-slot status handling"
+      ],
+      "review": "Independent review identified repeated-old-close namespace loss, unmanaged table adoption, direct-port status collapse, unlogged-table durability mismatch, uncharged malformed payloads and foreign-loop error swallowing. Exact regressions pass. Reviewer independently reproduced namespace and final foreign-loop fixes; no residual defect found in the final narrow correction. Reviewer did not rerun full suite.",
+      "tests": "42 focused cases across Postgres history/lifetime/Agent/shared binding suites passed, including migration serialization/drift, NUL/large values, credential isolation, equal/conflicting writes, held migration lock, canceled bootstrap/transaction, timeout/capacity, external pool survival, old-root close, malformed aggregate budget and actual Client approval after reopening JSONL and database roots. Full suite contains38 more cases than prior690 checkpoint.",
+      "installed_artifacts": "Final working-source wheel/sdist0.0.0.post37.dev0+7a6830b passed fresh base SDKcount0, OpenAI-extra SDKcount1 and postgres-extra SDKcount0. Real PostgreSQL18 postgres-extra ran full fabricated Agent/Client/resolve/resume/reopen/archive/restore journeys using independent JSONL journal/Postgres content. Version denotes precommit base; current source hashes identify runtime source.",
+      "installed_artifact_sha256": {
+        "tether-0.0.0.post37.dev0+7a6830b.tar.gz": "af17db9756c79dab143515b3145ea39a01b812dfb37426aedff72c523c034746",
+        ".gitignore": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+        "tether-0.0.0.post37.dev0+7a6830b-py3-none-any.whl": "31cf7429ccb9d1ca90ff944d60f07e6768e2adfd6cdb7afa35e49d77c33be30f"
+      },
+      "postgres_installed_driver_sha256": "ee6ea96a42f8253c50a45996fb42b593b9226f2a97cb759fe1038a25eb57b24f",
+      "port_inspection": "Inspected consumer synchronous service-pool/session code for bounded acquisition, schema checks and short transactions. No matching tested async caller-aware immutable history adapter was available to port. Reused existing Tether exchange/source semantics; did not copy consumer documents or introduce its ORM/migration framework.",
+      "remaining": "PostgresSessionStore indexed projection/entry/feed transactions, leases/fencing, multiprocess takeover/stale writes/process loss, deployment RLS/token refresh proof, embedded-server convenience and wider release/profile/testkit qualification remain selected work.",
+      "earlier_runs": "Initial726 and727 full gates passed before the final foreign-loop correction. Final728 exclusive run is authoritative. Earlier focused fixture typo and stale expected error were corrected; no failed pass claim."
     }
   }
 }
