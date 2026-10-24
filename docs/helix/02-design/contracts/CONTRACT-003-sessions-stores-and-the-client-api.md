@@ -804,3 +804,47 @@ deterministic lock contention. Full projection reconstruction, approval/write co
 lease/recovery, no-scan/keyset, context closure, bounds and physical/process faults retain separate
 required qualifications. Check failures use ConformanceFailure with a stable check id; unexpected
 adapter exceptions and timeouts propagate to the calling test. No case filter is selected.
+
+
+### Optional atomic mutation receipts (companion version1)
+
+The optional actor-bound MutationReceipts companion preserves SessionStore.create/update return
+signatures. StoreCapabilities.mutation_receipts is0 (unavailable, default) or1 (companion version1).
+A version1 facade MUST implement async create_with_receipt(owner, init) -> CreateReceipt and
+update_with_receipt(session_id, owner, patch) -> UpdateReceipt. Discovery MUST occur on the current
+for_actor(actor) facade; owner, loop, closed-state, credential and resource-lifetime rules remain
+identical. Capability/method mismatch refuses before dispatch. An invalid returned version or
+receipt refuses after the call, without an old-API fallback or a second mutation attempt.
+
+MUTATION_RECEIPT_VERSION=1. CreateReceipt and UpdateReceipt contain version=1, a copied
+SessionSummary, disposition and optional MutationCommit. MutationCommit contains owner, session_id,
+seq (positive exact owner change sequence) and entries (copied accepted metadata Entry tuple,
+maximum3). Its scope/seq MUST match the returned summary. Entries are only title/tag session facts
+and settings changes, in dense accepted order ending at summary.entry_count-1. No history refs,
+call manifests or executable entries belong in this companion. Selected adapters preserve configured StorageLimits byte/index bounds (max_batch_bytes for
+durable batches/frames and max_index_bytes for the materialized volatile index); no transcript is
+returned. Consumers additionally enforce their configured response bounds.
+
+Create disposition is created or existing. Created has a commit with empty entries and an empty
+journal summary; it proves this call created that session in the same accepted transaction. Existing
+has no commit, even after intervening turns/settings changes. Genesis has its own stable identity
+and MUST NOT invent an entry position. Update disposition is accepted or noop. Accepted has a
+nonempty exact metadata commit and its summary from that transaction, before lease release allows
+a concurrent writer. Noop has no commit and means no metadata entries were appended; lease
+acquisition may still recover an expired phase. Equal-value nonempty patches retain append
+semantics and yield accepted. Existing summary APIs remain unchanged.
+
+Receipts return only after known acknowledgment of the corresponding mutation. Rejection,
+rollback, cancellation or uncertain acknowledgment does not return an accepted receipt. Receipt
+construction MUST NOT introduce another acquisition, writer, pool, schema or storage telemetry
+callback. An adapter without the companion remains usable; complete selected-profile semantic
+genesis/settings audit qualification requires it. Receipt values are content-bearing internal
+results, not audit packets: audit copies only registered identifiers, positions, categories/counts.
+Semantic settings identity remains per accepted Entry under CONTRACT-002.
+
+Example: create_with_receipt(owner, SessionInit(ref="fabricated")) returns created with seq7 and no
+entries; after a title update at seq8, repeating the same ref returns existing with the current
+summary and no commit. update_with_receipt(..., SessionPatch()) returns noop; an explicit
+title=None appends the clearing fact and returns accepted with that exact Entry/seq. Conformance
+covers stable-ref races, intervening updates, empty/equal patches, concurrent exact frontiers,
+unknown acknowledgments, copied/bounded entries and current actor/credential forwarding.

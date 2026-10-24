@@ -28,7 +28,9 @@ class Scope:
 
     @property
     def capabilities(self) -> StoreCapabilities:
-        return StoreCapabilities(durability="os", lease="cross_process", fencing=True)
+        return StoreCapabilities(
+            durability="os", lease="cross_process", fencing=True, mutation_receipts=1
+        )
 
     def _check(self) -> None:
         self.root.check_open()

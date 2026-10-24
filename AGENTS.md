@@ -258,3 +258,13 @@ actual thread/Task; queued/pre-entry cancellation has no body entry/exit. Late c
 IDs and closed scalar outcomes only, never Actor/credential/args/result/exception/span-manager
 objects, and never commit tool results. Sealed observer drops do not change actual worker/root
 ownership. Nonjournal Client audit and retrieval/context/OTel qualification remain separate work.
+
+Optional atomic metadata receipts live in types.mutations (companion version1); discover them on
+current actor-bound facades using StoreCapabilities.mutation_receipts, never through a raw-root
+fallback. Preserve create/update summary APIs. Created/existing and accepted/noop distinguish
+actual mutation from idempotent returns; exact owner/session/sequence and copied metadata entries
+come from the same accepted commit before lease release. Noop excludes metadata entries and may
+still include expired-phase housekeeping. No schema/pool/transcript scan or storage observer callback
+belongs in this seam. Receipts contain content; future Client audit must validate/copy/bound results
+and map registered metadata only. The public logical suite and live suite share external credential,
+bounds, concurrency and unknown-ack requirements. MemorySessionStore is the volatile dummy profile.

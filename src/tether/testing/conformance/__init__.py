@@ -2,6 +2,7 @@
 
 from .archive import archive_suite as archive_suite
 from .live import live_store_suite as live_store_suite
+from .mutations import mutation_receipt_suite as mutation_receipt_suite
 from .telemetry import AuditSinkFactory as AuditSinkFactory
 from .telemetry import AuditSinkFixture as AuditSinkFixture
 from .telemetry import TracerFactory as TracerFactory
