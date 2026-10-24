@@ -93,8 +93,11 @@ retention gaps reset beyond a captured owner watermark. Client send/cancel now u
 owned tasks, shielded completion waits, canonical request retries with a lease-protected recheck,
 current-source result materialization and supervised lease heartbeats. Finish in-flight heartbeats
 before lease release; cleanup retains ownership even after bounded/canceled shutdown. Explicit
-command/session/default spec ids must resolve to a supplied unambiguous pinned spec. Confirmation,
-resume/update/close/resolve commands, provisional stream production,
+command/session/default spec ids must resolve to a supplied unambiguous pinned spec. Confirmation uses authoritative pending facts before cached runners, atomically commits the decision
+and running projection before fallible continuation, and refreshes current principal/credential.
+Optional approval notes use bounded immutable history outside executable inputs and audit facts.
+Retained successful handles follow accepted continuations; late answers cannot repeat effects.
+Create/resume/update/close/resolve commands, provisional stream production,
 full safe-invocation recovery/manual resolution, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.

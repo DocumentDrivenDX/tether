@@ -113,7 +113,7 @@ class SessionIndex:
         facts, summary = entry.facts, self.summary
         if entry.kind == "message":
             self.summary = summary.model_copy(update={"message_count": summary.message_count + 1})
-        elif entry.kind == "turn_started":
+        elif entry.kind in {"turn_started", "turn_resumed"}:
             self._start(entry)
         elif entry.kind == "turn_ended":
             stop = facts.get("stop_reason")
@@ -143,6 +143,15 @@ class SessionIndex:
 
     def _start(self, entry: Entry) -> None:
         facts, summary = entry.facts, self.summary
+        if entry.kind == "turn_resumed":
+            self.summary = summary.model_copy(
+                update={
+                    "status": "running",
+                    "active_turn_id": entry.turn_id,
+                    "resumable": False,
+                }
+            )
+            return
         spec_id = facts.get("spec_id")
         if isinstance(spec_id, str):
             self.specs[spec_id] = SpecRef.model_validate(
@@ -156,6 +165,7 @@ class SessionIndex:
             update={
                 "turn_count": summary.turn_count + 1,
                 "status": "running",
+                "resumable": False,
                 "active_turn_id": entry.turn_id,
                 "last_turn_at": entry.at,
                 "spec_id": facts.get("spec_id") or summary.spec_id,

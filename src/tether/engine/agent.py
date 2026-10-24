@@ -19,7 +19,6 @@ from tether.types.execution import (
     Actor,
     AgentSpec,
     Answer,
-    ApprovalBinding,
     AuthzRequest,
     Clock,
     Decision,
@@ -41,6 +40,7 @@ from tether.types.execution import (
 from tether.types.history import HistoryProvider
 from tether.types.tooling import tool_spec
 
+from .confirmations import approval_entries
 from .governance import AllowAll, Governance, utc_now
 from .inspection import describe_pending
 from .reconstruction import pinned_spec, requested_turn, restore_pending, restored_usage
@@ -177,12 +177,16 @@ class Engine:
         )
 
     async def answer(
-        self, actor: Actor, log: TurnLog, invocation_id: str, answer: Answer
+        self,
+        actor: Actor,
+        log: TurnLog,
+        invocation_id: str,
+        answer: Answer,
+        *,
+        accepted: Callable[[], None] | None = None,
     ) -> TurnResult | None:
         self._bind_loop()
-        run = self._runs.get(log.session.id)
-        if run is None:
-            run = await self._restore(actor, log, invocation_id)
+        run = await self._pending_run(actor, log, invocation_id)
         if run is None or invocation_id not in run.executor.pending:
             return None
         if log.session.id in self._running:
@@ -195,11 +199,13 @@ class Engine:
             state = "approved" if answer.approved else "declined"
             if pending.expires_at and self.clock() > pending.expires_at:
                 state = "expired"
-            binding = pending.model_dump(include=set(ApprovalBinding.model_fields), mode="json")
-            await run.gov.fact(
-                "confirmation", key="approval:" + invocation_id, state=state, binding=binding
+            entries = await approval_entries(
+                run.gov, pending, state, answer.note, resuming=len(run.executor.pending) == 1
             )
+            await run.gov.commit(entries)
             run.executor.pending.pop(invocation_id)
+            if accepted is not None:
+                accepted()
             if run.executor.pending:
                 return TurnResult(
                     turn_id=run.gov.turn_id,
@@ -211,6 +217,15 @@ class Engine:
             self._running.discard(log.session.id)
             if not self._running:
                 self._idle.set()
+
+    async def _pending_run(self, actor: Actor, log: TurnLog, invocation_id: str) -> Run | None:
+        source_turn = requested_turn(log.entries, invocation_id)
+        if source_turn is None:
+            return None
+        run = self._runs.get(log.session.id)
+        if run is not None and run.gov.turn_id == source_turn:
+            return run
+        return await self._restore(actor, log, invocation_id)
 
     async def _restore(self, actor: Actor, log: TurnLog, invocation_id: str) -> Run | None:
         source_turn = requested_turn(log.entries, invocation_id)
