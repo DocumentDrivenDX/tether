@@ -1139,6 +1139,7 @@ openai = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "coverage" },
     { name = "hypothesis" },
     { name = "openai" },
     { name = "packaging" },
@@ -1162,6 +1163,7 @@ provides-extras = ["openai"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "coverage", specifier = ">=7,<8" },
     { name = "hypothesis", specifier = ">=6,<7" },
     { name = "openai", specifier = "==3.37.0" },
     { name = "packaging", specifier = ">=25" },

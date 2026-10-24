@@ -241,3 +241,9 @@ The execution journal still accepts only one `result:<invocation_id>` fact. This
 unreferenced successful-result content write from a later interrupted/unknown closure after
 its journal commit failed. Orphan content never proves execution outcome, gets adopted without
 an accepted fact, or prevents a distinct authorized closure from being written.
+
+Archive disclosure validates each reachable ref's owner/session and exact record kind as well
+as address/hash before inclusion. Bundle verification applies the same kind binding before
+restore writes. Final READ_SESSION and, when applicable, READ_CALL_PAYLOAD checks occur after
+the final snapshot read and assembled-bundle preparation, with no subsequent asynchronous I/O
+before return. Policy decisions fail closed on malformed values and receive isolated actors.

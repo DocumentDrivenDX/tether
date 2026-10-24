@@ -9,11 +9,13 @@ from tether.types.canonical import canonical, digest
 from tether.types.execution import (
     Actor,
     AuthzRequest,
+    Decision,
     Entry,
     ExecutionDenied,
     HistoryRef,
     Policy,
     SessionState,
+    copy_actor,
 )
 from tether.types.history import HistoryProvider, StoredHistory
 from tether.types.storage import (
@@ -45,8 +47,10 @@ class ArchiveTransfer:
 
     async def _authorize(self, actor: Actor, session_id: str, action: str = "read_session") -> None:
         try:
-            decision = await self.policy.authorize(
-                AuthzRequest(actor=actor, action=action, resource=session_id)
+            decision = Decision.model_validate(
+                await self.policy.authorize(
+                    AuthzRequest(actor=copy_actor(actor), action=action, resource=session_id)
+                )
             )
             allowed = decision.allowed
         except Exception:
@@ -55,6 +59,7 @@ class ArchiveTransfer:
             raise ExecutionDenied("archive_denied")
 
     async def export(self, session_id: str, actor: Actor) -> ArchiveBundle:
+        actor = copy_actor(actor)
         await self._authorize(actor, session_id)
         snapshot = await self.store.snapshot(session_id, actor.id)
         if snapshot.view.summary.status not in {"closed", "idle", "waiting", "interrupted"}:
@@ -74,18 +79,8 @@ class ArchiveTransfer:
             for ref in references(entry.model_dump(mode="json"))
         }
         for ref in refs.values():
-            if ref.kind == "model_exchange":
-                await self._authorize(actor, session_id, "read_call_payload")
-            values = await self.history.read([ref], actor=actor)
-            if len(values) != 1 or values[0].status != "ready" or values[0].record is None:
-                raise StoreError("archive_reference_unavailable")
-            record = values[0].record
-            if values[0].ref != ref or digest(record.model_dump(mode="json")) != ref.sha256:
-                raise IntegrityError("archive_reference_integrity")
-            records.append(StoredHistory(ref=ref, record=record).model_dump(mode="json"))
-        await self._authorize(actor, session_id)
-        if any(ref.kind == "model_exchange" for ref in refs.values()):
-            await self._authorize(actor, session_id, "read_call_payload")
+            stored = await self._record(actor, session_id, ref)
+            records.append(stored.model_dump(mode="json"))
         if await self.store.snapshot(session_id, actor.id) != snapshot:
             raise StoreError("archive_session_changed")
         summary, settings = snapshot.view.summary, snapshot.view.settings
@@ -108,9 +103,31 @@ class ArchiveTransfer:
             records=tuple(records),
             sha256="",
         )
-        return bundle.model_copy(
+        bundle = bundle.model_copy(
             update={"sha256": digest(bundle.model_dump(mode="json", exclude={"sha256"}))}
         )
+        await self._authorize(actor, session_id)
+        if any(ref.kind == "model_exchange" for ref in refs.values()):
+            await self._authorize(actor, session_id, "read_call_payload")
+        return bundle
+
+    async def _record(self, actor: Actor, session_id: str, ref: HistoryRef) -> StoredHistory:
+        if ref.owner != actor.id or ref.session_id != session_id:
+            raise ExecutionDenied("archive_denied")
+        await self._authorize(actor, session_id)
+        if ref.kind == "model_exchange":
+            await self._authorize(actor, session_id, "read_call_payload")
+        values = await self.history.read((ref,), actor=copy_actor(actor))
+        if len(values) != 1 or values[0].status != "ready" or values[0].record is None:
+            raise StoreError("archive_reference_unavailable")
+        record = values[0].record.model_copy(deep=True)
+        if (
+            values[0].ref != ref
+            or record.kind != ref.kind
+            or digest(record.model_dump(mode="json")) != ref.sha256
+        ):
+            raise IntegrityError("archive_reference_integrity")
+        return StoredHistory(ref=ref, record=record)
 
     async def restore(self, bundle: ArchiveBundle, actor: Actor) -> None:
         verify_bundle(bundle)
@@ -140,6 +157,7 @@ def verify_bundle(bundle: ArchiveBundle) -> None:
         if (
             stored.ref.owner != bundle.session.state.owner
             or stored.ref.session_id != bundle.session.state.id
+            or stored.record.kind != stored.ref.kind
             or digest(stored.record.model_dump(mode="json")) != stored.ref.sha256
         ):
             raise IntegrityError("archive_reference_integrity")

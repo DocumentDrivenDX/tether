@@ -58,9 +58,12 @@ def test_simple_cli_wrappers(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_shared_recipe_stops_on_failure(monkeypatch: pytest.MonkeyPatch, code: int) -> None:
     runner = AsyncMock(return_value=Result(code, "", ""))
     monkeypatch.setattr(quality, "run_command", runner)
+    suite = AsyncMock(return_value=0)
+    monkeypatch.setattr(quality, "run_suite", suite)
     monkeypatch.setattr(sys, "argv", ["quality"])
     assert asyncio.run(quality.main()) == code
-    assert runner.await_count == (1 if code else 8)
+    assert runner.await_count == (1 if code else 7)
+    assert suite.await_count == (0 if code else 1)
 
 
 @pytest.mark.parametrize(
@@ -104,3 +107,12 @@ def test_distribution_command_propagates_errors(monkeypatch: pytest.MonkeyPatch)
         asyncio.run(check_distribution.run([sys.executable]))
     monkeypatch.setattr(sys, "argv", ["distribution", "/missing-dist"])
     assert asyncio.run(check_distribution.main()) == 1
+
+
+def test_shared_recipe_propagates_aggregate_suite_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(quality, "run_command", AsyncMock(return_value=Result(0, "", "")))
+    suite = AsyncMock(return_value=2)
+    monkeypatch.setattr(quality, "run_suite", suite)
+    monkeypatch.setattr(sys, "argv", ["quality"])
+    assert asyncio.run(quality.main()) == 2
+    suite.assert_awaited_once_with(sys.executable)

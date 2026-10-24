@@ -6,6 +6,7 @@ import asyncio
 import sys
 
 from process import run_command
+from test_suite import run_suite
 
 
 async def main() -> int:
@@ -19,14 +20,13 @@ async def main() -> int:
         [python, "scripts/check_ceilings.py", base],
         [python, "scripts/check_layers.py"],
         [python, "scripts/check_dependencies.py"],
-        [python, "-m", "pytest"],
     ]
     for command in commands:
         print("+ " + " ".join(command), flush=True)
         result = await run_command(command, capture=False)
         if result.returncode:
             return result.returncode
-    return 0
+    return await run_suite(python)
 
 
 if __name__ == "__main__":

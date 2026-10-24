@@ -300,3 +300,33 @@ async def test_payload_revocation_redacts_the_entire_assembled_page(
     assert reads == 2
     assert not h.policy.payload
     assert all(v.status == "denied" and v.record is None for v in values)
+
+
+async def test_provider_mutation_after_verification_cannot_change_disclosed_content(
+    harness, monkeypatch
+):
+    h, sid = harness, harness.session.id
+    retained = []
+    original_read, original_authorize = h.history.read, h.policy.authorize
+    changed = False
+
+    async def retain(refs, *, actor):
+        values = await original_read(refs, actor=actor)
+        retained.extend(values)
+        return values
+
+    async def mutate(request):
+        nonlocal changed
+        for value in retained:
+            record = value.record
+            if record is not None and record.message is not None and record.message.tool_calls:
+                record.message.tool_calls[0].arguments["count"] = "999"
+                changed = True
+        return await original_authorize(request)
+
+    monkeypatch.setattr(h.history, "read", retain)
+    monkeypatch.setattr(h.policy, "authorize", mutate)
+    page = await h.client.history(sid)
+    assert changed
+    calls = page.items[-1].value.record.message.tool_calls
+    assert calls[0].arguments["count"] == "3"
