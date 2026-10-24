@@ -455,17 +455,17 @@ Engine and storage lifetimes cannot migrate async pools/locks/tasks between loop
 
 | Rule | Requirement |
 |------|-------------|
-| List and get | Cost is independent of transcript length: they read summaries and the session's settings, never entries. |
+| List and get | Cost is independent of transcript length: list reads indexed summaries; get reads indexed summary/settings and bounded pending/source metadata. Neither scans the transcript or hydrates message content. |
 | Entry pages | Cost is proportional to `limit`, not to the session's length. |
 | Follow | Memory per follower is bounded by a configured queue size; an event carries a delta (an entry or a summary), never a whole transcript. |
-| Read path | The store constructs models from its own output without re-validating them; validation happens at write. |
+| Read path | Validate writes and verify canonical bytes, integrity, scope and indexed consistency when decoding persisted data. Reuse already-verified immutable values where safe; never remove necessary read validation to meet a latency target. |
 | No blocking | Every store call is asynchronous, or a blocking driver runs in a worker thread. |
 | Archive reads | Asynchronous, time-limited, and never on a turn's path. |
 | Budgets | The benchmark suite measures list, get, entry-page, append, and follow latency and memory, and fails on regression against a committed baseline. The proposed targets are in the PRD (NFR-7); the first baseline validates or replaces them. |
 
 ### 8. Dummies and conformance suites
 
-The package ships `InMemoryStore` (a live store declaring `durability="none"`, `lease="process"`, `fencing=true`) and `InMemoryArchive` (authoritative, lossless, restorable). A local single-writer `JsonlSessionStore` and `JsonlHistory` pair is the reference default; both need their applicable file/restart suites. A Postgres live store ships in an extra (ADR-020); a SQLite store is optional. `tether.testing.conformance.live_store_suite(factory)` runs, as asynchronous tests, with each durable test run only for a store that declares the capability it needs: atomic commit (a proven rejected append writes nothing; an uncertain acknowledgment raises CommitUnknown and is recovered by the original key), summary equals the rebuilt projection, dense positions, idempotent keys, lease exclusivity across tasks and, for `cross_process` stores, processes, fencing (a stale append is refused), lost-lease refusal, idempotent recovery, owner scoping, `ref` uniqueness and idempotent create, keyset paging stability under concurrent writes, change-feed order, resume and resync, coalescing, backpressure isolation, that no list reads entries, and, for `durability` of `process` or `os`, that a committed append survives closing and reopening the store (a real-process kill test is part of the Postgres and SQLite suites). The live-store suite also proves snapshot/head/sequence atomicity against concurrent appends and approval answers, materialized pending metadata/source refs and bounded authorized argument hydration without transcript scans, indexed unresolved-effect paging/counts, idempotent/conflicting resolution, context-record losslessness, failed context commits, and same-commit feed variants without skipped entries. `archive_suite(factory)` runs: idempotent archive, authoritative losslessness, derived marking `partial`, read-as-caller, pending, denied, and unavailable reporting, and restore for a restorable archive. Operating-system-crash durability cannot be tested in continuous integration, and the guarantee table says so.
+The package ships `InMemoryStore` (a live store declaring `durability="none"`, `lease="process"`, `fencing=true`) and `InMemoryArchive` (authoritative, lossless, restorable). A local single-writer `JsonlSessionStore` and `JsonlHistory` pair is the reference default; both need their applicable file/restart suites. A Postgres live store ships in an extra (ADR-020); a SQLite store is optional. `tether.testing.conformance.live_store_suite(factory)` supplies reusable logical port checks. Complete profile conformance combines those checks with the adapter-specific qualifications named by its report; each durable qualification applies only when the store declares the capability it needs. Complete qualification MUST cover: atomic commit (a proven rejected append writes nothing; an uncertain acknowledgment raises CommitUnknown and is recovered by the original key), summary equals the rebuilt projection, dense positions, idempotent keys, lease exclusivity across tasks and, for `cross_process` stores, processes, fencing (a stale append is refused), lost-lease refusal, idempotent recovery, owner scoping, `ref` uniqueness and idempotent create, keyset paging stability under concurrent writes, change-feed order, resume and resync, coalescing, backpressure isolation, that no list reads entries, and, for `durability` of `process` or `os`, that a committed append survives closing and reopening the store (a real-process kill test is part of the Postgres and SQLite suites). Complete qualification MUST also prove snapshot/head/sequence atomicity against concurrent appends and approval answers, materialized pending metadata/source refs and bounded authorized argument hydration without transcript scans, indexed unresolved-effect paging/counts, idempotent/conflicting resolution, context-record losslessness, failed context commits, and same-commit feed variants without skipped entries. `archive_suite(factory)` supplies shared archive checks; complete archive qualification MUST cover: idempotent archive, authoritative losslessness, derived marking `partial`, read-as-caller, pending, denied, and unavailable reporting, and restore for a restorable archive. Operating-system-crash durability cannot be tested in continuous integration, and the guarantee table says so.
 
 ### Fork/reference isolation (P2)
 
@@ -764,3 +764,43 @@ finally:
 ```
 
 A False close result requires continued application supervision; it does not permit replacement.
+
+
+### Reusable storage qualification entry points
+
+`tether.testing.conformance.live_store_suite(factory)` and `archive_suite(factory)` are async
+entry points without a pytest runtime dependency. A pytest/anyio test MAY await them. Factories
+MUST provide isolated fabricated test namespaces and own their resources; suites MUST NOT open
+implicit pools, choose application credentials, migrate schemas or administer native servers.
+A suite MUST report exactly which checks ran and which adapter/profile qualifications remain.
+Passing a logical port subset MUST NOT be represented as full durable, cross-process, fault or
+release qualification. Adapter-specific process and fault suites remain required alongside shared
+logical cases; absent evidence MUST be explicit rather than a silently skipped success.
+
+
+The logical live factory has shape `Callable[[], AbstractAsyncContextManager[LiveStoreFixture]]`.
+LiveStoreFixture is a frozen dataclass with store: SessionStore (an unbound factory root), actor: Actor
+and foreign: Actor with distinct ids. The first entry MUST use an isolated namespace. Re-entering the
+factory for a declared durable profile MUST reopen that same namespace, with the same actor identity;
+it MAY refresh credentials. The factory owns explicit migration, pools, roots and physical cleanup.
+
+The archive factory has shape
+`Callable[[ArchivedSession], AbstractAsyncContextManager[ArchiveFixture]]`. ArchiveFixture contains
+source: ArchiveSource, actor: Actor, foreign: Actor and optional sink: ArchiveSink. actor.id MUST
+match the sample owner and foreign.id MUST differ. The fixture supplies caller credentials; the
+suite passes isolated actor copies while preserving their live Credential objects. The sample is fabricated canonical Tether
+history-v1 content. A source-only fixture MUST preload its sample. A supplied sink MUST declare
+writable and is checked independently of source capabilities, including a read-only source facade.
+The suite MUST keep its expected sample private and pass independent deep copies at each mutable
+factory/sink boundary; a mutating implementation MUST NOT alter the losslessness oracle.
+
+Both entry points accept keyword-only timeout_seconds (finite positive float, default 30) and return
+SuiteReport: schema_version=1, suite (live_store or archive), capabilities (copied source/store
+capability metadata), sink_capabilities (copied optional sink metadata, independent of source writable), checks (tuple of executed
+stable check ids), and required_external (tuple of still-required profile checks). Reports MUST NOT
+contain content or credentials. Missing external qualifications MUST prevent a full-profile claim.
+The logical snapshot/feed case permits either complete before/after prefix; it does not establish
+deterministic lock contention. Full projection reconstruction, approval/write contention, stale
+lease/recovery, no-scan/keyset, context closure, bounds and physical/process faults retain separate
+required qualifications. Check failures use ConformanceFailure with a stable check id; unexpected
+adapter exceptions and timeouts propagate to the calling test. No case filter is selected.

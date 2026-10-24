@@ -672,3 +672,16 @@ Qualification must cover cold/warm timing, persistent restart, duplicate/symlink
 ownership, unmanaged/orphan refusal, failed/canceled initialization/readiness, retained source I/O
 and actual workers at close, no caller-to-service fallback, explicit migration and clean installed
 extra isolation. Measurements are evidence rather than unaccepted latency targets.
+
+
+The next closure checkpoint publishes shared public-port storage testkit entry points, extracting
+existing logical cases rather than adding another store or execution mechanism. They use explicitly
+injected async fixture factories and only public Tether types/ports. A returned metadata-only report
+names executed cases and remaining adapter/profile qualification; a passing subset does not confer
+complete conformance. Run the same live cases against Memory, JSONL and PostgreSQL, with immutable
+history/pending/effect and archive read/restore cases. Retain backend-specific corruption, unknown
+acknowledgment, retained-worker, process fencing and crash suites. No pytest dependency enters base.
+Correct the stale read-path wording: get may use bounded indexed pending/source metadata, and
+persisted-byte integrity/scope validation remains mandatory. No transcript scan is introduced.
+Complete-profile Q4/Q6 and later Q3/stream/history matrices stay open until their own evidence passes;
+proposed performance budget acceptance remains P1 while asynchronous/bounded behavior stays P0.
