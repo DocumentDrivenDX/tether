@@ -738,3 +738,39 @@ and semantic_receipts=false, without a commit sequence, entry position or genesi
 not establish full semantic mutation-audit qualification. With audit disabled, legacy command paths
 are preserved. The fixed Client observer shares Engine delivery/cleanup; no new authority port,
 application callback, writer or runner is introduced.
+
+
+Mediated retrieval observations describe the waiter after a known accepted allowed RETRIEVE
+decision. RetrievalDenied is an ExecutionDenied subtype raised only for a known committed policy
+denial; store/lease/unknown/mismatched-acceptance failures keep their error identity. An error
+raised by fetch is not converted into RetrievalDenied. Denied or unaccepted authorization never
+opens a retrieval span or starts fetch.
+
+The tether.retrieval span and nonjournal retrieval audit record carry origin="waiter", a fresh
+retrieval_attempt_id, invocation_id, original source_position/source_turn_id, current phase_turn_id,
+authorization_position and resource_digest. authorization_position is the exact accepted policy
+Entry index. It is not a retrieval-result position; no entry_position is invented. Audit context
+carries current owner/principal/session/spec IDs and copied span IDs. Record identity is digest
+["tether.step.v1", owner, session_id, "retrieval", retrieval_attempt_id]. Outcome is the closed
+returned|raised|cancelled wait outcome. The engine does not inspect, size, serialize or log fetched values or exception content merely
+for telemetry. It hashes the resource for correlation without retaining or emitting its plaintext. Cancellation says only
+that the wait was canceled; actual fetch lifetime remains owned by the existing worker Operation.
+There is no retrieval success journal fact, effect proof or additional execution authority here.
+
+Selected provider-hook observations use tether.provider_hook and x.<provider id>.hook, with a
+fresh hook_attempt_id, origin="waiter", current phase_turn_id, pinned provider_id, method and the
+same closed outcome set. Identity is digest["tether.step.v1", owner, session_id, kind, hook_attempt_id].
+Methods are capabilities|prompt_section|hidden_tools|before_request|before_call|after_call. They
+observe the existing bounded hook wait, including adopted returned awaitables. A timeout is raised;
+caller cancellation remains cancelled. Returned means the wait returned, before subsequent output
+validation or narrowing acceptance; it does not authorize a model/tool call or approve a hook result.
+
+The observer captures provider namespaces at Engine construction only when telemetry is selected.
+A namespace must match [a-z][a-z0-9_]{0,63}; an invalid, unregistered or changed namespace at wait
+entry, or an unknown method, omits that observation and increments a secondary observer failure counter. Omission does
+not change existing provider execution or claim to qualify its configuration. No runtime str/repr
+conversion can register a namespace. These fixed observations do not forward Provider dictionaries,
+ToolOutput.facts, Actor.attributes, capabilities, prompts, messages, output values or arbitrary
+x.* journal facts. Unknown journal extension facts remain omitted by the accepted-fact registry.
+Application fetch implementations and any later configurable third-party scalar schema remain
+outside this checkpoint. With both audit and tracing omitted, no step UUID/digest/packet is built.

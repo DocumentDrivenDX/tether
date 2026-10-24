@@ -328,6 +328,10 @@ class ExecutionDenied(Exception):
         super().__init__(reason)
 
 
+class RetrievalDenied(ExecutionDenied):
+    pass
+
+
 class WorkerOutstanding(ExecutionDenied):
     pass
 

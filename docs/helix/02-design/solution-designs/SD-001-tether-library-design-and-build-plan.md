@@ -900,3 +900,31 @@ in the execution receipt. Retrieval/provider observations remain the next bounde
 Context telemetry must accompany the still-missing source-addressed context runtime in slice9a;
 provider narrowing alone does not establish C4 context preparation. Optional real OTel receiver,
 trace flags, broader Q5/Q7 and release qualification remain separate.
+
+
+Instrument mediated ToolContext.read and existing provider_hook waits through fixed scalar
+observations. Governance returns exact accepted authorization entries; only its known negative
+policy decision maps to the promised RetrievalDenied type. Invocation closures preserve original
+source attribution while current Governance supplies continuation principal/phase. Fetch remains
+application-owned and runs through the existing retained Worker Operation; waiter observations
+cannot claim actual fetch exit. Provider namespaces are captured/validated once for observation,
+with unknown or mutated IDs omitted/counted and methods closed. Hook return observations precede
+existing output validation; no arbitrary extension dictionary becomes an audit payload. Qualify
+actual Agent sync/async/returned-awaitable paths, nested reads at worker capacity1, accepted gate
+failures, typed denial, current approval/resume identities, cancellation/timeout/late completion,
+privacy, namespace negatives and secondary observer failures. This instrumentation does not replace
+slice9a's still-missing functional source-addressed context preparation and its separate evidence.
+
+
+The retrieval/provider observer checkpoint passes1231 cases in39 bounded groups at92.61%
+branch-inclusive coverage with strict typing0 and all unchanged gates. Its39 targeted cases qualify
+actual Agent mediated reads/hooks through sync/async/returned awaitables, exact accepted gates,
+typed denial versus append/fetch failures, nested reads at physical capacity1, approval and fresh
+resume identities, retained cancellation/timeout, safe namespaces, opaque values, privacy and
+secondary observer failures. The durable shutdown check releases the storage root while an audit
+sink remains active. Another104 existing affected Agent/governance/worker cases passed before final
+targeted additions. Independent source review found no blocker and corrected resource-hashing
+wording; reviewer did not run tests. Four installed profiles and140 matching package sources are
+recorded in the execution receipt. Context remains coupled to the missing functional slice9a
+pipeline; general governance extension, optional trace flags/real OTel receiver and broader
+Q5/Q7/release qualification remain.

@@ -93,6 +93,7 @@ class Engine:
             clock,
         )
         self.observers = Observers(audit, tracer, telemetry_limits)
+        self.observers.steps.register(self.registry.providers)
         self.workers = Workers(
             self.limits.max_workers, operation_capacity=self.limits.max_worker_operations
         )

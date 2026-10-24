@@ -27,7 +27,7 @@ from tether.types.history import HistoryRecord
 from tether.types.usage import UsageLedger
 
 from .observers.facade import Observers
-from .observers.metadata import ACTIONS, code
+from .observers.metadata import ACTIONS, Scope, code
 
 
 def reason_code(value: str, fallback: str = "policy_reason_invalid") -> str:
@@ -43,6 +43,10 @@ class AllowAll:
 
     async def authorize(self, request: AuthzRequest) -> Decision:
         return Decision(allowed=True, reason="allowed")
+
+
+class PolicyDenied(ExecutionDenied):
+    """Only a known accepted negative policy decision, never an append failure."""
 
 
 class Governance:
@@ -82,6 +86,17 @@ class Governance:
             if entry.turn_id in turn_ids:
                 self.accounting.apply(entry)
         self.usage = self.accounting.snapshot()
+
+    @property
+    def scope(self) -> Scope:
+        return Scope(
+            self.log.session.owner,
+            self.log.session.id,
+            self.actor.principal or self.actor.id,
+            self.log.turn_id or self.turn_id,
+            self.spec_id,
+            self.spec_version,
+        )
 
     async def fact(
         self,
@@ -185,13 +200,14 @@ class Governance:
         purpose: Purpose | None = None,
         requires: frozenset[str] = frozenset(),
         permitted: frozenset[str] | None = None,
-    ) -> None:
+    ) -> Entry:
         entry = await self.decision(
             action, resource, purpose=purpose, requires=requires, permitted=permitted
         )
-        await self.commit([entry])
+        accepted = (await self.commit([entry]))[0]
         if not entry.facts["allowed"]:
-            raise ExecutionDenied(str(entry.facts["reason"]))
+            raise PolicyDenied(str(entry.facts["reason"]))
+        return accepted
 
     async def messages(self) -> tuple[Message, ...]:
         return tuple(

@@ -18,6 +18,7 @@ from tether.types.usage import UsageLedger
 from .client import ClientObservers
 from .delivery import AuditDelivery
 from .metadata import Scope, record, text
+from .steps import StepObservers
 from .tracing import GuardedTracer
 from .worker import Dispatch, WorkerObservation
 
@@ -41,6 +42,9 @@ class Observers:
         self._lock = Lock()
         self._failures = 0
         self.client = ClientObservers(self.delivery, self.tracer, self.enabled, self.failed)
+        self.steps = StepObservers(
+            self.delivery, self.tracer, self.enabled, self.workers_enabled, self.failed
+        )
 
     @property
     def failures(self) -> int:
