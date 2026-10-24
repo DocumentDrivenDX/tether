@@ -83,14 +83,14 @@ class Governance:
                 raise ExecutionDenied("commit_not_accepted")
         return accepted
 
-    async def authorize(
+    async def decision(
         self,
         action: str,
         resource: str,
         *,
         requires: frozenset[str] = frozenset(),
         permitted: frozenset[str] | None = None,
-    ) -> None:
+    ) -> NewEntry:
         request = AuthzRequest(
             actor=self.actor,
             action=action,
@@ -116,16 +116,30 @@ class Governance:
             if self.actor.id == self.log.session.owner
             else "denied"
         )
-        await self.fact(
-            "authorization",
-            action=action,
-            resource=resource,
-            allowed=allowed,
-            reason=reason,
-            actor_id=self.actor.id,
+        return NewEntry(
+            kind="authorization",
+            turn_id=self.turn_id,
+            facts={
+                "action": action,
+                "resource": resource,
+                "allowed": allowed,
+                "reason": reason,
+                "actor_id": self.actor.id,
+            },
         )
-        if not allowed:
-            raise ExecutionDenied(reason)
+
+    async def authorize(
+        self,
+        action: str,
+        resource: str,
+        *,
+        requires: frozenset[str] = frozenset(),
+        permitted: frozenset[str] | None = None,
+    ) -> None:
+        entry = await self.decision(action, resource, requires=requires, permitted=permitted)
+        await self.commit([entry])
+        if not entry.facts["allowed"]:
+            raise ExecutionDenied(str(entry.facts["reason"]))
 
     async def read(self, ref: object) -> Message:
         from tether.types.execution import HistoryRef

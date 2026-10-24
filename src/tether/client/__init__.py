@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 
-from tether.sessions import content
+from tether.sessions import closing, content
 from tether.sessions.metadata import MetadataCommands
 from tether.sessions.service import SessionService
 from tether.types import AttachmentRef, JsonValue
@@ -90,4 +90,9 @@ class Client(ClientReads):
             changes["settings"] = dict(settings)
         return await self._metadata.update(
             self._actor, session_id, SessionPatch.model_validate(changes)
+        )
+
+    async def close(self, session_id: str) -> SessionSummary:
+        return await closing.close_session(
+            self._access, self._service.engine, self._actor, session_id
         )

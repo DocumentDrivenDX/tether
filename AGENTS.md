@@ -99,7 +99,10 @@ Optional approval notes use bounded immutable history outside executable inputs 
 Retained successful handles follow accepted continuations; late answers cannot repeat effects.
 Create/update use bounded copied owner-authorized requests; the store serializes updates.
 Omitted title preserves it, explicit None clears it; public settings refuse managed held context.
-Resume/close/resolve commands, provisional stream production,
+Close is owner/read-authorized and lease-serialized; it refuses actual workers and unresolved
+effects, prepares incomplete-group results before atomic closure, and keeps closed sessions readable.
+Explicit cancellation is idle/nonresumable under ADR-010; interruption remains distinct.
+Resume/resolve commands, provisional stream production,
 full safe-invocation recovery/manual resolution, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.

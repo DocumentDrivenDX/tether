@@ -117,7 +117,7 @@ class SessionIndex:
             self._start(entry)
         elif entry.kind == "turn_ended":
             stop = facts.get("stop_reason")
-            interrupted = stop in {"cancelled", "interrupted"}
+            interrupted = stop == "interrupted"
             status = (
                 "interrupted"
                 if interrupted

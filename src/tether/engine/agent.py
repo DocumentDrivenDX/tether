@@ -35,11 +35,13 @@ from tether.types.execution import (
     TurnLog,
     TurnResult,
     TurnStart,
+    WorkerOutstanding,
     copy_actor,
 )
 from tether.types.history import HistoryProvider
 from tether.types.tooling import tool_spec
 
+from .closing import close_session
 from .confirmations import approval_entries
 from .governance import AllowAll, Governance, utc_now
 from .inspection import describe_pending
@@ -101,7 +103,7 @@ class Engine:
         if actor.id != log.session.owner:
             raise ExecutionDenied("denied")
         if log.session.id in self._running or self.workers.busy(log.session.id):
-            raise ExecutionDenied("worker_outstanding")
+            raise WorkerOutstanding("worker_outstanding")
         self._running.add(log.session.id)
         self._idle.clear()
 
@@ -271,6 +273,25 @@ class Engine:
             self.workers,
             self.limits,
         )
+
+    async def close_session(self, actor: Actor, log: TurnLog) -> None:
+        self._enter(actor, log)
+        try:
+            gov = Governance(
+                actor,
+                log,
+                self.history,
+                self.policy,
+                log.turn_id or str(uuid4()),
+                self.limits,
+                self.clock,
+            )
+            await close_session(gov)
+            self._runs.pop(log.session.id, None)
+        finally:
+            self._running.discard(log.session.id)
+            if not self._running:
+                self._idle.set()
 
     async def wait_closed(self) -> None:
         """Wait for actual exits after aclose sealed submissions; caller may bound this wait."""
