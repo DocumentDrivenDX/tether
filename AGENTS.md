@@ -116,7 +116,14 @@ Invocation intents/results retain original proposal attribution; recovery attemp
 TurnLog, SessionStore and JournalFiles share a concrete WorkerLifetime per storage namespace.
 All sync offloads, including pending inspection/reconstruction, retain executor futures until actual
 exit; lease acquisition refuses outstanding workers across Engine replacement. Shutdown seals new
-submissions and keeps root ownership until physical completion. Independent roots do not couple.
+submissions and keeps root ownership until physical completion. Independent local roots do not couple.
+SessionStore contract4 requires explicit for_actor scopes for every caller operation, including
+retained outcomes, followers, archive transfers and turn acquisition. Owner predicates remain actor.id;
+model principal is never the storage owner. Bind a fresh isolated actor copy per callback while retaining
+the live Credential object. Borrowed scopes cannot perform global recovery or close root/pool ownership;
+factory, I/O, rebind and close enforce the owning event loop before mutation. Acquisition refusal never
+falls back to an unbound or broader-role connection. Postgres acquisition/pool/role/RLS/maintenance
+composition remains application-owned and requires separate database qualification.
 Optional ArchiveSource/ArchiveSink now compose independently. InMemoryArchive is bounded and volatile,
 verifies full bundle closure/projections, preserves caller scope and rejects stale/conflicting snapshots.
 Client archive tiers/history use present policy, explicit pending/denied/unavailable failures, opaque

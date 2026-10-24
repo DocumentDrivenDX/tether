@@ -9,9 +9,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Self
 from uuid import uuid4
 
+from tether.ports.bound import ActorStore
 from tether.stores.projections import SessionIndex, create_index
 from tether.types.canonical import canonical
 from tether.types.execution import (
+    Actor,
     Clock,
     CommitUnknown,
     Entry,
@@ -30,6 +32,7 @@ from tether.types.storage import (
     SessionClosed,
     SessionInit,
     SessionPatch,
+    SessionStore,
     SessionSummary,
     StoreCapabilities,
     StoreError,
@@ -46,11 +49,15 @@ def utc_now() -> datetime:
 class JsonlSessionStore(SessionReads):
     def __init__(self, files: JournalFiles, *, clock: Clock = utc_now) -> None:
         super().__init__(files, clock=clock)
+        self.files.workers.check_loop()
         self.capabilities = StoreCapabilities(
             durability=files.durability, lease="process", fencing=True
         )
         self.leases = Leases(clock, files.limits.lease_seconds)
         self._index_bytes = 0
+
+    def for_actor(self, actor: Actor) -> SessionStore:
+        return ActorStore(self, actor)
 
     @property
     def workers(self) -> WorkerLifetime:

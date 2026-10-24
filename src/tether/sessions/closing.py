@@ -15,7 +15,7 @@ async def close_session(
     actor = copy_actor(actor)
 
     async def summary() -> SessionSummary:
-        view = await access.store.get(sid, actor.id)
+        view = await access.store_for(actor).get(sid, actor.id)
         if view is None:
             raise UnknownSession("unknown_session")
         return view.summary
@@ -25,7 +25,9 @@ async def close_session(
         if current.status == "closed":
             return current
         try:
-            async with access.store.turn(sid, actor.id, turn_id="close:" + str(uuid4())) as log:
+            async with access.store_for(actor).turn(
+                sid, actor.id, turn_id="close:" + str(uuid4())
+            ) as log:
                 await engine.close_session(actor, log)
         except SessionClosed:
             current = await summary()

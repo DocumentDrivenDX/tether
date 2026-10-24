@@ -66,7 +66,9 @@ class Followers:
             while True:
                 try:
                     async with aclosing(
-                        self.access.store.changes(actor.id, session_id=session_id, since=position)
+                        self.access.store_for(actor).changes(
+                            actor.id, session_id=session_id, since=position
+                        )
                     ) as changes:
                         async for change in changes:
                             self.access.size(change)

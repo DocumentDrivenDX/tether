@@ -198,16 +198,19 @@ class ArchiveAccess:
 
         async def operation() -> None:
             await self.access.authorize(actor, sid, "x.tether.archive_session")
-            if self.access.store.workers.busy(sid):
+            if self.access.store_for(actor).workers.busy(sid):
                 raise WorkerOutstanding("worker_outstanding")
-            snapshot = await self.access.store.snapshot(sid, actor.id)
+            snapshot = await self.access.store_for(actor).snapshot(sid, actor.id)
             if snapshot.view.summary.status not in {"idle", "closed"}:
                 raise StoreError("archive_session_running")
             transfer = ArchiveTransfer(
-                self.access.store, self.access.history, self.access.policy, limits=self.limits()
+                self.access.store_for(actor),
+                self.access.history,
+                self.access.policy,
+                limits=self.limits(),
             )
             bundle = await transfer.export(sid, actor)
-            if await self.access.store.snapshot(sid, actor.id) != snapshot:
+            if await self.access.store_for(actor).snapshot(sid, actor.id) != snapshot:
                 raise StoreError("archive_session_changed")
             view = snapshot.view.model_copy(
                 update={"summary": snapshot.view.summary.model_copy(update={"tier": "archive"})}
@@ -226,7 +229,7 @@ class ArchiveAccess:
 
         async def operation() -> SessionSummary:
             await self.access.authorize(actor, sid, "x.tether.restore_session")
-            if self.access.store.workers.busy(sid):
+            if self.access.store_for(actor).workers.busy(sid):
                 raise WorkerOutstanding("worker_outstanding")
             await self.access.authorize(actor, sid, "read_call_payload")
             value = await source.restore(sid, actor=copy_actor(actor))
@@ -239,10 +242,13 @@ class ArchiveAccess:
                 raise ReadLimit("read_limit")
             verify_bundle(value.bundle)
             transfer = ArchiveTransfer(
-                self.access.store, self.access.history, self.access.policy, limits=self.limits()
+                self.access.store_for(actor),
+                self.access.history,
+                self.access.policy,
+                limits=self.limits(),
             )
             await transfer.restore(value.bundle, actor)
-            view = await self.access.store.get(sid, actor.id)
+            view = await self.access.store_for(actor).get(sid, actor.id)
             if view is None:
                 raise IntegrityError("archive_restore_missing")
             return view.summary

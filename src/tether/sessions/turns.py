@@ -127,7 +127,7 @@ class OwnedTurns:
         actor = copy_actor(actor)
         start, identity = self._input(text, attachments, request_id, spec)
         await self.access.authorize(actor, session_id)
-        view = await self.access.store.get(session_id, actor.id)
+        view = await self.access.store_for(actor).get(session_id, actor.id)
         if view is None:
             raise UnknownSession("unknown_session")
         if request_id is not None:
@@ -210,11 +210,11 @@ class OwnedTurns:
     async def resume(self, actor: Actor, session_id: str) -> TurnHandle:
         self.access.check()
         actor = copy_actor(actor)
-        capabilities = self.access.store.capabilities
+        capabilities = self.access.store_for(actor).capabilities
         if capabilities.durability == "none" or not capabilities.fencing:
             raise Unsupported("unsupported_store")
         view = await self.access.metadata(
-            actor, session_id, lambda: self.access.store.get(session_id, actor.id)
+            actor, session_id, lambda: self.access.store_for(actor).get(session_id, actor.id)
         )
         if view is None:
             raise UnknownSession("unknown_session")
@@ -234,7 +234,7 @@ class OwnedTurns:
 
     async def _resume(self, actor: Actor, session_id: str, job: Job) -> TurnResult:
         try:
-            async with self.access.store.turn(
+            async with self.access.store_for(actor).turn(
                 session_id, actor.id, turn_id=job.start.turn_id
             ) as log:
                 return await supervise(
@@ -250,13 +250,13 @@ class OwnedTurns:
     async def _pending_turn(self, actor: Actor, session_id: str, invocation_id: str) -> str | None:
         async with asyncio.timeout(self.access.limits.read_timeout_seconds):
             view = await self.access.metadata(
-                actor, session_id, lambda: self.access.store.get(session_id, actor.id)
+                actor, session_id, lambda: self.access.store_for(actor).get(session_id, actor.id)
             )
             if view is None:
                 raise UnknownSession("unknown_session")
             if view.pending is None or view.pending.invocation_id != invocation_id:
                 return None
-            entries = await self.access.store.lookup(
+            entries = await self.access.store_for(actor).lookup(
                 session_id,
                 actor.id,
                 kind="invocation",
@@ -276,7 +276,7 @@ class OwnedTurns:
         job: Job,
     ) -> TurnResult | None:
         try:
-            async with self.access.store.turn(
+            async with self.access.store_for(actor).turn(
                 session_id, actor.id, turn_id=job.start.turn_id
             ) as log:
                 result = await supervise(
@@ -306,7 +306,7 @@ class OwnedTurns:
     async def _existing(
         self, actor: Actor, session_id: str, request_id: str, identity: str
     ) -> TurnHandle | None:
-        entries = await self.access.store.lookup(
+        entries = await self.access.store_for(actor).lookup(
             session_id,
             actor.id,
             kind="key",
@@ -337,7 +337,7 @@ class OwnedTurns:
         self, actor: Actor, session_id: str, text: str, spec: AgentSpec, job: Job
     ) -> TurnResult:
         try:
-            async with self.access.store.turn(
+            async with self.access.store_for(actor).turn(
                 session_id, actor.id, turn_id=job.start.turn_id
             ) as log:
                 if job.start.request_id is not None:
@@ -379,7 +379,7 @@ class OwnedTurns:
 
     async def cancel(self, actor: Actor, session_id: str, *, turn_id: str | None = None) -> bool:
         await self.access.authorize(actor, session_id)
-        if await self.access.store.get(session_id, actor.id) is None:
+        if await self.access.store_for(actor).get(session_id, actor.id) is None:
             raise UnknownSession("unknown_session")
         await self.access.authorize(actor, session_id)
         job = self.jobs.get(session_id)

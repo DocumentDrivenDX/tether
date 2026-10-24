@@ -72,7 +72,7 @@ async def outcome(
 
 
 async def _entries(access: SessionAccess, actor: Actor, sid: str, tid: str) -> tuple[Entry, ...]:
-    return await access.store.lookup(
+    return await access.store_for(actor).lookup(
         sid,
         actor.id,
         kind="turn",

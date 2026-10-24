@@ -559,3 +559,12 @@ reconstructed identity for retry. It preserves unknown/pending/closed state with
 The reference profile keeps original provider/codec addresses; cross-provider remapping is
 unqualified. Release evidence distinguishes current local integration from complete-profile
 performance, broader faults, telemetry and remaining selected slices.
+
+
+Slice 5 first adds the version4 pure caller-bound store seam and propagates it across all Client,
+owned-job, follower/outcome, archive and lease paths. Owner mismatch, fresh credential identity,
+provider mutation isolation and borrowed lifecycle qualify that seam on the local profile before
+Postgres. Then add injected async acquisition, explicit SQL migrations and shared namespace root,
+paired journal/history adapters, live transaction/fencing/uncertain-commit/restart suites and real
+multiprocess tests. Applications retain pool/role/RLS/maintenance choices. Caller failure cannot
+fall back to service authority; no copied consumer synchronous service-pool code proves this.

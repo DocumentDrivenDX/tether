@@ -82,6 +82,10 @@ class SessionAccess:
         if not isinstance(start, int) or isinstance(start, bool) or start < 0:
             raise ReadLimit("read_position")
 
+    def store_for(self, actor: Actor) -> SessionStore:
+        self.check()
+        return self.store.for_actor(copy_actor(actor))
+
     def size(self, value: Payload) -> int:
         size = len(canonical(value.model_dump(mode="json")))
         if size > self.limits.max_read_bytes:
@@ -112,7 +116,7 @@ class SessionAccess:
     async def watermark(self, actor: Actor) -> int:
         self.check()
         async with asyncio.timeout(self.limits.read_timeout_seconds):
-            position = await self.store.watermark(actor.id)
+            position = await self.store_for(actor).watermark(actor.id)
         self.position(position)
         return position
 

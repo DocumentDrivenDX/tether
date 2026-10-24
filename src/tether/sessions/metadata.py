@@ -27,7 +27,7 @@ class MetadataCommands:
         self._bound(init)
 
         async def operation() -> SessionSummary:
-            summary = await self.access.store.create(actor.id, init)
+            summary = await self.access.store_for(actor).create(actor.id, init)
             await self.access.authorize(actor, summary.id)
             return summary
 
@@ -38,9 +38,9 @@ class MetadataCommands:
         self._bound(patch)
 
         async def operation() -> SessionSummary:
-            if await self.access.store.get(session_id, actor.id) is None:
+            if await self.access.store_for(actor).get(session_id, actor.id) is None:
                 raise UnknownSession("unknown_session")
             await self.access.authorize(actor, session_id)
-            return await self.access.store.update(session_id, actor.id, patch)
+            return await self.access.store_for(actor).update(session_id, actor.id, patch)
 
         return await self.access.metadata(actor, session_id, operation)

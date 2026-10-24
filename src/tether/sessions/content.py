@@ -26,7 +26,7 @@ from .access import SessionAccess
 async def history_page(
     access: SessionAccess, actor: Actor, session_id: str, start: int, limit: int
 ) -> HistoryPage:
-    page = await access.store.entries(session_id, actor.id, start=start, limit=limit)
+    page = await access.store_for(actor).entries(session_id, actor.id, start=start, limit=limit)
     items: list[HistorySlot] = []
     used = 0
     for entry in page.items:
@@ -49,7 +49,7 @@ async def call_details(
     for call_id in ids:
         if len(call_id) > access.limits.max_request_bytes:
             raise ReadLimit("read_limit")
-        entries = await access.store.lookup(
+        entries = await access.store_for(actor).lookup(
             session_id,
             actor.id,
             kind="model_call",
@@ -141,7 +141,7 @@ def observation_status(values: list[HistoryValue]) -> HistoryStatus:
 async def pending_view(
     access: SessionAccess, engine: Engine, actor: Actor, session_id: str
 ) -> PendingConfirmation | None:
-    view = await access.store.get(session_id, actor.id)
+    view = await access.store_for(actor).get(session_id, actor.id)
     if view is None:
         raise UnknownSession("unknown_session")
     if view.pending is None:
@@ -149,7 +149,7 @@ async def pending_view(
     binding = ApprovalBinding.model_validate(
         view.pending.model_dump(include=set(ApprovalBinding.model_fields))
     )
-    entries = await access.store.lookup(
+    entries = await access.store_for(actor).lookup(
         session_id,
         actor.id,
         kind="invocation",
@@ -174,11 +174,16 @@ async def pending_view(
     )
     try:
         result = await engine.inspect_pending(
-            actor, state, source, request, value.record.message, lifetime=access.store.workers
+            actor,
+            state,
+            source,
+            request,
+            value.record.message,
+            lifetime=access.store_for(actor).workers,
         )
     except ExecutionDenied as error:
         return pending.model_copy(update={"history_status": "unsupported", "reason": error.reason})
-    current = await access.store.get(session_id, actor.id)
+    current = await access.store_for(actor).get(session_id, actor.id)
     if current is None or current.pending != view.pending:
         return None
     return result

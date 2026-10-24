@@ -247,3 +247,12 @@ volatile reference adapter. Restoration rechecks current payload/restore policy 
 before atomic journal projection, retaining original pending/effect/closure evidence. Derived reads
 retain partial status, and cached content confers no authority. Scheduling/eviction belongs to the
 application; optional history and archive dependencies never replace execution fencing or intent.
+
+
+Caller-aware database access uses an explicit SessionStore.for_actor facade, never ambient
+ContextVars or owner-cached tokens. SessionAccess and owned jobs bind each present caller; leased
+handles keep that binding for append/heartbeat/release. The database root owns namespace/resource
+lifetime and an injected async acquisition source; applications own pools, roles/RLS and selected
+maintenance identity. SQL owner predicates remain mandatory. Multiple facades/roots for one stable
+namespace share actual-worker ownership. PostgresHistory keeps its own content port and caller
+binding, with content-before-reference independent of journal transactions.

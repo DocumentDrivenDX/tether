@@ -53,7 +53,7 @@ class ClientReads:
             raise ExecutionDenied("denied")
 
         async def operation() -> Page[SessionSummary]:
-            page = await self._access.store.list(query, cursor=cursor, limit=limit)
+            page = await self._access.store_for(self._actor).list(query, cursor=cursor, limit=limit)
             for item in page.items:
                 await self._access.authorize(self._actor, item.id)
             return page
@@ -68,7 +68,7 @@ class ClientReads:
         self._tier(tier)
 
         async def operation() -> SessionView:
-            view = await self._access.store.get(session_id, self._actor.id)
+            view = await self._access.store_for(self._actor).get(session_id, self._actor.id)
             if view is None:
                 raise UnknownSession("unknown_session")
             return view
@@ -98,7 +98,7 @@ class ClientReads:
             return await self._access.metadata(
                 self._actor,
                 session_id,
-                lambda: self._access.store.entries(
+                lambda: self._access.store_for(self._actor).entries(
                     session_id, self._actor.id, start=start, limit=limit, reverse=reverse
                 ),
             )
@@ -109,7 +109,9 @@ class ClientReads:
 
     async def snapshot(self, session_id: str) -> SessionSnapshot:
         return await self._access.metadata(
-            self._actor, session_id, lambda: self._access.store.snapshot(session_id, self._actor.id)
+            self._actor,
+            session_id,
+            lambda: self._access.store_for(self._actor).snapshot(session_id, self._actor.id),
         )
 
     async def effects(self, session_id: str, *, start: int = 0, limit: int = 50) -> EffectPage:
@@ -118,14 +120,14 @@ class ClientReads:
         return await self._access.metadata(
             self._actor,
             session_id,
-            lambda: self._access.store.effects(
+            lambda: self._access.store_for(self._actor).effects(
                 session_id, self._actor.id, start=start, limit=limit
             ),
         )
 
     async def find(self, ref: str) -> SessionSummary | None:
         async def operation() -> SessionSummary | None:
-            value = await self._access.store.find(self._actor.id, ref)
+            value = await self._access.store_for(self._actor).find(self._actor.id, ref)
             if value is not None:
                 await self._access.authorize(self._actor, value.id)
             return value

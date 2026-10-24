@@ -201,6 +201,7 @@ class SessionPatch(BaseModel):
 # clears tags, while supplied settings merge into existing settings after validation.
 
 class LiveStore(Protocol):
+    def for_actor(self, actor: Actor) -> LiveStore: ...  # pure non-owning current-caller facade
     workers: WorkerLifetime                     # concrete namespace-scoped process lifetime
     capabilities: StoreCapabilities
     # reads (the client API's backing)
@@ -474,7 +475,7 @@ Fork is a deferred capability, not a v1 client method. A future fork remains own
 
 The pre-release v1 now includes atomic reconnect snapshots, unresolved-effect paging/resolution, context records and attempt-scoped live text. No released cursor/event/API compatibility is claimed or shimmed.
 
-- Versioning: one integer, `SESSION_CONTRACT_VERSION=3`. Version 3 requires a namespace-scoped `WorkerLifetime` on SessionStore, TurnLog and JournalFiles; custom adapters must provide it and retain underlying resources through actual worker exit. A new entry kind is compatible, and a reader MUST ignore an entry kind it does not know.
+- Versioning: one integer, `SESSION_CONTRACT_VERSION=4`. Version 4 requires pure for_actor(actor) binding for every caller path. Version 3 requires a namespace-scoped `WorkerLifetime` on SessionStore, TurnLog and JournalFiles; custom adapters must provide it and retain underlying resources through actual worker exit. A new entry kind is compatible, and a reader MUST ignore an entry kind it does not know.
 - Ordering or precedence: this contract governs persistence and the client API; CONTRACT-002 governs which entries the engine writes and when, and its gate sequence.
 - Backward-compatibility rules: adding an optional field, an entry kind, a capability, or a `Change` variant that a follower may ignore is compatible. Changing a signature, a rule, a guarantee, or a cursor format is a new version. A cursor format change invalidates outstanding cursors, which a store refuses with `InvalidCursor`.
 - Deprecation rules: a removed item is announced one version ahead and kept, with a warning, for that version.
@@ -609,3 +610,31 @@ unsupported content slots without fetching raw records; metadata remains partial
 Each provider boundary receives a separate actor snapshot; provider mutation cannot alter later policy subjects or attributes. Query inputs are copied before cursor binding and adapter I/O.
 
 HistoryPage.partial defaults false and propagates the selected archive entry page partial flag, including empty pages. A derived/facts-only history page therefore cannot silently imply a complete empty transcript.
+
+
+### Caller-aware storage binding
+
+SessionStore.for_actor(actor) is a required pure factory for a non-owning facade. It captures a
+copied Actor while preserving the live Credential object and shares capabilities/namespace worker
+lifetime/resources. Each operation enforces its owner/query/session.state.owner equals actor.id;
+actor.principal is model attribution and never a database ownership subject. Bindings are never
+cached by owner, since concurrent same-owner callers may have different credentials. Each provider
+acquisition gets a fresh actor snapshot; provider mutation cannot affect later policy subjects.
+
+All caller reads, mutations, owned jobs, retained outcomes, followers/reconnects, archive transfers
+and turn leases use the explicit facade. Append/heartbeat/release retain the accepted turn binding.
+A bound facade's aclose is non-owning and cannot seal the root or close an application pool. It
+cannot expose global maintenance recovery through caller credentials. Unbound root maintenance
+and migrations require explicitly configured service authority; caller acquisition failure never
+retries using that authority. The owner-only JSONL profile still returns an enforcing facade.
+
+The Postgres profile injects an async connection-acquisition context callback with the current
+copied actor; application code owns pool selection, token refresh, roles and optional RLS setup.
+Tether retains SQL owner predicates, never chooses or changes a role, never opens a hidden pool,
+and never reads connection environment settings. Requested session ids are operation scope, not
+ownership proof. Explicit migration uses selected maintenance authority and is separately invoked.
+A database/schema namespace has one stable non-secret identity and shared process-local worker
+ownership across roots/facades; independent identities stay isolated. Root shutdown seals new
+operations and retains namespace ownership until actual workers/I/O finish, even after bounded
+or canceled close. External pools remain application-owned. These are required profile gates,
+not evidence that Postgres is already implemented or qualified.
