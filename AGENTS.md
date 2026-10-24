@@ -212,3 +212,12 @@ shutdown safely: register, seal and refuse publication. Retain canceled initdb t
 completion, plus unreturned acquisitions and physical workers, before native shutdown and lock
 release. Runtime cleanup errors after process exit still release the data lock. Base/postgres-only
 profiles must remain independent of server binaries and the cached pgserver Python lifecycle.
+
+
+Model-port version2 adds typed per-physical-attempt usage to AttemptRecorder.observe. Preserve
+known zero, optional subcount enrichment and missingness; never add final logical usage twice.
+Only known accepted receipt facts update live policy accounting. Current policy sees committed
+retry costs before the next egress. Local/SQL summaries and restart reconstruction share the pure
+attempt-keyed reducer; summary storage shape/revision stays unchanged. Custom test recorders retain
+logical totals but explicitly leave physical coverage incomplete. Cassette-v1 final responses do
+not qualify physical retry-observation equivalence. Metadata-only audit/tracing remains slice6 work.

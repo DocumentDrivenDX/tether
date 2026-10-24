@@ -23,7 +23,7 @@ from tether.types import (
     ResponseReceipt,
 )
 
-from .wire import validate_wire
+from .wire import observed_usage, validate_wire
 
 
 class AttemptTransport(httpx.AsyncBaseTransport):
@@ -142,7 +142,10 @@ class AttemptTransport(httpx.AsyncBaseTransport):
         data = await self._read_bounded(response)
         if response.status_code < 200 or response.status_code >= 300:
             await recorder.observe(
-                identity, receipt, wire_response=wire_observation(response.status_code, data)
+                identity,
+                receipt,
+                wire_response=wire_observation(response.status_code, data),
+                usage=observed_usage(data),
             )
             raise ModelUnavailable(
                 f"http {response.status_code}", receipt.provider_request_id, receipt
@@ -151,7 +154,10 @@ class AttemptTransport(httpx.AsyncBaseTransport):
             normalized = validate_wire(data, self.request.tools, self.limits)
         except ModelUnavailable as error:
             await recorder.observe(
-                identity, receipt, wire_response=wire_observation(response.status_code, data)
+                identity,
+                receipt,
+                wire_response=wire_observation(response.status_code, data),
+                usage=observed_usage(data),
             )
             raise ModelUnavailable(error.reason, receipt.provider_request_id, receipt) from None
         receipt = receipt.model_copy(update={"response_id": normalized.request_id})
@@ -160,7 +166,10 @@ class AttemptTransport(httpx.AsyncBaseTransport):
             update={"receipt": receipt, "request_id": receipt.provider_request_id}
         )
         await recorder.observe(
-            identity, receipt, wire_response=wire_observation(response.status_code, data)
+            identity,
+            receipt,
+            wire_response=wire_observation(response.status_code, data),
+            usage=normalized.usage,
         )
         return data
 

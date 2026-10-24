@@ -204,6 +204,6 @@ class ReplayModel:
             error = record.outcome.unavailable
             if error is None:
                 raise ValueError("invalid_cassette_outcome")
-            if error.receipt and request.attempts and identity:
+            if error.receipt is not None and request.attempts is not None and identity is not None:
                 await request.attempts.observe(identity, error.receipt)
             raise ModelUnavailable(error.reason, error.request_id, error.receipt)

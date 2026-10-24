@@ -106,7 +106,11 @@ class OpenAIAdapter:
         self._limits = limits.model_copy(deep=True)
         self._output_limit_field = output_limit_field
         self._application_credential = application_credential
-        self._transport = transport or httpx.AsyncHTTPTransport(retries=0, trust_env=False)
+        self._transport = (
+            transport
+            if transport is not None
+            else httpx.AsyncHTTPTransport(retries=0, trust_env=False)
+        )
 
     async def aclose(self) -> None:
         await self._transport.aclose()

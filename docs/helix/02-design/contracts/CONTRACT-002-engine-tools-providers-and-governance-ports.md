@@ -465,3 +465,29 @@ independent namespaces MUST NOT share handles solely because session ids match. 
 validation retain actual executor futures through physical completion. Loop/open checks precede
 submission. Invocation intent/result/message entries use their original proposal turn id, including
 first dispatch or safe replay during recovery; recovery-attempt facts use the accepting phase id.
+
+
+### Telemetry delivery and authority
+
+Journal facts remain authoritative. Audit delivery is a bounded observational mirror after known
+acceptance, with no durable-delivery or exactly-once promise. Events have stable identity derived
+from session id, accepted entry position and semantic phase. Stable-key retries MUST NOT create
+new logical events. Unknown or rejected appends MUST NOT be emitted as accepted outcomes. The core
+maps semantic transitions to the declared audit kinds; it MUST NOT serialize raw journal facts,
+receipts, history refs, exception messages or arbitrary extension dictionaries as audit detail.
+
+Trusted input/confirmation/resume acceptance notification MUST occur before any telemetry await.
+Sink/tracer failure MUST NOT authorize an action, reverse a committed result, repeat an effect,
+mask the primary exception or erase cancellation. Explicit finite queue/delivery/shutdown bounds
+control owned observational tasks; overload/failure is metadata-only and cannot block a turn
+indefinitely. External sinks and exporters remain application-owned. A durable outbox is a separate
+profile and is not implied by this base contract.
+
+Default tracing/audit perform no I/O. The collecting audit dummy has explicit finite capacity and
+reports overflow. Trace/span ids exist only for real trace context; no-op tracing MUST NOT invent
+ids. Disable automatic exception recording and exception-derived status text. Engine metadata uses
+explicit field/type registries and configured names/prefixes, with owner and current principal
+separate and no credentials or unrestricted actor attributes. Tool wait spans MUST NOT claim
+physical completion after cancellation; outstanding/exit observations retain captured identifiers.
+Per-attempt usage uses CONTRACT-005's shared typed reduction, including current purpose, retries,
+missing usage and optional subcounts. OTel exporter/receiver proof remains separately qualified P1.

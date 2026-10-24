@@ -24,7 +24,7 @@ from tether.types.storage import (
 
 from .indexing import entry_groups, ledger_change, pending_confirmation
 from .projection import Projection, finish_summary, new_projection
-from .usage import add_usage, usage_change, usage_value
+from .usage import add_usage, usage_change, usage_observations
 
 
 @dataclass
@@ -107,21 +107,21 @@ class SessionIndex:
                 index[invocation] = entry
             else:
                 index.pop(invocation, None)
-        if entry.kind in {"model_call", "model_attempt"}:
+        if entry.kind in {"model_call", "model_attempt", "model_receipt"}:
             self._usage(entry)
 
     def _usage(self, entry: Entry) -> None:
-        key, value = usage_value(entry)
-        change = usage_change(self.counted.get(key), value, exists=key in self.counted)
-        self.counted[key] = change.value
-        self.missing_usage += change.missing_delta
-        totals = add_usage(self.summary.usage, change.added)
-        self.summary = self.summary.model_copy(
-            update={
-                "usage": totals,
-                "usage_complete": self.missing_usage == 0,
-            }
-        )
+        for key, value in usage_observations(entry):
+            change = usage_change(self.counted.get(key), value, exists=key in self.counted)
+            self.counted[key] = change.value
+            self.missing_usage += change.missing_delta
+            totals = add_usage(self.summary.usage, change.added)
+            self.summary = self.summary.model_copy(
+                update={
+                    "usage": totals,
+                    "usage_complete": self.missing_usage == 0,
+                }
+            )
 
     def view(self) -> SessionView:
         pending = None

@@ -7,7 +7,7 @@ import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from tether.types import Message
+from tether.types import Message, Purpose
 from tether.types.canonical import digest
 from tether.types.execution import (
     Actor,
@@ -21,10 +21,10 @@ from tether.types.execution import (
     NewEntry,
     Policy,
     TurnLog,
-    UsageSoFar,
     copy_actor,
 )
 from tether.types.history import HistoryRecord
+from tether.types.usage import UsageLedger
 
 
 def reason_code(value: str, fallback: str = "policy_reason_invalid") -> str:
@@ -55,7 +55,7 @@ class Governance:
     ) -> None:
         self.actor, self.log, self.history, self.policy = actor, log, history, policy
         self.turn_id, self.limits, self.clock = turn_id, limits, clock
-        self.usage = UsageSoFar()
+        self.configure_usage(frozenset({turn_id}))
         self.policy_reasons = frozenset(
             {
                 "allowed",
@@ -66,6 +66,14 @@ class Governance:
                 "policy_unavailable",
             }
         )
+
+    def configure_usage(self, turn_ids: frozenset[str]) -> None:
+        self.usage_turns = turn_ids
+        self.accounting = UsageLedger()
+        for entry in self.log.entries:
+            if entry.turn_id in turn_ids:
+                self.accounting.apply(entry)
+        self.usage = self.accounting.snapshot()
 
     async def fact(
         self,
@@ -88,6 +96,10 @@ class Governance:
             value = NewEntry.model_validate(actual.model_dump(exclude={"index", "at"}))
             if value != expected or actual not in self.log.entries:
                 raise ExecutionDenied("commit_not_accepted")
+        for entry in accepted:
+            if entry.turn_id in self.usage_turns:
+                self.accounting.apply(entry)
+        self.usage = self.accounting.snapshot()
         return accepted
 
     async def decision(
@@ -95,6 +107,7 @@ class Governance:
         action: str,
         resource: str,
         *,
+        purpose: Purpose | None = None,
         requires: frozenset[str] = frozenset(),
         permitted: frozenset[str] | None = None,
     ) -> NewEntry:
@@ -106,7 +119,7 @@ class Governance:
             requires=requires,
             permitted=permitted,
             usage=self.usage,
-            purpose="answer" if action == "call_model" else None,
+            purpose=(purpose or "answer") if action == "call_model" else None,
         )
         try:
             async with asyncio.timeout(self.limits.hook_timeout_seconds):
@@ -140,10 +153,13 @@ class Governance:
         action: str,
         resource: str,
         *,
+        purpose: Purpose | None = None,
         requires: frozenset[str] = frozenset(),
         permitted: frozenset[str] | None = None,
     ) -> None:
-        entry = await self.decision(action, resource, requires=requires, permitted=permitted)
+        entry = await self.decision(
+            action, resource, purpose=purpose, requires=requires, permitted=permitted
+        )
         await self.commit([entry])
         if not entry.facts["allowed"]:
             raise ExecutionDenied(str(entry.facts["reason"]))

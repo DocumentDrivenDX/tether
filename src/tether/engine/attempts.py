@@ -11,10 +11,12 @@ from tether.types import (
     ModelAttemptDenied,
     RequestTags,
     ResponseReceipt,
+    TokenUsage,
 )
 from tether.types.canonical import digest
 from tether.types.execution import ExecutionDenied, HistoryRef
 from tether.types.history import HistoryProvider, HistoryRecord
+from tether.types.usage import usage_change
 
 from .governance import Governance
 
@@ -31,7 +33,6 @@ class JournalAttemptRecorder:
         self.gov, self.tags, self.tier, self.history = gov, tags, tier, history
         self.recheck = recheck
         self.latest_exchange: HistoryRef | None = None
-        self.baseline_usage_complete = gov.usage.usage_complete
         self.reserved: dict[str, AttemptIdentity] = {}
         self.started: dict[str, tuple[AttemptIdentity, JsonValue, str]] = {}
 
@@ -68,7 +69,7 @@ class JournalAttemptRecorder:
             await self.gov.authorize("read_session", self.gov.log.session.id)
             if self.recheck is not None:
                 await self.recheck()
-            await self.gov.authorize("call_model", "model:" + self.tier)
+            await self.gov.authorize("call_model", "model:" + self.tier, purpose=identity.purpose)
         except ExecutionDenied as error:
             raise ModelAttemptDenied(error.reason) from None
         ref = None
@@ -91,7 +92,6 @@ class JournalAttemptRecorder:
             history_ref=ref.model_dump(mode="json") if ref else None,
         )
         self.started[identity.attempt_id] = (identity, wire_request, codec)
-        self.gov.usage = self.gov.usage.model_copy(update={"usage_complete": False})
 
     async def observe(
         self,
@@ -99,10 +99,15 @@ class JournalAttemptRecorder:
         receipt: ResponseReceipt,
         *,
         wire_response: JsonValue | None = None,
+        usage: TokenUsage | None = None,
     ) -> None:
         value = self.started.get(identity.attempt_id)
         if value is None or value[0] != identity:
             raise ModelAttemptDenied("invalid_attempt_identity")
+        key = "attempt:" + identity.attempt_id
+        usage_change(
+            self.gov.accounting.values.get(key), usage, exists=key in self.gov.accounting.values
+        )
         _, request, codec = value
         ref = None
         if self.history is not None:
@@ -115,6 +120,7 @@ class JournalAttemptRecorder:
             )
         self.latest_exchange = ref
         observation: dict[str, JsonValue] = {
+            "usage": usage.model_dump(mode="json") if usage is not None else None,
             "receipt": receipt.model_dump(mode="json"),
             "response_digest": digest(wire_response) if wire_response is not None else None,
         }
@@ -123,5 +129,6 @@ class JournalAttemptRecorder:
             key=f"receipt:{identity.attempt_id}:{digest(observation)}",
             identity=identity.model_dump(mode="json"),
             receipt=receipt.model_dump(mode="json"),
+            usage=usage.model_dump(mode="json") if usage is not None else None,
             history_ref=ref.model_dump(mode="json") if ref else None,
         )

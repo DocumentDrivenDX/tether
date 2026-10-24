@@ -48,7 +48,7 @@ from .closing import close_session
 from .confirmations import approval_entries
 from .governance import AllowAll, Governance, utc_now
 from .inspection import describe_pending
-from .reconstruction import pinned_spec, requested_turn, restore_pending, restored_usage
+from .reconstruction import pinned_spec, requested_turn, restore_pending
 from .recovery import resume_chain
 from .resolution import resolve
 from .run import Run
@@ -82,8 +82,8 @@ class Engine:
         self.attempt_factory, self.max_output_tokens = attempt_factory, max_output_tokens
         self.registry, self.guards = Registry(tools, providers), guards
         self.policy, self.limits, self.clock = (
-            policy or AllowAll(),
-            limits or ExecutionLimits(),
+            policy if policy is not None else AllowAll(),
+            limits if limits is not None else ExecutionLimits(),
             clock,
         )
         self.workers = Workers(self.limits.max_workers)
@@ -248,7 +248,7 @@ class Engine:
         )
         run = self._create(gov, spec)
         chain = frozenset(resume_chain(log.entries, source_turn))
-        gov.usage = restored_usage(log.entries, chain)
+        gov.configure_usage(chain)
         run.result_turn_ids = chain
         run.steps = gov.usage.steps
         if not await restore_pending(run, invocation_id):
