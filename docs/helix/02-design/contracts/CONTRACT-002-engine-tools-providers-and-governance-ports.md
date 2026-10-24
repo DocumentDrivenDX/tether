@@ -488,7 +488,21 @@ is therefore an accepted-turn failure. Specs and supplied start values are copie
 The concrete `tether.types.lifetime.WorkerLifetime` is process-local ownership, never persisted
 execution evidence. Every leased log for the same storage namespace MUST expose the same handle;
 independent namespaces MUST NOT share handles solely because session ids match. Sync execution and
-validation retain actual executor futures through physical completion. Loop/open checks precede
+validation retain actual executor futures through physical completion. Owned async hooks and
+returned same-loop awaitables retain an operation completion proxy until actual completion,
+including when cancellation is suppressed. Admission precedes execution; cancellation of a
+shielded waiter requests child cancellation without cancelling the ownership proxy. Physical
+executor capacity and retained-operation capacity are separate, so a tool can make a mediated
+nested read without consuming another physical permit for the async parent. The selected
+ExecutionLimits defaults are max_workers=8 and max_worker_operations=32; both are positive
+application settings. Raw function exit frees its physical permit, while an adopted awaitable
+keeps the operation and session busy. Fresh awaitable adoption is bounded to16 levels; abandoned
+bare coroutines are closed without starting. Existing returned same-loop Tasks/Futures are
+cancel-requested and drained even after a depth refusal. Cycles refuse with a typed error.
+Arbitrary detached work and foreign-loop Tasks/Futures are outside this return profile. Foreign-loop
+lifetime registrations refuse before registry mutation; returned foreign-loop Futures refuse adoption. The lifetime retains a clean-context loop timer
+while active, preventing weak asyncio task cycles from losing the storage owner. Late failures
+are consumed without replacing the waiter's primary cancellation. Loop/open checks precede
 submission. Invocation intent/result/message entries use their original proposal turn id, including
 first dispatch or safe replay during recovery; recovery-attempt facts use the accepting phase id.
 
