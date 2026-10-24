@@ -212,8 +212,11 @@ Run `migrate(source, actor=maintenance_actor, schema="tether")` explicitly, then
 schema/revision, namespace and durability settings without migration. Use the resulting history
 with the existing JSONL journal and close the database root explicitly. It never closes your pool.
 `migration_sql(schema)` exports the fresh-schema plain SQL statements; apply the complete sequence
-in one transaction. Existing managed schemas use `migrate` for verification, and conflicting or
-drifted tables refuse rather than receiving implicit repair.
+in one transaction. `migrate` explicitly upgrades a verified revision1 schema to revision2,
+preserving its namespace and immutable history bytes; repeat calls verify the current revision.
+Ordinary opening refuses revision1 until that upgrade. Conflicting or drifted tables refuse
+rather than receiving implicit repair. Revision2 includes internal indexed journal primitives;
+the public session-store adapter and its cross-process qualification remain unfinished.
 
 This checkpoint qualifies PostgreSQL18.6 with logged ordinary tables, `fsync=on`,
 `full_page_writes=on` and `synchronous_commit=on`. It preserves canonical bytes, immutable
