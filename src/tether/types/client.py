@@ -52,6 +52,7 @@ class HistorySlot(Payload):
 class HistoryPage(Payload):
     items: tuple[HistorySlot, ...]
     next_start: int | None
+    partial: bool = False
 
 
 class CallDetail(Payload):

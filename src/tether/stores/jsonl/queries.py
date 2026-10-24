@@ -17,10 +17,10 @@ class QueryCursor(Payload):
     last: tuple[str, str]
 
 
-def query_digest(query: SessionQuery) -> str:
+def query_digest(query: SessionQuery, tier: str = "live") -> str:
     value = query.model_dump(mode="json")
     value["status"] = sorted(query.status) if query.status is not None else None
-    return digest({"tier": "live", "query": value})
+    return digest({"tier": tier, "query": value})
 
 
 def position(summary: SessionSummary, query: SessionQuery) -> tuple[str, str]:
@@ -54,12 +54,17 @@ def decode_cursor(cursor: str, expected: str) -> tuple[str, str]:
 
 
 def page(
-    values: Iterable[SessionSummary], query: SessionQuery, cursor: str | None, limit: int
+    values: Iterable[SessionSummary],
+    query: SessionQuery,
+    cursor: str | None,
+    limit: int,
+    *,
+    tier: str = "live",
 ) -> Page[SessionSummary]:
     for date in (query.updated_after, query.updated_before):
         if date is not None and date.tzinfo is None:
             raise ValueError("invalid_query_datetime")
-    fingerprint = query_digest(query)
+    fingerprint = query_digest(query, tier)
     after = decode_cursor(cursor, fingerprint) if cursor is not None else None
     descending = query.order != "created_asc"
     selected = sorted(

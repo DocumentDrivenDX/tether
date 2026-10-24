@@ -238,3 +238,12 @@ The facade maintains the session-wide unknown-effect barrier, authorized manual 
 | ADR-006/007/008/009/013/016/017 | Unchanged by runner selection | Licensing, contributions, reference clients, optional SQLite/Gateway, trusted extension and scope boundaries | Applicable SD-001 qualification rows |
 
 Runtime choice does not select every Harness capability or every backend. A failed profile test first requires an adapter fix or a documented supported-subset limit. Reopen Agent only for a demonstrated semantic failure or a concrete maintenance comparison; an optional SDK or naming mismatch is not that evidence.
+
+
+Optional archive composition stays outside Agent execution: independent ArchiveSource/ArchiveSink
+ports feed caller-authorized tier reads and an explicit application-scheduled export helper.
+ArchiveBundle carries immutable facts and reference-complete content; InMemoryArchive is a bounded
+volatile reference adapter. Restoration rechecks current payload/restore policy and prepares content
+before atomic journal projection, retaining original pending/effect/closure evidence. Derived reads
+retain partial status, and cached content confers no authority. Scheduling/eviction belongs to the
+application; optional history and archive dependencies never replace execution fencing or intent.

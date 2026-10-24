@@ -372,7 +372,7 @@ budgets include prior phases and prepared unaccepted model attempts. Invocation 
 its original proposal turn; retry-attempt facts belong to the recovery phase. Actual executor futures
 share root/session ownership across Engines and pending inspection; root shutdown retains the lock
 until actual exit. Local prefix/reopen journeys qualify this subset. Full recovery/property faults,
-Client archive composition and remaining command races still precede completing slices 4/9. Consumer recovery
+Client archive composition is implemented below; remaining complete-profile race/performance qualification still precedes closing slices 4/9. Consumer recovery
 entry seams were inspected; no tested standalone planner was available to port.
 
 ### Consumer boundary review and implementation plan
@@ -545,3 +545,17 @@ The functional mapping above is the release-scope index for all 53 stable FRs; q
 | Local JSONL history/journal crash and startup qualification | Local provider implementation | Slice 9b |
 | Exact Gateway source/tag/receipt mapping and retention configuration | Provider qualification | Slice 9b/11 |
 | Native/compatible transport and optional Harness component subset | Model/context integration owner | Q2/Q3 support claims; Agent selection is settled |
+
+
+Optional archive composition now uses independent source/sink ports and the existing
+reference-complete ArchiveBundle. The bounded volatile reference adapter verifies immutable
+snapshot identity, projections and closure, with precomputed metadata/content indexes. Current
+Client policy guards explicit tiers, live-miss fallback, nested original-content hydration and
+opaque tier/query/owner cursor wrappers. Pending/denied/unavailable are explicit; derived pages
+remain partial. Application retention invokes the bounded off-turn export→sink helper after
+idle/close; no scheduling or eviction policy runs inside Agent. Full restore checks raw payload
+and restore authority, isolates actor snapshots at every provider boundary and compares exact
+reconstructed identity for retry. It preserves unknown/pending/closed state without execution.
+The reference profile keeps original provider/codec addresses; cross-provider remapping is
+unqualified. Release evidence distinguishes current local integration from complete-profile
+performance, broader faults, telemetry and remaining selected slices.

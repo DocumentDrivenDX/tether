@@ -117,6 +117,14 @@ TurnLog, SessionStore and JournalFiles share a concrete WorkerLifetime per stora
 All sync offloads, including pending inspection/reconstruction, retain executor futures until actual
 exit; lease acquisition refuses outstanding workers across Engine replacement. Shutdown seals new
 submissions and keeps root ownership until physical completion. Independent roots do not couple.
+Optional ArchiveSource/ArchiveSink now compose independently. InMemoryArchive is bounded and volatile,
+verifies full bundle closure/projections, preserves caller scope and rejects stale/conflicting snapshots.
+Client archive tiers/history use present policy, explicit pending/denied/unavailable failures, opaque
+owner/query/tier cursors and final aggregate payload checks. Derived history keeps partial status even
+on empty pages. Full restore requires raw-payload authority, isolated actor copies at provider writes,
+original address/codec compatibility and exact reconstructed identity on retry. It never dispatches,
+approves or reopens closure. Explicit Tether.archive_session runs after idle/close outside Agent turns;
+application retention scheduling and eviction remain external. No automatic archive_on driver exists.
 Provisional stream production, broader process/storage fault qualification, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.

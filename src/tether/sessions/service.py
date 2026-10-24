@@ -6,11 +6,14 @@ import asyncio
 from typing import Literal, Self
 
 from tether.engine import Engine
+from tether.types.archive import ArchiveSink, ArchiveSource
 from tether.types.client import ClientLimits
+from tether.types.execution import Actor, copy_actor
 from tether.types.history import HistoryProvider
 from tether.types.storage import RecoveredTurn, SessionStore, Unsupported
 
 from .access import SessionAccess
+from .archived import ArchiveAccess
 from .feed import Followers
 from .turns import OwnedTurns
 
@@ -25,6 +28,8 @@ class SessionService:
         limits: ClientLimits,
         resume: Literal["off", "report", "auto"] = "report",
         default_spec: str | None = None,
+        archive: ArchiveSource | None = None,
+        archive_sink: ArchiveSink | None = None,
     ) -> None:
         if resume != "off" and (
             store.capabilities.durability == "none" or not store.capabilities.fencing
@@ -45,6 +50,7 @@ class SessionService:
             raise Unsupported("auto_resume_unqualified")
         self.engine, self.store, self.history, self.limits = engine, store, history, limits
         self.access = SessionAccess(store, history, engine.policy, limits)
+        self.archives = ArchiveAccess(self.access, archive, archive_sink)
         self.followers = Followers(self.access)
         self.turns = OwnedTurns(self.access, engine, default_spec)
         self.resume_mode = resume
@@ -52,6 +58,9 @@ class SessionService:
         self.closed = False
         self.drained = False
         self._cleanup: asyncio.Task[None] | None = None
+
+    async def archive_session(self, actor: Actor, session_id: str) -> None:
+        await self.archives.write(copy_actor(actor), session_id)
 
     async def __aenter__(self) -> Self:
         self.access.bind()

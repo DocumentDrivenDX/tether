@@ -181,3 +181,18 @@ at your option. Copyright 2026 FocusedDiversity LLC.
 You can contribute directly: open an issue or a pull request. There is no contributor license agreement to sign. Contributions are accepted as prompts: describe the change you want precisely enough that a maintainer's coding agent can implement it, and include any reference code as illustration. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project, as defined in the Apache-2.0 license, is dual licensed as above, without any additional terms or conditions.
+
+
+Optional archive reads use `Tether(..., archive=source)` and explicit `tier="archive"` on
+`Client.list/get/entries/history`. Get/entries default to live first and fall back only on actual
+absence. Archive failures stay distinct from empty results. Derived sources remain partial;
+full history hydration checks current payload permission after the final metadata await.
+
+`InMemoryArchive(ArchiveLimits(...))` is the bounded volatile reference source/sink. Configure
+`archive_sink=sink` and explicitly call `app.archive_session(actor, session_id)` after idle/close;
+this preserves live data and runs outside turns. Application retention policy schedules it.
+`Client.restore(session_id)` requires a full restorable archive and current read/payload/restore
+permission, copies verified content before atomic journal restoration, and preserves pending,
+unknown effects and closure. A retry with conflicting reference or creation metadata refuses.
+Reference-preserving restore currently requires compatible original provider/codec addresses.
+See [archive conformance](tests/test_archive_ports.py) and [Client journeys](tests/test_client_archive.py).

@@ -209,19 +209,24 @@ class JsonlSessionStore(SessionReads):
         from tether.types.execution import EntryConflict
 
         async with self.lock:
-            existing = self.index.get(session.state.id)
-            if existing is not None:
-                if existing.entries != list(session.entries) or existing.state != session.state:
-                    raise EntryConflict("archive_restore_conflict")
-                return existing.summary.model_copy(deep=True)
-            ref = session.init.ref
-            if ref is not None and (session.state.owner, ref) in self.refs:
-                raise EntryConflict("archive_restore_conflict")
+            if self.workers.busy(session.state.id):
+                raise WorkerOutstanding("worker_outstanding")
             staged = create_index(session.state.id, session.state.owner, session.init, created_at)
             for entry in session.entries:
                 staged.apply(entry)
             if staged.state != session.state:
                 raise IntegrityError("archive_state_integrity")
+            existing = self.index.get(session.state.id)
+            if existing is not None:
+                staged.summary = staged.summary.model_copy(
+                    update={"last_seq": existing.summary.last_seq}
+                )
+                if existing.entries != list(session.entries) or existing.view() != staged.view():
+                    raise EntryConflict("archive_restore_conflict")
+                return existing.summary.model_copy(deep=True)
+            ref = session.init.ref
+            if ref is not None and (session.state.owner, ref) in self.refs:
+                raise EntryConflict("archive_restore_conflict")
             await self._commit(self._event("restore", staged, session.entries, session.init))
             return self.index[session.state.id].summary.model_copy(deep=True)
 

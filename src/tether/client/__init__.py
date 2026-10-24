@@ -16,7 +16,7 @@ from .reads import ClientReads
 
 class Client(ClientReads):
     def __init__(self, service: SessionService, actor: Actor) -> None:
-        super().__init__(service.access, actor)
+        super().__init__(service.access, actor, service.archives)
         self._service = service
         self._metadata = MetadataCommands(service.access)
 
@@ -116,3 +116,6 @@ class Client(ClientReads):
 
     async def resume(self, session_id: str) -> TurnHandle:
         return await self._service.turns.resume(self._actor, session_id)
+
+    async def restore(self, session_id: str) -> SessionSummary:
+        return await self._service.archives.restore(self._actor, session_id)
