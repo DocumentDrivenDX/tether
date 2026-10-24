@@ -1054,3 +1054,35 @@ the retained-ref hazard; the fix has an exact regression and final review found 
 ran no tests. Four fresh hash-locked installed profiles and163 matching package
 sources are recorded in the execution receipt. Real token counting, artifact contents/native media,
 summary fidelity, provisional streaming and broader external/hosted matrix proof remain open.
+
+
+The native estimator checkpoint shares the selected public SDK request composition with a private
+in-process capture transport. An explicit hashed local vocabulary/profile builds tiktoken Encoding
+without registry, cache, environment configuration or implicit download. Complete native JSON BPE
+counts include source/summary metadata, tools and literal settings plus caller-declared framing;
+quality stays approximate and ModelLimits remains explicit. Byte roundtrip refuses incomplete regex
+coverage. Revision binds the copied profile/tier map, output field, codecs and actual library versions.
+Separate active/CPU limits and clean-context executor work retain actual completion and permits through
+cancellation. Existing Engine Workers preserves session fencing after the context caller deadline;
+standalone calls retain their task lifetime. Constructor compilation has no finite wall-clock claim.
+Both context conformance suites now use existing owned Workers so caller deadlines retain callbacks
+and factory cleanup. The native physical transport reconstructs only explicit protocol/identity/
+correlation headers, refusing ambient SDK header influence at egress. A proven guard-rerun gap is also
+closed: provider redactions retain original ToolOutput facts for every later guard pass.
+
+The independent qualification script accepts explicit bounded vocabulary/profile files and compares
+actual native wire bytes with a separate Python adjacent-pair BPE oracle. Tests cover fabricated byte
+vocabularies and negative controls; selected standard vocabulary evidence is recorded separately.
+Remaining work includes provisional streaming/outcome, server-specific framing/token counts, semantic
+summary fidelity/workloads and broader Q3/external/release profiles. No second Agent or owned loop.
+
+
+The native estimator checkpoint passes 1512 cases in 48 bounded groups at 92.19%
+branch-inclusive coverage with strict typing 0 and unchanged gates. Its 63 added cases include actual
+Agent fit/refusal and summary integration, exact CPU/callback lifetime and current session fencing,
+header egress isolation and guard-facts preservation. Independent review found and closed an oracle
+whole-fragment edge case; final review found no concrete blocker and ran no tests. Ten explicit
+standard-vocabulary native-wire cases agree with the separate BPE oracle. Four fresh hash-locked
+installed profiles and 166 matching package sources are recorded in the execution
+receipt. Approximate JSON counts with fabricated framing do not establish server accounting, semantic
+summary fidelity, provisional streaming or broader external/hosted matrix proof.

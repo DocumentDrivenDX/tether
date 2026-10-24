@@ -31,7 +31,7 @@ embedded-postgres = [
   "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl#sha256=125ce679dc70a8730f41aa083f70e2bb8de079e4d78277205de87906ab5f88b6 ; sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.13'",
   "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl#sha256=8cd40d44b54b8cb41b5b6950b1fea8bef58133c840a003bc12b217f7fb03b51d ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.13'",
 ]
-openai = ["pydantic-ai-slim[openai]==2.59.0", "openai==3.37.0"]
+openai = ["pydantic-ai-slim[openai]==2.59.0", "openai==3.37.0", "tiktoken==0.14.0"]
 
 [dependency-groups]
 dev = [
@@ -45,7 +45,7 @@ dev = [
   "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-macosx_14_0_arm64.whl#sha256=032ff91c4c94f3a6734f52ac0e26c11a99fdb636955c78f4d6dfad9110a214cb ; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.13'",
   "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl#sha256=125ce679dc70a8730f41aa083f70e2bb8de079e4d78277205de87906ab5f88b6 ; sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.13'",
   "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl#sha256=8cd40d44b54b8cb41b5b6950b1fea8bef58133c840a003bc12b217f7fb03b51d ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.13'",
-  "pydantic-ai-slim[openai]==2.59.0", "openai==3.37.0",
+  "pydantic-ai-slim[openai]==2.59.0", "openai==3.37.0", "tiktoken==0.14.0",
   "coverage>=7,<8", "hypothesis>=6,<7", "packaging>=25", "pyright>=1.1,<2",
   "pytest>=8,<10", "pytest-cov>=6,<8", "pytest-mock>=3,<4", "ruff>=0.12,<1",
 ]

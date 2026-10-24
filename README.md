@@ -89,6 +89,16 @@ non-JSON executable argument leaves and lossy argument serializers remain outsid
 The fabricated examples and faults are in [the execution tests](tests/test_gated_execution.py)
 and [the integration review](tests/test_execution_review.py).
 
+The optional compatible adapter can supply an estimator with
+`model.estimator(profile=tokenizer_profile, vocabulary=verified_local_bytes)`.
+`TokenizerProfile` is exported by `tether.adapters.openai_compat`; it requires explicit tokenizer,
+byte/capacity and framing settings. Counts cover native serialized JSON and remain approximate.
+Vocabulary loading belongs to the application; the library performs no implicit tokenizer download.
+Constructor setup is synchronous; Engine deadlines retain actual off-loop counting through cancellation.
+See [the context contract](docs/helix/02-design/contracts/CONTRACT-004-context-projection-and-compaction.md)
+for configuration and limits. `uv run --locked python scripts/qualify_tokenizer.py VOCABULARY PROFILE_JSON OUTPUT_JSON`
+runs fabricated offline wire/BPE qualification with supplied data; it makes no live model request.
+
 The pure `tether.engine.plan_resume(entries, declarations, session_id=...)` planner classifies
 interrupted invocation states from scoped journal facts and immutable `ResumeTool` snapshots.
 It preserves source-derived invocation ids, refuses canceled or superseded ancestry, and never

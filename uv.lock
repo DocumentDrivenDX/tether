@@ -1558,6 +1558,7 @@ embedded-postgres = [
 openai = [
     { name = "openai" },
     { name = "pydantic-ai-slim", extra = ["openai"] },
+    { name = "tiktoken" },
 ]
 postgres = [
     { name = "psycopg", extra = ["binary", "pool"] },
@@ -1585,6 +1586,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-mock" },
     { name = "ruff" },
+    { name = "tiktoken" },
 ]
 
 [package.metadata]
@@ -1605,6 +1607,7 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.14.1" },
     { name = "pydantic-ai-slim", specifier = "==2.59.0" },
     { name = "pydantic-ai-slim", extras = ["openai"], marker = "extra == 'openai'", specifier = "==2.59.0" },
+    { name = "tiktoken", marker = "extra == 'openai'", specifier = "==0.14.0" },
 ]
 provides-extras = ["embedded-postgres", "openai", "postgres"]
 
@@ -1630,6 +1633,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=6,<8" },
     { name = "pytest-mock", specifier = ">=3,<4" },
     { name = "ruff", specifier = ">=0.12,<1" },
+    { name = "tiktoken", specifier = "==0.14.0" },
 ]
 
 [[package]]

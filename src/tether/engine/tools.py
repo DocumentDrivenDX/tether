@@ -341,7 +341,7 @@ class ToolExecutor:
             attachments=output.attachments,
         )
         message = await self._guard(tool, output, message)
-        message = await self._after(inv, tool, args, message)
+        message = await self._after(inv, tool, args, message, output)
         status = "withheld" if message.is_error else "ok"
         return await self.result(inv, status, "withheld" if message.is_error else None, message)
 
@@ -371,7 +371,7 @@ class ToolExecutor:
         return message
 
     async def _after(
-        self, inv: Invocation, tool: Tool, args: Normalized, message: Message
+        self, inv: Invocation, tool: Tool, args: Normalized, message: Message, output: ToolOutput
     ) -> Message:
         for provider in self.registry.providers:
             try:
@@ -391,7 +391,10 @@ class ToolExecutor:
                 if changed != message:
                     changed = await self._guard(
                         tool,
-                        ToolOutput(text=changed.content, attachments=changed.attachments),
+                        output.model_copy(
+                            update={"text": changed.content, "attachments": changed.attachments},
+                            deep=True,
+                        ),
                         changed,
                     )
                 message = changed

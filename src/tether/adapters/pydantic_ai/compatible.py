@@ -11,15 +11,10 @@ from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 
 import httpx2 as httpx
-from openai import APIConnectionError, AsyncOpenAI
-from pydantic_ai.models import ModelRequestParameters
-from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
-from pydantic_ai.profiles.openai import OpenAIModelProfile
-from pydantic_ai.providers.openai import OpenAIProvider
-from pydantic_ai.tools import ToolDefinition
+from openai import APIConnectionError
 
 from tether.models.canonical import copy_request
-from tether.runtime.pydantic_ai.messages import from_sdk_response, to_sdk_messages
+from tether.runtime.pydantic_ai.messages import from_sdk_response
 from tether.types import (
     Credential,
     ModelExecutionLimits,
@@ -30,28 +25,10 @@ from tether.types import (
     TextDelta,
 )
 
+from .estimator import OpenAIWireEstimator
+from .native import request_native, validate_payload
+from .tokenizer import TokenizerProfile
 from .transport import AttemptTransport
-
-RESERVED = frozenset(
-    {
-        "model",
-        "messages",
-        "tools",
-        "tool_choice",
-        "stream",
-        "stream_options",
-        "max_tokens",
-        "max_completion_tokens",
-        "max_output_tokens",
-        "extra_headers",
-        "extra_body",
-        "timeout",
-        "response_format",
-        "n",
-        "reasoning_effort",
-        "parallel_tool_calls",
-    }
-)
 
 
 def retry_delay(header: str | None, cap: float, attempt: int) -> float:
@@ -116,74 +93,38 @@ class OpenAIAdapter:
         await self._transport.aclose()
 
     def _validate_request(self, request: ModelRequest) -> None:
-        if request.model not in self._tiers:
-            raise ModelUnavailable("unconfigured tier")
+        validate_payload(request, self._tiers)
         if request.attempts is None:
             raise ModelUnavailable("missing_attempt_recorder")
         if request.identity_mode != "caller" and request.credential is not None:
             raise ModelUnavailable("identity_mode_conflict")
         if request.identity_mode == "application" and self._application_credential is None:
             raise ModelUnavailable("missing_application_credential")
-        if RESERVED.intersection(request.extra):
-            raise ModelUnavailable("parameter_conflict")
-        if request.effort is not None:
-            raise ModelUnavailable("unsupported_effort")
+
+    def estimator(self, *, profile: TokenizerProfile, vocabulary: bytes) -> OpenAIWireEstimator:
+        return OpenAIWireEstimator(
+            tiers=self._tiers,
+            output_limit_field=self._output_limit_field,
+            profile=profile,
+            vocabulary=vocabulary,
+        )
 
     async def _once(self, request: ModelRequest, boundary: AttemptTransport) -> ModelResponse:
         error: Exception | None = None
         normalized: ModelResponse | None = None
-        async with (
-            httpx.AsyncClient(
-                transport=boundary,
-                trust_env=False,
-                follow_redirects=False,
-                headers={"Accept-Encoding": "identity"},
-            ) as http,
-            AsyncOpenAI(
-                api_key="-".join(("tether", "transport", "placeholder")),
-                organization="",
-                project="",
-                admin_api_key="",
-                webhook_secret="",
+        try:
+            response = await request_native(
+                request,
                 base_url=self._base_url,
-                max_retries=0,
-                http_client=http,
-            ) as client,
-        ):
-            model = OpenAIChatModel(
-                self._tiers[request.model],
-                provider=OpenAIProvider(openai_client=client),
-                profile=OpenAIModelProfile(
-                    openai_chat_supports_max_completion_tokens=self._output_limit_field
-                    == "max_completion_tokens",
-                    openai_supports_strict_tool_definition=False,
-                ),
+                model_name=self._tiers[request.model],
+                output_limit_field=self._output_limit_field,
+                transport=boundary,
             )
-            parameters = ModelRequestParameters(
-                function_tools=[
-                    ToolDefinition(
-                        name=t.name,
-                        description=t.description,
-                        parameters_json_schema=t.input_schema,
-                        strict=False,
-                    )
-                    for t in request.tools
-                ]
+            normalized = from_sdk_response(
+                response, boundary.response.usage if boundary.response else None
             )
-            settings = OpenAIChatModelSettings(
-                max_tokens=request.max_output_tokens,
-                extra_body=request.extra,
-                parallel_tool_calls=False,
-            )
-            try:
-                response = await model.request(
-                    to_sdk_messages(request.messages, request.system), settings, parameters
-                )
-                normalized = from_sdk_response(
-                    response, boundary.response.usage if boundary.response else None
-                )
-            except Exception as failure:
-                error = failure
+        except Exception as failure:
+            error = failure
         if boundary.local_error is not None:
             raise boundary.local_error
         if isinstance(error, ModelUnavailable):

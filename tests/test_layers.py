@@ -32,6 +32,7 @@ def project(root: Path, files: dict[str, str], extras: bool = False) -> Path:
         "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n import openai",
         "from pydantic_ai import Agent",
         "import httpx2",
+        "import tiktoken",
         "import sqlite3",
         "import importlib as loader\nloader.import_module('openai')",
         "from importlib import import_module as load\nload('anthropic')",

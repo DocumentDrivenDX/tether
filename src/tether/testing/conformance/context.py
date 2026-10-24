@@ -10,6 +10,7 @@ from typing import Literal
 
 from tether.context.materialization import materialize
 from tether.context.validation import validated_plan
+from tether.engine.workers import Workers
 from tether.types import AttachmentRef, Message, ModelRequest, RequestTags, ToolCall, ToolSpec
 from tether.types.canonical import canonical, digest
 from tether.types.context import (
@@ -121,8 +122,17 @@ async def context_strategy_suite(
     *,
     timeout_seconds: float = 10,
 ) -> SuiteReport:
+    workers = Workers(1, operation_capacity=1)
+    try:
+        async with asyncio.timeout(suite_timeout(timeout_seconds)):
+            return await workers.call("context-strategy-suite", _context_strategy_report, factory)
+    finally:
+        await workers.close(0)
+
+
+async def _context_strategy_report(factory: ContextStrategyFactory) -> SuiteReport:
     checks = {"context_plan_valid", "context_input_immutable", "context_strategy_identity"}
-    async with asyncio.timeout(suite_timeout(timeout_seconds)), factory() as strategy:
+    async with factory() as strategy:
         for grouped in (False, True):
             checks.update(await _plan_case(strategy, grouped))
     return SuiteReport(
@@ -242,7 +252,16 @@ async def token_estimator_suite(
     *,
     timeout_seconds: float = 10,
 ) -> SuiteReport:
-    async with asyncio.timeout(suite_timeout(timeout_seconds)), factory() as fixture:
+    workers = Workers(1, operation_capacity=1)
+    try:
+        async with asyncio.timeout(suite_timeout(timeout_seconds)):
+            return await workers.call("token-estimator-suite", _token_estimator_report, factory)
+    finally:
+        await workers.close(0)
+
+
+async def _token_estimator_report(factory: TokenEstimatorFactory) -> SuiteReport:
+    async with factory() as fixture:
         for name, request in estimator_cases():
             await _estimate_case(fixture, name, request)
     return SuiteReport(

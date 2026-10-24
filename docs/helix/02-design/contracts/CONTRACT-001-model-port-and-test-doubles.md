@@ -154,6 +154,14 @@ messages are restored by their known positions only after complete equality; no 
 SDK metadata or checkpoint grants source authority. Native adapters render the restored refs once.
 Returned SDK conversations remain derivatives and contain rendered metadata text.
 
+The selected native egress boundary rebuilds `Host`, `Content-Type`, `Content-Length`, `Accept`,
+and `Accept-Encoding` from the explicit URL/body and fixed JSON/identity settings, then adds only
+current Tether attempt tags, optional explicit traceparent and selected authorization. It MUST NOT
+forward ambient SDK cookies, custom headers, organization/project, host or correlation defaults.
+The native SDK may still parse ambient header configuration before this boundary; malformed values
+fail closed with a static unavailable reason and no physical request or raw header diagnostic.
+Offline estimation uses a separate capture transport and creates no physical attempt.
+
 ## Precedence and Compatibility
 
 The initial pre-release v1 is revised in place; there is no released contract to preserve or compatibility wrapper. Cassettes use the final v1 shapes, including output limits, purpose and terminal reasons. Existing experimental fixtures must be explicitly regenerated rather than guessed.

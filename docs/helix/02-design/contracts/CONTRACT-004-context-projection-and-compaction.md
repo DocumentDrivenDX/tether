@@ -237,9 +237,52 @@ Prompt sections preserve provider registration order; tool schemas use stable to
 
 The engine rejects a plan with more new summary parts than its configured remaining per-step summary-call allowance before making any of those requests. The engine makes at most one strategy plan per main model step. Each proposed `summarize` part counts toward the per-step auxiliary-call bound, including failed requests; an exhausted bound ends `context_exhausted`. After materialization it performs one final estimate. If that does not fit, the step stops; no model request is made. A provider's context-window rejection also stops the step; a new user request may select different explicit limits/strategy. A cancellation propagates and does not become a compaction failure.
 
+### Optional native JSON estimator profile
+
+The selected `tether[openai]` adapter exposes
+`model.estimator(profile: TokenizerProfile, vocabulary: bytes)`. The immutable copied profile has
+required `id`, `revision`, `encoding_name`, `pattern`, `vocabulary_sha256`, `max_vocabulary_bytes`,
+`max_request_bytes`, `max_count_workers`, `max_count_operations`, `request_framing_tokens`,
+`message_framing_tokens`, and `tool_framing_tokens`. Identifiers/pattern are nonempty strings;
+pattern has at most65536 characters, SHA-256 is64 lowercase hex characters, byte/capacity limits
+are positive strict integers, and framing allowances are nonnegative strict integers.
+`max_count_workers` MUST NOT exceed `max_count_operations`. These are caller configuration,
+not model-window defaults or measured server framing. ModelLimits remains separately required.
+
+Vocabulary bytes use one base64 token and a unique unsigned32-bit integer rank per line. The constructor
+checks bytes/hash/size, duplicate tokens/ranks and all256 individual-byte tokens, then builds a local
+encoding with no special-token interpretation. It uses neither the tokenizer registry/cache nor a
+download. Synchronous composition validates/compiles this bounded input; no finite constructor
+wall-clock bound is promised. Applications own preparation of trusted vocabulary/profile data.
+
+`native-json-bpe-v1` serializes the same public Pydantic AI/OpenAI request composition as egress,
+using a private in-process capture transport. It MUST NOT call credential authorization, physical
+attempt recorders, the configured egress transport or a model service. It counts the entire UTF-8
+JSON body, including settings, messages, tool schemas/calls/results and rendered attachment metadata,
+then adds configured request/message/tool framing allowances. Headers and Tether correlation fields
+outside the body do not enter this count. Decoding counted tokens MUST reproduce every serialized
+byte; a regex that omits bytes refuses `context_unmeasurable`. Both the input snapshot and actual
+serialized body must obey `max_request_bytes`.
+
+The returned quality is always `approximate`. Its revision binds the profile, vocabulary hash,
+tier map, output-limit field, message/attachment/native codecs and installed serialization/tokenizer
+library versions. Local JSON BPE counts include literal JSON overhead and cannot prove a server's
+prompt framing or billing count. The [OpenAI token-counting guide](https://developers.openai.com/api/docs/guides/token-counting)
+describes hidden formatting and tool contributions; its server counting endpoint is for Responses
+payloads and is outside this offline Chat Completions profile.
+
+Each estimator binds one event loop before mutating admission state. It bounds active operations
+and physical CPU work separately; overflow is `context_exhausted`, wrong loop is
+`context_incompatible`. CPU counting runs off-loop in a clean Context. Cancellation retains its raw
+executor future and worker permit through actual exit and preserves primary cancellation over late
+errors. Engine's context deadline bounds the caller through its existing Workers operation; actual
+estimator work continues to fence the session until exit. A standalone direct call deliberately
+retains actual work through cancellation; its caller owns that task lifetime. No independent Agent,
+model attempt or fallback context loop is introduced.
+
 ### 6. Defaults and conformance
 
-The public context_strategy_suite accepts an asynchronous fresh ContextStrategy factory. It checks fabricated ordinary and complete-tool-group snapshots, source coverage/protection, declared strategy identity, input isolation and deterministic materialization, or refusal of an uncommitted summary. The token_estimator_suite accepts a fresh TokenEstimatorFixture containing the estimator, an independent request-to-inclusive-token-bounds oracle, an evidence label (fabricated or wire_oracle), and attachment behavior (estimates or refuses). Its cases cover framing, system instructions, messages, tool schemas and attachments, repeated estimates and input isolation. Attachment refusal must be context_unmeasurable. Reports list remaining external obligations; a fixed fabricated oracle does not qualify real wire counting, encoding, current authorization, executor deadlines, final egress fit or summary recovery. Factories own cleanup, and the whole suite has one finite positive deadline.
+The public context_strategy_suite accepts an asynchronous fresh ContextStrategy factory. It checks fabricated ordinary and complete-tool-group snapshots, source coverage/protection, declared strategy identity, input isolation and deterministic materialization, or refusal of an uncommitted summary. The token_estimator_suite accepts a fresh TokenEstimatorFixture containing the estimator, an independent request-to-inclusive-token-bounds oracle, an evidence label (fabricated or wire_oracle), and attachment behavior (estimates or refuses). Its cases cover framing, system instructions, messages, tool schemas and attachments, repeated estimates and input isolation. Attachment refusal must be context_unmeasurable. Reports list remaining external obligations; a fixed fabricated oracle does not qualify real wire counting, encoding, current authorization, executor deadlines, final egress fit or summary recovery. Factories own cleanup. Each whole suite has one finite positive caller deadline through an owned Workers operation; an abandoned callback and its factory cleanup remain retained until actual exit. Async callbacks must keep the event loop responsive. Timeout does not prove that callback work stopped.
 
 
 - `FullContext` preserves every source, produces no summary and no omissions, and refuses an over-budget request.
