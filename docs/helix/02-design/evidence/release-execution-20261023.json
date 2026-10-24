@@ -1,0 +1,84 @@
+{
+  "date": "2026-10-23",
+  "goal": "Implement, test, review and merge all selected Tether build-plan slices; begin with slice 3.",
+  "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
+  "authority": "Explicit owner instruction in integration-lead session; includes source control, merge and Tether-session coordination.",
+  "status": "active",
+  "branch": "codex/tether-release-foundations",
+  "baseline_commit": "d680c4d",
+  "completed_slices": [
+    0,
+    1,
+    2
+  ],
+  "current_slice": 3,
+  "slice_3": {
+    "implemented": [
+      "checksummed local journal/history with OS ownership and fsynced accepted-prefix witnesses",
+      "owner-scoped snapshots, atomic summary/feed projections, idempotency and in-writer lease fencing",
+      "full history records and observed exchange/source binding",
+      "reference-complete archive transfer",
+      "journal-derived Agent approval reconstruction and per-physical-attempt fenced policy/capture"
+    ],
+    "latest_full_check": "pass: make check, 251 tests, 91.58% branch-inclusive coverage, strict Pyright 0 errors, Ruff/format, unchanged size/shape gates, layers/negative controls, base foundation-model SDK count 0; macOS/Python 3.11.17.",
+    "targeted_checks": "Actual Agent root/Engine restart, step-budget preservation, batched approvals, revoked/missing sources and changed tool/spec checks pass. File fault regressions and process-exit recovery pass.",
+    "review": "Independent peer reproduced canceled-close ownership loss, missing promoted-head witness and abandoned running turns. All three changed paths now have exact passing regressions in test_storage_faults.py; peer follow-up execution is pending in its own session.",
+    "pending": [
+      "final full quality gate and rebuilt installed-artifact checks",
+      "update slice evidence and support limits",
+      "commit and open/attach PR, run CI and merge after checks/review"
+    ]
+  },
+  "remaining_slices": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    "9a",
+    "9b",
+    10,
+    11,
+    12
+  ],
+  "coordination": {
+    "integration_lead": {
+      "thread_id": "01a1645a-2afa-7e91-ab78-4ab43eecf069",
+      "title": "Tether \u2014 integration lead \u00b7 slice 3 and release"
+    },
+    "scope_reviewer": {
+      "thread_id": "01a16468-e1e7-70b1-8539-f4134d651a88",
+      "title": "Tether \u2014 MCP scope and adoption review",
+      "assignment": "Read-only MCP release-scope and durability/fencing review; no source writes."
+    },
+    "mcp_disposition": "MCP is P2 and outside selected 0.1 slices. Consumer adoption/MCP Apps require separate qualification; do not silently promote advisory scope."
+  },
+  "next_action": "Complete final slice 3 verification and review evidence, commit/PR the foundation, then implement Client API slice 4 without stopping at the slice boundary.",
+  "qualification_limits": [
+    "Only local POSIX single-writer JSONL is implemented; Postgres cross-process profile is slice 5.",
+    "No OS power-cut guarantee is inferred from process-exit tests.",
+    "Started-invocation recovery, manual resolve and actual-worker/lease-loss qualification remain slice 9.",
+    "Live Gateway/profile credentials and real server correspondence are not supplied or qualified."
+  ],
+  "source_control": "User authorized merges. Earlier uncommitted slices 0\u20132 were preserved as d680c4d. No pull request yet.",
+  "metering": "Active goal has no user-specified token/time ceiling; runtime metering is available via get_goal; no invented total-budget claim.",
+  "boundary_review": {
+    "status": "Sub-agent review complete; sanitized plan recorded and omissions corrected.",
+    "plan_section": "SD-001: Consumer boundary review and implementation plan",
+    "disposition": "ADR-017/018 membership/state ownership retained; contract amendment work distinguished from implemented API and consumer parity from universal release obligations.",
+    "priority_seams": [
+      "owner/model-principal separation",
+      "loop affinity",
+      "payload permission distinction",
+      "leased preparation",
+      "gated client tool command",
+      "immutable registry/spec transitions",
+      "trusted approval transforms",
+      "mediated auxiliary calls",
+      "durable settlement"
+    ],
+    "scope_limits": "Domain workflows, UI/transport, business records, artifact content and credentials remain application-owned. Rewind/import/batch approval and immediate shared live text are explicit adoption decisions.",
+    "review_limit": "No new seam has been implemented or qualified merely by recording this plan."
+  }
+}

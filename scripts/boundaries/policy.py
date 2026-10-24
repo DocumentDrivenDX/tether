@@ -70,7 +70,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
         "databricks",
     ),
     "tether.stores": ("tether.types", "tether.ports"),
-    "tether.stores.jsonl": ("tether.types", "tether.ports", "anyio"),
+    "tether.stores.jsonl": ("tether.types", "tether.ports", "tether.stores.projections", "anyio"),
     "tether.stores.postgres": ("tether.types", "tether.ports", "psycopg", "psycopg_pool", "anyio"),
     "tether.stores.postgres.embedded": ("tether.types", "tether.ports", "pgserver", "anyio"),
     "tether.stores.sqlite": ("tether.types", "tether.ports", "anyio"),

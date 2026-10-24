@@ -37,6 +37,7 @@ class GatedAgent:
         prepare: PrepareModel,
         accept_response: Callable[[ModelResponse], Awaitable[None]],
         execute: Callable[[ToolCall], Awaitable[Message | None]],
+        deferred_ids: frozenset[str] = frozenset(),
     ) -> None:
         self._execute = execute
         self._bridge = PortModel(model, request, limits, prepare, accept_response)
@@ -48,7 +49,7 @@ class GatedAgent:
             retries=0,
         )
         self._history: list[ModelMessage] = to_sdk_messages(request.messages, request.system)
-        self._deferred: set[str] = set()
+        self._deferred: set[str] = set(deferred_ids)
 
     def _tool(self, spec: ToolSpec) -> Tool[None]:
         async def execute(ctx: RunContext[None], **arguments: JsonValue) -> str:

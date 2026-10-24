@@ -310,6 +310,83 @@ remain assigned to later slices. No integration finding justifies an alternate r
 
 **Characterization scenarios (slice 2)**: plain answer; allowed/denied/scope-required tool; invalid arguments; typed failure; step limit; model denial/outage/cancellation; approval approved/declined/expired/superseded; always-ask tool; result guard refusal; narrow-only hidden/redacted provider output; failing hook; current read revocation. Add digest/default/coercion changes, forged SDK success, invalid terminals and uncertain commit regressions from SPIKE-004.
 
+Slice 3 implementation and bounded qualification are recorded in [its execution record](../evidence/slice-3-execution-20261023.json).
+Local JSONL journal/history now provide checksummed batches, accepted-prefix witnesses, owner-scoped
+projections, in-writer lease fencing, archive closure and pending-approval reconstruction through
+Agent from current authorized originals and supplied pinned specs. File faults and process exit
+are qualified locally; actual power-cut behavior, multiprocess Postgres, full Client, manual effect
+resolution and complete started-invocation recovery remain later work. No cached SDK state is
+authority and no finding requires a second loop.
+
+### Consumer boundary review and implementation plan
+
+The consumer integration review identifies missing extension seams, not a reason to replace
+Agent or import an application's workflow into core. Apply ADR-017's membership test and
+ADR-018's state ownership. The feedback's pre-implementation baseline does not describe the
+current source; individual asks still need contract and executable qualification.
+
+This is a plan for contract amendments and implementation. Proposed seams below are not
+current API guarantees. Before their implementation, amend the named contracts and governing
+architecture/ADRs where necessary; then add a dummy, conformance cases and failure evidence.
+Existing release priorities stand unless a requirement is explicitly promoted. An adoption
+blocker for one consumer is distinct from a universal release blocker.
+
+| Ask | Boundary and minimum work | Sequence / qualification |
+|---|---|---|
+| Distinct session owner and model principal | Core identity binding; retain owner/policy subject and explicit caller credentials, allow separately verified model principal; no persona model | Before slice 4: CONTRACT-001/002/003; distinct owner/principal and concurrent credential tests |
+| Event-loop affinity | Core lifecycle; bind async composition to one running loop; thread bridges submit to it, never reuse async pools across loops | Before slice 4: CONTRACT-003; wrong-loop refusal and bounded close |
+| Payload-specific permission | Core read boundary; exchange payload disclosure needs additional current authorization while metadata remains independently readable; reachable refs and owner checks remain mandatory | Slice 4: CONTRACT-002/003/005; metadata allowed/payload denied, revoked reads and archive closure tests; decide original transcript distinction explicitly |
+| Client-origin tool invocation | Generic command through the same lease, validation, policy, source binding and intent/result path; no model call; approval-required refuses | Define in CONTRACT-002/003 before slice 4, implement by slice 7; no bypass or fabricated model provenance |
+| Leased preparation | Bounded async seam before first model request, after accepted-input deduplication; application prepares attachments and domain state | Slices 4/7: CONTRACT-002/003; cancellation, lease loss, retry and changed-input tests; accepted text/attachment identity cannot mutate silently |
+| Edited approval | Optional trusted argument-transform seam; preserve proposal, shown values and exact executable values with independent digests and renewed gates | Slice 7: CONTRACT-002; semantic restriction belongs to tool/provider; structural JSON subset is no safety proof |
+| Batch approval | Optional bounded command convenience, independent single-use invocation bindings and serial execution | Adoption enhancement; existing serial answers cover demonstrated consumer behavior; concurrent/partial answer races before claiming support |
+| Staged application writes | Generic durable settlement seam; application owns participant semantics, content and retention | Slices 5/7/9: CONTRACT-002/003; durable decision plus idempotent reconciliation or selected same-transaction participant; crash at every frontier |
+| Explicit spec transitions | Generic authorized transition between completed call groups; application owns engagement/routing | Slice 7: CONTRACT-002/004; pin digest/version, close/refuse outstanding old-spec calls and invalidate incompatible approvals |
+| Runtime registry publication | Immutable generation snapshots, atomic publication and pinned active invocations; policy revocation remains current | Slice 7: CONTRACT-002; replace/remove during execution and pending approval. Existing hidden-tools seam handles visibility within a registered superset |
+| Auxiliary model calls | Mediated purpose/profile calls using current read/model policy, caller identity, attempt and usage journal | Slices 7/9a: CONTRACT-001/002/004; application schedules naming/suggestions; no mandatory suggestion field or job service |
+| Postgres authoritative history | Optional paired PostgresHistory/SessionStore implementing separate ports; content-before-ref across backends, optional shared transaction profile | Slice 5: CONTRACT-003/005; atomic rejection/unknown acknowledgment and exact history binding evidence |
+| Schema and migrations | Postgres adapter owns configurable validated schema, version checks and exportable SQL; application chooses migration tooling | Slice 5: explicit migration invocation, no migration during ordinary client construction; decide and qualify an optional plain-SQL profile excluding stored functions, triggers and PL/pgSQL |
+| Scoped database connections | Adapter connection-acquisition seam with verified actor/session context | Slice 5: application owns pools, credentials and RLS; keep owner predicates, no broader-role fallback |
+| Cross-process live text | Optional bounded live transport beside authoritative persisted feed | Slice 5: declare cross-process capability, dropped events/polling fallback; notifications are not durable history. Immediate live parity remains an adoption decision |
+| Summary business facets | Application bulk enrichment and existing refs/tags first; optional indexed facets require explicit schema/filter/bounds contract | Later enhancement; no arbitrary business records in SessionState or shadow transcript |
+| Replace last turn | Optional immutable retraction/projection feature; no deletion of intents, approvals or effects | Later scope decision; refuse unresolved effects; application owns upload cleanup |
+| Existing-session import | Optional bounded import with original provenance | Cutover enhancement; imported pending approval/effect facts never become newly executable authority |
+| Defaults package | Composition convenience with finite limits and deterministic estimator | Slices 8/10: explicit selected model limits; do not invent provider capacity |
+| Release/distribution | Packaging and versioned support matrix, artifact hashes and selected release channel | Slice 10: installed wheel/sdist journeys; signing/publishing require selected authority and profile, not assumed credentials |
+| Telemetry naming | Existing configurable prefix/namespaced events plus application adapter | Slice 6: preserve canonical semantics and metadata-only sinks; receiver proof for exporter claims |
+| Gateway parity | Optional model/history enrichment profile using selected native-client integration | Slice 11 P1: caller-only identity, exact correlation and live fabricated qualification; gateway logs are not the whole original transcript |
+
+**Settlement invariant to design before implementation:** an ordinary callback before the
+result commit can leave an application effect committed with an unknown journal outcome;
+a callback after the commit can expose success before that effect exists. Do not describe
+either as atomic settlement. A shared-database profile may enlist a bounded participant in
+the fenced transaction without exposing a raw connection through generic ToolContext. An
+independent-backend profile needs durable stage ids, recorded settlement decisions, idempotent
+commit/rollback/reconciliation and explicit uncertainty blocking dependent actions. Browser
+delivery cannot be part of a database atomicity guarantee.
+
+**Factual documentation corrections before dependent work:** remove the non-normative
+CONTRACT-003 description that implies an existing consumer stores only keys/facts and
+reconstructs its original transcript from gateway logs. Correct the discovery assessment's
+stale derived-archive/content-by-reference deferral against ADR-018/019 and CONTRACT-005.
+Describe RLS as deployment-selected qualification, not an established consumer feature.
+Preserve external exchange history as a valid optional profile; do not copy private consumer
+implementation details into the public explanation.
+
+**Qualification additions:** use fabricated scenarios for owner/principal separation, edited
+argument digests, single-winner answers, registry replacement/revocation, preparation replay
+and cancellation, auxiliary calls after closure, metadata/payload permission splits,
+settlement crashes and two-process follow with lost live events. Reuse inspected and scrubbed
+consumer characterization tests where they test generic behavior; keep its business records,
+transport, domain labels, uploads and workflow routing in the application adapter.
+
+**Decisions still owned by the product owner:** whether rewind/import/batch approval are
+mandatory for initial cutover; immediate cross-process deltas versus committed-result fallback;
+which application settlement profile is required; original transcript versus exchange payload
+permissions; release channel/signing authority. These do not block independent slice 3 storage
+qualification. They must be explicit before a dependent support claim, rather than silently
+promoting every integration request to P0.
+
 ### Remaining qualification work
 
 The owner has selected Agent. The entries below qualify production behavior and support claims, rather than reopen that choice. Role ownership identifies who implements/proves a boundary, not a separate team or service. Q0-Q8 cover applicable P0 acceptance; OTel exporter, performance commitment, automatic recovery and optional profiles retain PRD P1 scope. Q9 is Gateway P1.

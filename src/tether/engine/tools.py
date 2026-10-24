@@ -99,6 +99,11 @@ class ToolExecutor:
         intents = set[str]()
         for entry in self.gov.log.entries:
             inv = str(entry.facts.get("invocation_id", ""))
+            if entry.kind == "resolved" and entry.facts.get("outcome") in {
+                "completed",
+                "not_completed",
+            }:
+                intents.discard(inv)
             if entry.kind == "tool_call" and entry.facts.get("effect") == "effectful":
                 if entry.facts.get("status") == "started":
                     intents.add(inv)

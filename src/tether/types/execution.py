@@ -79,6 +79,11 @@ class HistoryRef(Payload):
     provider: str
     key: str
     sha256: str
+    codec: str = "tether-message-v1"
+    owner: str = ""
+    session_id: str = ""
+    kind: Literal["message", "model_exchange", "summary"] = "message"
+    component: Literal["record", "request", "response", "assistant", "summary"] = "record"
 
 
 class CallManifest(Payload):
@@ -218,7 +223,8 @@ class Policy(Protocol):
 class TurnLog(Protocol):
     """Slice 2 subset: accepted entries supplied by the owning session handle."""
 
-    session: SessionState
+    @property
+    def session(self) -> SessionState: ...
 
     @property
     def entries(self) -> Sequence[Entry]: ...

@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 from uuid import uuid4
 
 from tether.ports import ModelPort
-from tether.runtime.pydantic_ai.gated import GatedAgent
 from tether.types import (
     AttemptRecorder,
     Message,
-    ModelAttemptDenied,
     ModelExecutionLimits,
     ModelRequest,
-    ModelResponse,
-    ModelUnavailable,
     RequestTags,
 )
 from tether.types.canonical import digest
@@ -36,168 +31,14 @@ from tether.types.execution import (
     TurnLog,
     TurnResult,
 )
+from tether.types.history import HistoryProvider
 from tether.types.tooling import tool_spec
 
 from .governance import AllowAll, Governance, utc_now
-from .providers import narrow_request
+from .reconstruction import pinned_spec, requested_turn, restore_pending, restored_usage
+from .run import Run
 from .tools import Invocation, Registry, ToolExecutor
 from .workers import Workers
-
-
-class Run:
-    def __init__(
-        self,
-        gov: Governance,
-        executor: ToolExecutor,
-        template: ModelRequest,
-        model: ModelPort,
-        limits: ModelExecutionLimits,
-        attempt_factory: Callable[[RequestTags], AttemptRecorder],
-    ) -> None:
-        self.gov, self.executor, self.template = gov, executor, template
-        self.model, self.limits = model, limits
-        self.runner: GatedAgent | None = None
-        self.steps = 0
-        self.attempt_factory = attempt_factory
-        self.current_call: str | None = None
-
-    async def messages(self) -> tuple[Message, ...]:
-        return tuple(
-            [
-                await self.gov.read(e.history_ref)
-                for e in self.gov.log.entries
-                if e.kind == "message"
-            ]
-        )
-
-    async def prepare(self, request: ModelRequest) -> ModelRequest:
-        if self.executor.workers.closed:
-            raise ExecutionDenied("engine_closed")
-        if self.steps >= self.executor.spec.max_steps:
-            raise ExecutionDenied("step_limit")
-        await self.gov.authorize("call_model", "model:" + request.model)
-        if (
-            request.messages != await self.messages()
-            or request.system != self.executor.spec.instructions
-        ):
-            raise ExecutionDenied("derived_history_changed")
-        request = await narrow_request(
-            self.gov,
-            self.executor.workers,
-            self.executor.registry.providers,
-            self.executor.spec,
-            request,
-        )
-        await self.gov.authorize("call_model", "model:" + request.model)
-        self.steps += 1
-        self.current_call = str(uuid4())
-        tags = request.tags.model_copy(update={"model_call_id": self.current_call})
-        return request.model_copy(
-            update={
-                "tags": tags,
-                "attempts": self.attempt_factory(tags),
-                "credential": self.gov.actor.credential,
-            }
-        )
-
-    async def accept(self, response: ModelResponse) -> None:
-        message = Message(
-            role="assistant", content=response.content, tool_calls=response.tool_calls
-        )
-        ref = await self.gov.history.put(
-            actor=self.gov.actor,
-            session_id=self.gov.log.session.id,
-            key="model:" + str(self.current_call),
-            message=message,
-        )
-        manifests = tuple(
-            self.executor.registry.manifest(c, i) for i, c in enumerate(response.tool_calls)
-        )
-        accepted = await self.gov.commit(
-            [
-                NewEntry(
-                    kind="message",
-                    key="source:" + str(self.current_call),
-                    turn_id=self.gov.turn_id,
-                    history_ref=ref,
-                    call_manifest=manifests,
-                    facts={"role": "assistant", "is_error": False},
-                ),
-                NewEntry(
-                    kind="model_call",
-                    turn_id=self.gov.turn_id,
-                    facts={
-                        "status": "ok",
-                        "model_call_id": self.current_call,
-                        "purpose": "answer",
-                        "finish_reason": response.finish_reason,
-                        "usage": response.usage.model_dump(mode="json") if response.usage else None,
-                    },
-                ),
-            ]
-        )
-        self.executor.bind(accepted[0])
-        usage = self.gov.usage
-        self.gov.usage = usage.model_copy(
-            update={
-                "steps": self.steps,
-                "model_calls": usage.model_calls + 1,
-                "input_tokens": usage.input_tokens
-                + (response.usage.input_tokens if response.usage else 0),
-                "output_tokens": usage.output_tokens
-                + (response.usage.output_tokens if response.usage else 0),
-                "usage_complete": usage.usage_complete and response.usage is not None,
-            }
-        )
-
-    async def finish(self, continuing: bool = False) -> TurnResult:
-        visible: tuple[Message, ...] = ()
-        try:
-            await self.gov.authorize("read_session", self.gov.log.session.id)
-            if self.runner is None:
-                request = self.template.model_copy(update={"messages": await self.messages()})
-                self.runner = GatedAgent(
-                    self.model,
-                    request,
-                    self.limits,
-                    prepare=self.prepare,
-                    accept_response=self.accept,
-                    execute=self.executor.execute,
-                )
-            waiting = await self.runner.run(continuing=continuing)
-            visible = tuple(
-                [
-                    await self.gov.read(e.history_ref)
-                    for e in self.gov.log.entries
-                    if e.kind == "message" and e.turn_id == self.gov.turn_id
-                ]
-            )
-            stop, reason = ("confirmation_required" if waiting else "final"), None
-        except ExecutionDenied as error:
-            stop = error.reason if error.reason == "step_limit" else "model_denied"
-            reason = error.reason
-        except ModelAttemptDenied as error:
-            stop, reason = "model_denied", error.reason
-        except ModelUnavailable as error:
-            stop, reason = "model_unavailable", error.reason
-            await self.gov.fact(
-                "model_call",
-                status="error",
-                reason=reason,
-                model_call_id=self.current_call,
-                purpose="answer",
-            )
-        except asyncio.CancelledError:
-            await asyncio.shield(self.gov.fact("turn_ended", stop_reason="cancelled"))
-            raise
-        await self.gov.fact("turn_ended", stop_reason=stop, reason=reason)
-        return TurnResult(
-            turn_id=self.gov.turn_id,
-            stop_reason=stop,
-            reason=reason,
-            pending=tuple(self.executor.pending.values()) if visible else (),
-            messages=visible,
-        )
 
 
 class Engine:
@@ -209,7 +50,8 @@ class Engine:
         model: ModelPort,
         history: MessageHistory,
         model_limits: ModelExecutionLimits,
-        attempt_factory: Callable[[RequestTags], AttemptRecorder],
+        attempt_factory: Callable[[RequestTags], AttemptRecorder] | None = None,
+        history_provider: HistoryProvider | None = None,
         tools: tuple[Tool, ...] = (),
         providers: tuple[Provider, ...] = (),
         guards: tuple[ResultGuard, ...] = (),
@@ -217,8 +59,10 @@ class Engine:
         limits: ExecutionLimits | None = None,
         clock: Clock = utc_now,
         max_output_tokens: int = 1024,
+        specs: tuple[AgentSpec, ...] = (),
     ) -> None:
         self.model, self.history, self.model_limits = model, history, model_limits
+        self.history_provider = history_provider
         self.attempt_factory, self.max_output_tokens = attempt_factory, max_output_tokens
         self.registry, self.guards = Registry(tools, providers), guards
         self.policy, self.limits, self.clock = (
@@ -228,6 +72,7 @@ class Engine:
         )
         self.workers = Workers(self.limits.max_workers)
         self._runs: dict[str, Run] = {}
+        self._specs = {digest(s.model_dump(mode="json")): s.model_copy(deep=True) for s in specs}
         self._running: set[str] = set()
 
     def _enter(self, actor: Actor, log: TurnLog) -> None:
@@ -244,7 +89,7 @@ class Engine:
     ) -> TurnResult:
         self._enter(actor, log)
         try:
-            await self._supersede(log.session.id)
+            await self._supersede(actor, log)
             gov = Governance(
                 actor, log, self.history, self.policy, str(uuid4()), self.limits, self.clock
             )
@@ -261,7 +106,11 @@ class Engine:
                     NewEntry(
                         kind="turn_started",
                         turn_id=gov.turn_id,
-                        facts={"spec_digest": digest(spec.model_dump(mode="json"))},
+                        facts={
+                            "spec_digest": digest(spec.model_dump(mode="json")),
+                            "spec_id": spec.id,
+                            "spec_version": spec.version,
+                        },
                     ),
                     NewEntry(kind="message", turn_id=gov.turn_id, history_ref=ref),
                 ]
@@ -281,10 +130,20 @@ class Engine:
                 inv_id = digest([gov.log.session.id, source.index, manifest.position])
                 if "result:" + inv_id in keys:
                     continue
+                requested = next((e for e in entries if e.key == "pending:" + inv_id), None)
+                if requested is not None and "approval:" + inv_id not in keys:
+                    await gov.fact(
+                        "confirmation",
+                        key="approval:" + inv_id,
+                        state="superseded",
+                        binding=requested.facts.get("binding"),
+                    )
                 started = "intent:" + inv_id in keys
                 reason = (
                     "outcome_unknown"
                     if started and manifest.effect == "effectful"
+                    else "superseded"
+                    if requested is not None
                     else "interrupted"
                 )
                 await executor.result(
@@ -294,6 +153,7 @@ class Engine:
                 )
 
     def _create(self, gov: Governance, spec: AgentSpec) -> Run:
+        self._specs[digest(spec.model_dump(mode="json"))] = spec.model_copy(deep=True)
         selected = tuple(
             tool_spec(p.tool)
             for name, p in self.registry.tools.items()
@@ -318,12 +178,21 @@ class Engine:
             credential=gov.actor.credential,
         )
         executor = ToolExecutor(gov, self.registry, spec, self.workers, self.guards)
-        return Run(gov, executor, template, self.model, self.model_limits, self.attempt_factory)
+        return Run(
+            gov,
+            executor,
+            template,
+            self.model,
+            self.model_limits,
+            self.attempt_factory,
+            self.history_provider,
+        )
 
-    async def _supersede(self, session_id: str) -> None:
-        previous = self._runs.get(session_id)
+    async def _supersede(self, actor: Actor, log: TurnLog) -> None:
+        previous = self._runs.get(log.session.id)
         if previous is None:
             return
+        previous.gov.actor, previous.gov.log, previous.gov.policy = actor, log, self.policy
         for inv_id in tuple(previous.executor.pending):
             pending = previous.executor.pending[inv_id]
             await previous.gov.fact(
@@ -341,6 +210,8 @@ class Engine:
         self, actor: Actor, log: TurnLog, invocation_id: str, answer: Answer
     ) -> TurnResult | None:
         run = self._runs.get(log.session.id)
+        if run is None:
+            run = await self._restore(actor, log, invocation_id)
         if run is None or invocation_id not in run.executor.pending:
             return None
         if log.session.id in self._running:
@@ -367,6 +238,22 @@ class Engine:
             return await run.finish(continuing=True)
         finally:
             self._running.discard(log.session.id)
+
+    async def _restore(self, actor: Actor, log: TurnLog, invocation_id: str) -> Run | None:
+        source_turn = requested_turn(log.entries, invocation_id)
+        if source_turn is None:
+            return None
+        spec = pinned_spec(log.entries, self._specs)
+        gov = Governance(
+            actor, log, self.history, self.policy, source_turn, self.limits, self.clock
+        )
+        run = self._create(gov, spec)
+        gov.usage = restored_usage(log.entries, source_turn)
+        run.steps = gov.usage.steps
+        if not await restore_pending(run, invocation_id):
+            return None
+        self._runs[log.session.id] = run
+        return run
 
     async def aclose(self) -> bool:
         """Bounded shutdown; False explicitly means active work has not exited."""

@@ -24,6 +24,7 @@ from tether.types.execution import (
     UsageSoFar,
     copy_actor,
 )
+from tether.types.history import HistoryRecord
 
 
 def reason_code(value: str, fallback: str = "policy_reason_invalid") -> str:
@@ -135,6 +136,11 @@ class Governance:
         if not any(e.history_ref == ref for e in self.log.entries):
             raise ExecutionDenied("unreachable_source")
         message = await self.history.read(ref, actor=self.actor, session_id=self.log.session.id)
-        if digest(message.model_dump(mode="json")) != ref.sha256:
+        payload = (
+            HistoryRecord(kind="message", message=message).model_dump(mode="json")
+            if ref.codec == "tether-history-v1"
+            else message.model_dump(mode="json")
+        )
+        if digest(payload) != ref.sha256:
             raise ExecutionDenied("source_integrity")
         return message.model_copy(deep=True)

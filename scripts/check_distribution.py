@@ -95,6 +95,42 @@ async def smoke():
         Answer(approved=True))
     assert finished.stop_reason == 'final' and tool.calls == 1
     assert await engine.aclose()
+    import tempfile
+    from tether.history.jsonl import JsonlHistory
+    from tether.history.messages import MessageHistoryAdapter
+    from tether.stores.jsonl import JsonlRoot, JsonlSessionStore
+    from tether.types.storage import SessionInit
+    with tempfile.TemporaryDirectory(prefix='tether-installed-') as directory:
+        root = await JsonlRoot.open(Path(directory))
+        store = await JsonlSessionStore.open(root)
+        provider = await JsonlHistory.open(root)
+        session = await store.create(actor.id, SessionInit(settings={'approval': 'manual'}))
+        first = Engine(model=ScriptedModel([proposed]), history=MessageHistoryAdapter(provider),
+            history_provider=provider, model_limits=limits, tools=(tool,), specs=(spec,))
+        async with store.turn(session.id, actor.id, turn_id='installed-first') as durable_log:
+            waiting = await first.run_turn(
+                actor, durable_log, 'Fabricated durable request', spec=spec)
+        assert waiting.stop_reason == 'confirmation_required' and tool.calls == 1
+        invocation = waiting.pending[0].invocation_id
+        assert await first.aclose()
+        assert await root.aclose()
+        root = await JsonlRoot.open(Path(directory))
+        try:
+            store = await JsonlSessionStore.open(root)
+            provider = await JsonlHistory.open(root)
+            second = Engine(
+                model=ScriptedModel([response]), history=MessageHistoryAdapter(provider),
+                history_provider=provider, model_limits=limits, tools=(tool,), specs=(spec,))
+            async with store.turn(session.id, actor.id, turn_id='installed-answer') as durable_log:
+                finished = await second.answer(
+                    actor, durable_log, invocation, Answer(approved=True))
+            assert finished.stop_reason == 'final' and tool.calls == 2
+            snapshot = await store.snapshot(session.id, actor.id)
+            assert not snapshot.view.summary.pending
+            assert snapshot.view.summary.unresolved_effect_count == 0
+            assert await second.aclose()
+        finally:
+            assert await root.aclose()
 asyncio.run(smoke())
 print(json.dumps(dict(wheel_version=md.version('tether'),
     agent_runtime=md.version('pydantic-ai-slim'), provider_sdks=len(sdks),

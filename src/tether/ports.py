@@ -14,6 +14,9 @@ from tether.types.execution import Provider as Provider
 from tether.types.execution import ResultGuard as ResultGuard
 from tether.types.execution import Tool as Tool
 from tether.types.execution import TurnLog as TurnLog
+from tether.types.history import HistoryProvider as HistoryProvider
+from tether.types.storage import JournalFiles as JournalFiles
+from tether.types.storage import SessionStore as SessionStore
 
 
 class ModelPort(Protocol):

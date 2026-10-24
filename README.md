@@ -6,10 +6,10 @@ telemetry. It exposes the session list and session data to a user interface thro
 in-process Python API, and ships a simple command-line client and terminal UI for
 development and testing.
 
-**Status: gated execution foundation (slice 2).** Pydantic AI Agent now runs tools through
+**Status: gated execution and local durability foundations (slices 2–3).** Pydantic AI Agent now runs tools through
 Tether's policy, validation, approval and commit gates. Model doubles and shared codecs remain
-available. Journal/history doubles are volatile; durable sessions and reference clients remain
-later slices. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
+full Client, Postgres and reference clients remain later slices. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
 
 ## Development
 
@@ -63,16 +63,22 @@ session, tool and spec. An accepted assistant source precedes dispatch; an accep
 precedes every effectful or replay-unsafe tool. Unknown effects block new effectful calls.
 Agent owns iteration and deferred continuation. Tether owns every execution permission.
 
-Configure the model, history, limits, tools/providers, policy and a fresh per-call attempt-recorder
-factory explicitly. `AllowAll` is the permissive default policy; ownership and engine invariants
+Configure the model, history, limits, tools/providers and policy explicitly. The default
+journal attempt recorder fences and authorizes physical attempts; an explicit recorder factory
+is available for test/profile integrations. `AllowAll` is the permissive default policy; ownership and engine invariants
 still apply. Tool and provider plain functions run off the event loop with bounded capacity.
 Cancellation retains the worker's capacity and session marker until actual exit. `aclose()` seals
 new work and returns `False` if work remains after the configured finite shutdown wait.
 
 `MemoryTurnLog` and `MemoryHistory` in `tether.testing.execution` implement the slice 2 journal
-and message-history subsets. Their durability is `none`. Pending runs are process-local;
-restart continuation, fenced leases, full HistoryProvider readiness/exchanges, manual effect
-resolution, scope/spec resolver ports and telemetry are unfinished. Model/tool attachments,
+and message-history subsets. Their durability is `none`. For local durability, explicitly open
+`JsonlRoot`, `JsonlSessionStore` and `JsonlHistory`, and use `MessageHistoryAdapter` with Engine.
+The POSIX single-writer profile stores checksummed batches and accepted-prefix witnesses,
+fences leased writes, and reconstructs pending approval from journal/source facts with the
+original supplied specs. Unknown writes require reopening; close retains ownership while
+actual I/O remains. Process-exit evidence does not prove power-cut behavior. Manual effect
+resolution, safe started-invocation recovery, scope/spec resolver integration and telemetry
+remain unfinished. Model/tool attachments,
 non-JSON executable argument leaves and lossy argument serializers are refused by this subset.
 The fabricated examples and faults are in [the execution tests](tests/test_gated_execution.py)
 and [the integration review](tests/test_execution_review.py).

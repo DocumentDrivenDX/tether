@@ -69,12 +69,19 @@ recipe. `make hooks` installs the repository-local hook path when you want it en
 
 Keep `uv.lock` current. `make check` runs lint/format, strict source typing, shape ceilings,
 architectural import checks, the reachable base dependency audit and negative-control tests.
-Slice 2 adds the gated `tether.engine.Engine` facade, pinned tool registry, normalized argument
-and approval bindings, source verification, intent/result commits and fixed serial Agent tools.
-`TurnLog` and `MessageHistory` are explicitly limited slice 2 port subsets; the shipped memory
-doubles have durability `none`. Pending runner state is process-local. Durable session leases,
-full HistoryProvider readiness/exchanges, explicit recovery/manual resolution and full context
-qualification remain later slices. `AllowAll` is the documented permissive default; applications
-supply their policy and a fresh per-call attempt-recorder factory. Development dependencies include the optional
+Slices 2–3 add the gated `tether.engine.Engine` facade, pinned tool registry, normalized
+argument/approval bindings, source verification, intent/result commits and fixed serial Agent
+tools, followed by local JSONL journal/history, atomic projections, ownership/fencing and
+journal-derived pending approval reconstruction. `MemoryTurnLog` and `MessageHistory` remain
+limited volatile test subsets; full durable ports live in `types.storage` and `types.history`.
+Local storage requires explicit `JsonlRoot` lifetime and a qualified POSIX single-writer
+filesystem profile. Unknown writes poison the open writer until reopen; a canceled close must
+retain its OS lock until actual I/O exits. Process-exit tests do not establish power-cut proof.
+Supply the original pinned specs when reconstructing pending work; SDK caches confer no
+authority. Full safe-invocation recovery/manual resolution, Client, context and telemetry
+qualification remain later slices. `AllowAll` is the documented permissive default. Engine's
+default journal attempt recorder checks current reads/model policy and commits preparation
+before each physical model attempt; supplying a test recorder does not establish durability.
+Development dependencies include the optional
 provider SDK for tests; it must stay out of the runtime base closure. Do not promote fabricated
 transport checks to live server/profile qualification.
