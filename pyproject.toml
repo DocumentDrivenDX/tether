@@ -19,6 +19,18 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary,pool]==3.3.6"]
+embedded-postgres = [
+  "psycopg[binary,pool]==3.3.6",
+  "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-macosx_14_0_arm64.whl#sha256=fd42f07982693e16478ed42a297890d142d22250116e08887146e690f0dd2649 ; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.11'",
+  "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl#sha256=471f642e1dd38ec9eded27416b8f976f078c04faf13a47bc4bb0075a4906d6d3 ; sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.11'",
+  "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl#sha256=e1b99a6971fa869885398fe8a77d5e718e77572aa6d85b03d5c2f207496ab56c ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.11'",
+  "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-macosx_14_0_arm64.whl#sha256=424165d468f69ab6b73ac40de3258d8e9cb85b4ffb6496767671edc836cdb862 ; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.12'",
+  "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl#sha256=ffe48e2a865e9d89738780568d4503df75aed22dbb1f702876146d3ba5e05090 ; sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'",
+  "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl#sha256=0ad9646ee66b36444cce4bb0186b3bae9267806b1653fbb9fea16dc8d4bcb212 ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'",
+  "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-macosx_14_0_arm64.whl#sha256=032ff91c4c94f3a6734f52ac0e26c11a99fdb636955c78f4d6dfad9110a214cb ; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.13'",
+  "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl#sha256=125ce679dc70a8730f41aa083f70e2bb8de079e4d78277205de87906ab5f88b6 ; sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.13'",
+  "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl#sha256=8cd40d44b54b8cb41b5b6950b1fea8bef58133c840a003bc12b217f7fb03b51d ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.13'",
+]
 openai = ["pydantic-ai-slim[openai]==2.59.0", "openai==3.37.0"]
 
 [dependency-groups]
@@ -116,3 +128,6 @@ show_missing = true
 [tool.tether.ceilings]
 source_lines = 500
 test_lines = 800
+
+[tool.hatch.metadata]
+allow-direct-references = true

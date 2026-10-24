@@ -7,8 +7,10 @@ from psycopg import AsyncConnection
 
 from tether.types.execution import Actor
 
+Connection = AsyncConnection[tuple[object, ...]]
+
 
 class ConnectionSource(Protocol):
     def __call__(
         self, actor: Actor, session_id: str | None, /
-    ) -> AbstractAsyncContextManager[AsyncConnection[tuple[object, ...]]]: ...
+    ) -> AbstractAsyncContextManager[Connection]: ...

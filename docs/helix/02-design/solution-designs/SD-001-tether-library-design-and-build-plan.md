@@ -643,3 +643,32 @@ owner isolation, live credential refresh and no service fallback after caller re
 fixtures establish selected correspondence, not arbitrary deployment policy, external exactly-once
 effects, server power-cut behavior or performance targets. Next complete embedded convenience and
 complete-profile Client/testkit/performance closure, then continue remaining selected slices.
+
+
+The optional embedded helper will reuse the pinned PostgreSQL18 binaries while owning a small
+async subprocess lifecycle. The cached synchronous pgserver.get_server lifecycle is unsuitable:
+its same-process consumers share one cached object, PID counting does not express root ownership,
+and partial startup cannot be reliably cleaned through its public interface. This decision adds
+no agent runner or database pool. The existing SQL adapters and caller-aware source remain the
+execution/content boundary.
+
+Select a POSIX, non-root local profile with explicit absolute data and runtime directories and
+finite startup/shutdown/poll limits. Do not read environment configuration or use an implicit
+runtime directory. An OS lock anchored to the canonical data directory excludes duplicate helper
+owners independently of runtime directory choice. Accept new empty directories or a validated
+Tether-managed directory; refuse unmanaged data and an already-running/orphan server rather than
+adopting or killing it. Preserve database files on close; no deletion API is selected.
+
+Keep initialization, readiness, process handles, root creation and shutdown inside retained
+ownership. Report sanitized reasons with subprocess output controlled. Caller cancellation or a
+bounded wait cannot detach startup or permit another owner. open_root registers an explicitly
+supplied source and actor; migrations remain separate and explicit. Closing seals new roots,
+drains registered root I/O and actual workers plus in-flight acquisitions, then requests fast
+shutdown and retains ownership until physical process exit. Pools and roles stay application-owned.
+The optional extra contains the existing SQL dependency plus qualified server wheels; base and
+postgres-only imports remain independent of server code. Unsupported binary platforms refuse.
+
+Qualification must cover cold/warm timing, persistent restart, duplicate/symlink-equivalent data
+ownership, unmanaged/orphan refusal, failed/canceled initialization/readiness, retained source I/O
+and actual workers at close, no caller-to-service fallback, explicit migration and clean installed
+extra isolation. Measurements are evidence rather than unaccepted latency targets.

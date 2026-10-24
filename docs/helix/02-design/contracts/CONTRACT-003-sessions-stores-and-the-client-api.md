@@ -698,3 +698,69 @@ recovered = await caller.recover_owner(now=aware_now)
 These optional adapter additions do not change SESSION_CONTRACT_VERSION4 or require other stores
 to implement recover_owner. Application pools, authentication refresh, role/RLS configuration,
 external effect fencing and deployment lifetime remain outside the library.
+
+
+### Optional embedded PostgreSQL ownership
+
+`tether.stores.postgres.embedded` exports EmbeddedConfig, EmbeddedEndpoint and EmbeddedPostgres.
+This optional composition does not change SESSION_CONTRACT_VERSION4. Every EmbeddedConfig field is
+required: bootstrap_user (nonempty, no NUL, at most 63 UTF8 bytes), absolute data_dir and runtime_dir
+(Path), startup_seconds, shutdown_seconds and poll_seconds (finite positive seconds), and max_roots
+(positive integer). The parent of data_dir and runtime_dir itself MUST already be existing directories. data_dir MAY
+be absent. Runtime MUST be outside data; the
+selected Unix socket path bound is 85 encoded bytes for the owned runtime subdirectory. The helper
+MUST NOT read environment settings. Unsupported platform/interpreter/binary profiles raise Unsupported.
+
+`await EmbeddedPostgres.start(config)` initializes an empty data directory or verifies a managed
+PostgreSQL18 directory. The bootstrap database username is explicit, not an application caller or
+maintenance identity. TCP listening MUST be disabled. The selected local native profile uses trusted
+Unix socket authentication inside the owned 0700 runtime directory. Applications requiring a different
+native authentication/deployment profile MUST supply a separately administered server.
+
+Canonical data-directory ownership MUST exclude duplicate helpers, including symlink aliases and
+other runtime directories. The managed marker MUST be inside the initialized data instance. Missing,
+partial, malformed, oversized or unmarked existing data MUST refuse; the helper MUST NOT repair,
+adopt or delete it. An existing postmaster.pid MUST refuse even if its process may be dead; explicit
+external verification/cleanup belongs to the operator. No arbitrary PID read from disk may be killed.
+
+`server.endpoint` is a pure owning-loop property exposing host (owned Unix socket directory), port
+(5432), dbname (postgres) and user (configured bootstrap_user). It MUST refuse before readiness or
+after shutdown starts. It confers no application authorization. The application builds its own async
+ConnectionSource, credentials and optional pools. `await server.open_root(source, *, actor, schema,
+limits=None)` registers a borrowed DatabaseRoot without migration. The current copied actor MUST
+reach source acquisition; refusal MUST NOT trigger another source or maintenance fallback.
+max_roots bounds registered roots plus in-flight root openings for this helper lifetime. Shutdown
+racing root opening MUST seal/register the root and refuse publication rather than return a usable
+execution gate. A failed root opening's retained acquisition MUST still delay native shutdown.
+
+`await server.aclose() -> bool` MUST seal admission first, retain actual startup/connection/worker
+ownership and request native fast shutdown only after registered roots and acquisitions drain.
+True means owned resources drained and native process exit observed; False means the configured
+caller wait elapsed and cleanup continues under retained ownership. Cancellation does not cancel
+cleanup. Canceled initialization MUST retain ownership through normal initdb completion, including
+its native child processes. Successful initialization MAY remain for a later explicit start. Data
+files and marker MUST persist; only the helper-owned runtime subdirectory is removed. After confirmed
+native exit, runtime removal failure MUST still release the data lock and report the cleanup error.
+An already-removed runtime directory counts as cleaned. Wrong-loop use MUST refuse before mutation.
+
+Error reasons include embedded_directory_busy/embedded_existing_server (RootBusy), unmanaged or
+invalid marker (IntegrityError), partial initialization, unavailable/closed lifetime, capacity and
+startup failures (StoreError), and invalid explicit configuration (ValueError). Native output MUST
+remain controlled; errors MUST NOT include SQL, credentials or private connection configuration.
+Retry after RootBusy requires actual prior-owner exit; malformed data requires explicit operator
+intervention. Parent-process death does not promise automatic server cleanup or automatic adoption.
+
+Example, with application-built source using server.endpoint:
+
+```python
+server = await EmbeddedPostgres.start(explicit_config)
+try:
+    source = application_source(server.endpoint)
+    await migrate(source, actor=maintenance_actor, schema="tether")
+    database = await server.open_root(source, actor=actor, schema="tether")
+    store = PostgresSessionStore(database).for_actor(actor)
+finally:
+    drained = await server.aclose()
+```
+
+A False close result requires continued application supervision; it does not permit replacement.
