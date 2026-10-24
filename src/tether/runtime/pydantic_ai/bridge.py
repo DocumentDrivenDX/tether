@@ -16,7 +16,6 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets.external import ExternalToolset
 
-from tether.models import checked_stream, managed
 from tether.models.canonical import copy_request
 from tether.ports import ModelPort
 from tether.types import (
@@ -25,12 +24,11 @@ from tether.types import (
     ModelRequest,
     ModelResponse,
     ModelUnavailable,
-    TextDelta,
     ToolSpec,
 )
 
 from .messages import from_sdk_messages, to_sdk_messages, to_sdk_response
-from .validation import validate_response
+from .response import bounded_response
 
 PrepareModel = Callable[[ModelRequest], Awaitable[ModelRequest]]
 
@@ -123,26 +121,13 @@ class PortModel(Model):
                 response = await self._bounded_response(prepared)
         except TimeoutError:
             raise ModelUnavailable("timeout") from None
-        validate_response(response, prepared.tools, self._limits)
         if self._accept_response is not None:
             await self._accept_response(response.model_copy(deep=True))
         self.last_response = response.model_copy(deep=True)
         return to_sdk_response(response, prepared.model)
 
     async def _bounded_response(self, request: ModelRequest) -> ModelResponse:
-        size = 0
-        response: ModelResponse | None = None
-        async with managed(checked_stream(self._port, request)) as stream:
-            async for item in stream:
-                if isinstance(item, TextDelta):
-                    size += len(item.text.encode("utf-8"))
-                    if size > self._limits.max_response_bytes:
-                        raise ModelUnavailable("response_too_large")
-                else:
-                    response = item
-        if response is None:
-            raise ModelUnavailable("incomplete_stream")
-        return response
+        return await bounded_response(self._port, request, self._limits)
 
 
 @dataclass(frozen=True)

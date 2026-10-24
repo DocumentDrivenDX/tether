@@ -286,6 +286,11 @@ class JsonlSessionStore(SessionReads):
             handle = TurnHandle(self, session_id, owner, lease.generation, turn_id)
         try:
             yield handle
+        except CommitUnknown:
+            # History and journal may share one poisoned writer. Preserve uncertainty;
+            # lease cleanup cannot publish another fact or prove the old cache current.
+            self._failed = True
+            raise
         finally:
             await asyncio.shield(self.release(session_id, owner, lease.generation))
 

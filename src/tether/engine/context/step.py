@@ -13,12 +13,15 @@ from tether.types import Message, ModelRequest
 from tether.types.canonical import canonical, digest
 from tether.types.context import (
     CODES,
+    CompactionRecord,
     ContextError,
     ContextGroup,
     ContextInput,
     ContextPlan,
     ContextPreparation,
+    ContextSummary,
     ContextUse,
+    ModelLimits,
     TokenEstimate,
 )
 from tether.types.execution import Entry
@@ -27,7 +30,11 @@ from ..governance import Governance
 from ..providers import narrow_sources
 from ..tools import ToolExecutor
 from . import ContextBoundary
+from .catalog import compatible
+from .content import load
 from .journal import next_ordinal
+from .resolution import resolve
+from .services import ContextServices
 from .sources import Snapshot, capture, charge
 
 
@@ -44,11 +51,15 @@ class ContextStep:
         executor: ToolExecutor,
         tier: str,
         turns: frozenset[str],
+        services: ContextServices,
     ) -> None:
         self.boundary, self.gov, self.executor, self.turns = boundary, gov, executor, turns
         self.config = boundary.configuration(tier)
         self.profile = self.config.limits[tier]
         self.tier = tier
+        self.services = services
+        self.summaries: tuple[ContextSummary, ...] = ()
+        self.summary_texts: dict[int, str] = {}
         self.deadline = asyncio.get_running_loop().time() + self.config.timeout_seconds
         try:
             identity = ContextPlan(
@@ -88,7 +99,7 @@ class ContextStep:
         self.original = await capture(self.gov, self.config.max_source_bytes, self.turns)
         return tuple(s.message.model_copy(deep=True) for s in self.original.sources)
 
-    def _scope(self) -> str:
+    def scope_digest(self) -> str:
         actor, session = self.gov.actor, self.gov.log.session
         return digest(
             {
@@ -207,28 +218,43 @@ class ContextStep:
         await self.gov.authorize("read_session", self.gov.log.session.id)
         ordinal = next_ordinal(tuple(self.gov.log.entries), request.tags.model_call_id)
         through = self.gov.log.entries[-1].index
+        summary_profile = self.summary_profile()
         preparation = ContextPreparation(
             model_call_id=request.tags.model_call_id,
             ordinal=ordinal,
             through_index=through,
             source_view_digest=original.view_digest(projection),
-            scope_digest=self._scope(),
+            scope_digest=self.scope_digest(),
             spec_digest=digest(self.executor.spec.model_dump(mode="json")),
             config_digest=digest(self.config.model_dump(mode="json")),
             main_profile_digest=digest(self.profile.model_dump(mode="json")),
             strategy_id=self.strategy_id,
             strategy_version=self.strategy_version,
+            summary_profile_digest=digest(summary_profile.model_dump(mode="json"))
+            if summary_profile is not None
+            else None,
         )
         charge(preparation.model_dump(mode="json"), self.config.max_source_bytes)
-        await self.gov.fact(
+        self.allocation = await self.gov.fact(
             "context_preparation",
             key=f"context:prepare:{ordinal}",
             **preparation.model_dump(mode="json"),
         )
         self.ordinal = ordinal
+        self.preparation = preparation
         context = await self._input(request, projection, groups, through)
+        context = copied(
+            ContextInput, context.model_copy(update={"summaries": compatible(self, context)})
+        )
         plan = await self._plan(context)
-        request = request.model_copy(update={"messages": materialize(context, plan)})
+        context, plan, self.summaries, self.summary_texts = await resolve(
+            self, context, plan, request
+        )
+        await self.verify_sources()
+        self.binding_check()
+        request = request.model_copy(
+            update={"messages": materialize(context, plan, summaries=self.summary_texts)}
+        )
         estimate = await self.estimate(request)
         self._fit(estimate)
         use = ContextUse(
@@ -270,9 +296,9 @@ class ContextStep:
             raise ContextError("context_invalid")
         plan = copied(ContextPlan, answer)
         charge(plan.model_dump(mode="json"), self.config.max_source_bytes)
-        plan = validated_plan(context, plan)
-        if any(part.kind in {"summary", "summarize"} for part in plan.parts):
-            raise ContextError("context_unconfigured")
+        plan = validated_plan(
+            context, plan, summary_allowance=self.config.max_summary_calls_per_step
+        )
         if (plan.strategy_id, plan.strategy_version) != (self.strategy_id, self.strategy_version):
             raise ContextError("context_invalid")
         return plan
@@ -281,26 +307,61 @@ class ContextStep:
         if estimate.tokens > self.profile.input_tokens:
             raise ContextError("context_exhausted")
 
-    def check(self) -> None:
-        """Final nonawaiting admission after all policy/recorder/journal awaits."""
+    def summary_profile(self) -> ModelLimits | None:
+        tier = self.config.summary_model
+        return self.config.limits.get(tier) if tier is not None else None
+
+    def binding_check(self) -> None:
         self._deadline()
-        if self.request is None or self.accepted is None or self.original is None:
-            raise ContextError("context_invalid")
         current = self.boundary.configuration(self.tier)
         if (
             digest(current.model_dump(mode="json")) != self.preparation.config_digest
-            or self._scope() != self.preparation.scope_digest
+            or self.scope_digest() != self.preparation.scope_digest
             or digest(self.executor.spec.model_dump(mode="json")) != self.preparation.spec_digest
             or (self.boundary.strategy.id, self.boundary.strategy.version)
             != (self.strategy_id, self.strategy_version)
         ):
             raise ContextError("context_incompatible")
         if (
+            self.allocation not in self.gov.log.entries
+            or ContextPreparation.model_validate(self.allocation.facts) != self.preparation
+        ):
+            raise ContextError("context_incompatible")
+        self._deadline()
+
+    async def verify_sources(self) -> None:
+        original = self.original
+        if original is None:
+            raise ContextError("context_invalid")
+        fresh = await capture(self.gov, self.config.max_source_bytes, self.turns)
+        if (fresh.sources, fresh.protected, fresh.pending, fresh.effects) != (
+            original.sources,
+            original.protected,
+            original.pending,
+            original.effects,
+        ):
+            raise ContextError("context_incompatible")
+
+    def check(self) -> None:
+        """Final nonawaiting admission after all policy/recorder/journal awaits."""
+        self._deadline()
+        if self.request is None or self.accepted is None or self.original is None:
+            raise ContextError("context_invalid")
+        self.binding_check()
+        if (
             self.accepted not in self.gov.log.entries
             or ContextUse.model_validate(self.accepted.facts) != self.use
             or request_digest(self.request) != self.use.request_digest
         ):
             raise ContextError("context_incompatible")
+        for summary in self.summaries:
+            entry = next((e for e in self.gov.log.entries if e.index == summary.index), None)
+            if (
+                entry is None
+                or entry.kind != "compaction"
+                or CompactionRecord.model_validate(entry.facts) != summary.record
+            ):
+                raise ContextError("context_incompatible")
         self._deadline()
 
     async def recheck(self) -> None:
@@ -309,14 +370,10 @@ class ContextStep:
             request, original = self.request, self.original
             if request is None or original is None:
                 raise ContextError("context_invalid")
-            fresh = await capture(self.gov, self.config.max_source_bytes, self.turns)
-            if (fresh.sources, fresh.protected, fresh.pending, fresh.effects) != (
-                original.sources,
-                original.protected,
-                original.pending,
-                original.effects,
-            ):
-                raise ContextError("context_incompatible")
+            await self.verify_sources()
+            for summary in self.summaries:
+                if await load(self, summary) != self.summary_texts[summary.index]:
+                    raise ContextError("context_incompatible")
             estimate = await self.estimate(request)
             self._fit(estimate)
             if estimate != self.use.estimate:

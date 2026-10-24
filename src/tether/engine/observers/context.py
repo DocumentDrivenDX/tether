@@ -1,11 +1,24 @@
 """Closed context metadata contains no original, summary, marker or tool content."""
 
 from tether.types import JsonValue
-from tether.types.context import ContextUse
+from tether.types.context import CompactionRecord, ContextUse
 from tether.types.execution import Entry
 
 
 def context_detail(entry: Entry) -> dict[str, JsonValue]:
+    if entry.kind == "compaction":
+        record = CompactionRecord.model_validate(entry.facts)
+        return {
+            "preparation_ordinal": record.preparation_ordinal,
+            "part_position": record.part_position,
+            "model_call_id": record.model_call_id,
+            "config_digest": record.config_digest,
+            "source_view_digest": record.source_view_digest,
+            "through_index": record.through_index,
+            "source_ranges_count": len(record.source_ranges),
+            "predecessor": record.predecessor,
+            "lossy": True,
+        }
     if entry.kind != "context_use":
         value = entry.facts.get("preparation_ordinal")
         return {"preparation_ordinal": value} if type(value) is int and value >= 0 else {}

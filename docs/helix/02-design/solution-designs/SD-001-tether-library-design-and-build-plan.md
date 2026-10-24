@@ -991,3 +991,42 @@ found no blocker; reviewer ran no tests. Four fresh hash-locked installed profil
 154 matching wheel/sdist sources are recorded in the execution receipt. Precise
 context refusal assertions replace the former model-error classification without weakening no-egress
 checks. Hosted matrix, summaries, actual token estimators, attachments and streaming remain open.
+
+
+The governed summary checkpoint adds fresh tool-free auxiliary requests and exact accepted-summary
+reuse within Agent preparation. ContextServices supplies the existing ModelPort, execution limits,
+history and recorder factory; no auxiliary Agent or owned loop is introduced. Shared bounded
+response collection limits deltas and terminal payloads. Current policy and caller identity,
+physical attempts, usage, final fit and actual callback ownership apply to the auxiliary request.
+An explicit generation call id joins compaction to its successful model_call and bounded lookup;
+content is stored before their atomic journal batch. Known successful provenance survives a later
+preparation failure without a contradictory terminal.
+
+The accepted catalog verifies allocation, generating call, predecessor ancestry and current
+post-provider covered-range bytes/refs, scope, spec, strategy and both profile bindings. Reuse reads
+current authorized summary content; unavailable originals still stop preparation. Folding uses the
+prior summary once and only additional originals in the auxiliary prompt. Generated materialization
+uses actual accepted positions while the use record retains the preparation source watermark.
+SummarizingContext is opt-in, selects at most one completed block per plan, preserves user messages
+by default and leaves final fit to Engine. Attachment-bearing auxiliary inputs refuse explicitly
+until a supported source/encoding profile is qualified.
+
+Qualification covers actual Agent generation/reuse and the opt-in built-in, explicit identity modes
+and current credential refresh, usage before main authorization, source/config/profile/spec/scope/
+redaction invalidation, unavailable/mutating content, predecessor folding, byte/terminal/tool refusal,
+retained model work after timeout/cancellation, native HTTP retries on default/custom recorders,
+accepted-only compaction metadata, real JSONL reopen at allocation/content/provenance/use uncertainty,
+and the selected paired SQL journal/history profile. A history lost-ack regression also exposed and
+fixed secondary lease cleanup masking CommitUnknown: the current session store now requires reopen.
+Real wire-aware token estimators, attachment encoding, provisional streaming, fidelity/workload
+validation, broader external profiles and release/hosted matrix qualification remain open.
+
+
+The governed summary checkpoint passes1426 cases in45 bounded groups at92.15%
+branch-inclusive coverage with strict typing0 and unchanged gates. Its58 new cases include real
+JSONL reopen at all summary acceptance frontiers, native default/custom retry admission, paired SQL
+usage/reuse and actual retained model work after abandonment. Independent review found two trust/
+acceptance hazards, both fixed with exact regressions; final read-only review found no blocker and
+ran no tests. Four fresh hash-locked installed profiles and162 matching package
+sources are recorded in the execution receipt. Real token counting, attachment encoding, summary
+fidelity, provisional streaming and broader external/hosted matrix proof remain open.

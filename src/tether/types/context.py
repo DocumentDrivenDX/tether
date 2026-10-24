@@ -171,6 +171,7 @@ class ContextPlan(ContextValue):
 
 
 class CompactionRecord(ContextValue):
+    model_call_id: Text
     preparation_ordinal: Count
     part_position: Count
     config_digest: Digest

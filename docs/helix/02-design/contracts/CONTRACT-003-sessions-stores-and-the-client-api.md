@@ -90,6 +90,7 @@ class Entry(BaseModel):                               # a discriminated union on
 #                    model_call_id: str; attempt_ids: tuple[str, ...]; receipt: ResponseReceipt | None
 #                    exchange_ref: HistoryRef | None
 #                    purpose: Literal["answer", "summary", "correction"]; finish_reason: str | None
+#                    preparation_ordinal/part_position/compaction_key: summary provenance under CONTRACT-004
 #                    usage: TokenUsage | None; scope: dict[str, tuple[str, ...]]      # the scope values held at the call (identifiers)
 #   tool_call        invocation_id: str; call_id: str; tool: str
 #                    status: Literal["started", "ok", "error", "denied", "withheld", "invalid_arguments", "interrupted"]
