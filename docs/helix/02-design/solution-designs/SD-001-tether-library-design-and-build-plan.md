@@ -714,3 +714,22 @@ and the public logical storage suite. Package sources match the tested tree in b
 Review corrected optional-count enrichment, terminal-error phantom missingness and legacy null-id
 collisions. Custom recorder coverage remains explicitly incomplete; cassette-v1 is no physical-retry
 proof. This checkpoint does not complete audit/tracing or broader release/profile qualification.
+
+
+The next slice6 checkpoint defines telemetry contract1 and public neutral defaults/test doubles,
+then reusable logical sink/tracer conformance. Protocols and default no-ops stay in types/ports;
+recording doubles and fixture adapters stay in testing. Engine delivery remains a separate bounded
+owner: finite copied queue admission, per-delivery/shutdown bounds, retained tasks and failure/drop
+counters. Wire accepted-entry metadata only after the trusted acceptance frontier, with explicit
+field/type registries. Worker lifecycle observations link captured accepted intent/attempt identity
+without claiming a new durable commit after lease closure. No tracing SDK enters core types.
+
+
+Slice6 neutral telemetry contract1, no-op defaults, bounded recording doubles and public logical
+audit/tracer suites now have execution evidence in the release record. The unchanged final gate
+passes992 cases in31 groups at92.29% branch-inclusive coverage with strict typing0. Fresh
+hash-locked base/OpenAI/postgres/embedded installations run both captured/no-op suites without
+pytest; wheel/sdist byte-match all128 tested package Python sources. Review closed malformed
+metadata, conditional report, cross-loop capacity and swallowed-exception qualification gaps.
+Engine delivery/wiring, failure/content/acceptance/worker proof and real OTel transport remain
+separate work. No recording-double result is a real receiver claim.
