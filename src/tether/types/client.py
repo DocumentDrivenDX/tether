@@ -31,6 +31,7 @@ class RequestConflict(StoreError):
 
 
 class ClientLimits(Payload):
+    max_mutation_receipt_bytes: PositiveInt = 4 * 1024 * 1024
     max_page_size: PositiveInt
     max_call_ids: PositiveInt
     max_read_bytes: PositiveInt

@@ -55,7 +55,11 @@ class ClientReads:
         async def operation() -> Page[SessionSummary]:
             page = await self._access.store_for(self._actor).list(query, cursor=cursor, limit=limit)
             for item in page.items:
-                await self._access.authorize(self._actor, item.id)
+                await self._access.authorize(
+                    self._actor,
+                    item.id,
+                    session_id=item.id,
+                )
             return page
 
         return await self._access.metadata(self._actor, "owner:" + self._actor.id, operation)
@@ -74,7 +78,12 @@ class ClientReads:
             return view
 
         try:
-            return await self._access.metadata(self._actor, session_id, operation)
+            return await self._access.metadata(
+                self._actor,
+                session_id,
+                operation,
+                session_id=session_id,
+            )
         except UnknownSession:
             if tier is not None or self._archives.source is None:
                 raise
@@ -101,6 +110,7 @@ class ClientReads:
                 lambda: self._access.store_for(self._actor).entries(
                     session_id, self._actor.id, start=start, limit=limit, reverse=reverse
                 ),
+                session_id=session_id,
             )
         except UnknownSession:
             if tier is not None or self._archives.source is None:
@@ -112,6 +122,7 @@ class ClientReads:
             self._actor,
             session_id,
             lambda: self._access.store_for(self._actor).snapshot(session_id, self._actor.id),
+            session_id=session_id,
         )
 
     async def effects(self, session_id: str, *, start: int = 0, limit: int = 50) -> EffectPage:
@@ -123,13 +134,18 @@ class ClientReads:
             lambda: self._access.store_for(self._actor).effects(
                 session_id, self._actor.id, start=start, limit=limit
             ),
+            session_id=session_id,
         )
 
     async def find(self, ref: str) -> SessionSummary | None:
         async def operation() -> SessionSummary | None:
             value = await self._access.store_for(self._actor).find(self._actor.id, ref)
             if value is not None:
-                await self._access.authorize(self._actor, value.id)
+                await self._access.authorize(
+                    self._actor,
+                    value.id,
+                    session_id=value.id,
+                )
             return value
 
         return await self._access.metadata(self._actor, "owner:" + self._actor.id, operation)
@@ -152,6 +168,7 @@ class ClientReads:
             session_id,
             lambda: content.history_page(self._access, self._actor, session_id, start, limit),
             disclose=lambda page: disclosure.history(self._access, self._actor, session_id, page),
+            session_id=session_id,
         )
 
     @staticmethod
@@ -177,5 +194,6 @@ class ClientReads:
             session_id,
             lambda: content.call_details(self._access, self._actor, session_id, ids),
             disclose=lambda page: disclosure.calls(self._access, self._actor, session_id, page),
+            session_id=session_id,
         )
         return page.items

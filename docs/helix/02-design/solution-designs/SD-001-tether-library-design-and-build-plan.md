@@ -873,3 +873,30 @@ final fault/concurrency additions; the full gate includes all cases. Independent
 corrected shared qualification reporting and found no remaining concrete blocker; reviewer did not
 rerun tests. Installed-artifact evidence belongs to the execution receipt. Client nonjournal audit
 still requires separate validated receipt mapping and current authorization observations.
+
+
+Wire the fixed Engine observer facade through SessionService/SessionAccess for direct current
+Client authorization and receipt-backed genesis/settings audit. Gate IDs are observational UUIDs,
+never journal positions. Select the optional companion only on the current actor-bound facade for
+audit-enabled mutations; invoke once, bound/fresh-validate/copy, emit semantic metadata, then retain
+existing disclosure awaits and public summary-size checks. Separate receipt-byte bounds from
+public response bytes. Legacy capability0 emits explicitly successful-return observations only.
+Qualify revoked disclosure after acceptance, same-ref races/dedup, exact per-entry mutation identity,
+invalid/unknown/oversized receipts without retries, separate late size failure, concurrent principals,
+content exclusion, policy/observer cancellation/failure and root cleanup independent of a hung sink.
+
+
+The Client observer checkpoint passes1192 cases in38 bounded groups at92.57% branch-inclusive
+coverage with strict typing0 and all unchanged gates. Its60 new cases qualify direct current policy,
+strict malformed typed-decision refusal, exact receipt mapping, same-ref races/noop/equal patches,
+unknown/invalid/over-budget receipts without write retries, later disclosure cancellation/revocation
+and public size refusal after known acceptance, concurrent current principal/credential isolation,
+metadata-only parent correlation, honest legacy coverage, sink failure and root release while a
+sink remains active. Archive owner queries omit session identity; per-item and owner-wide feed gates
+use exact known session IDs. Final104 focused Client observer/archive/follow cases pass. Independent
+source review corrected strict policy revalidation and correlation gaps, then found no concrete
+blocker; reviewer did not rerun tests. Four installed profiles and source/artifact hashes are recorded
+in the execution receipt. Retrieval/provider observations remain the next bounded checkpoint.
+Context telemetry must accompany the still-missing source-addressed context runtime in slice9a;
+provider narrowing alone does not establish C4 context preparation. Optional real OTel receiver,
+trace flags, broader Q5/Q7 and release qualification remain separate.

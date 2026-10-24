@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from tether.engine.observers.facade import Observers
 from tether.types import JsonValue
 from tether.types.archive import ArchiveLimits
 from tether.types.archive_codec import dump_archive as dump_archive
@@ -39,8 +40,10 @@ class ArchiveTransfer:
         authorize: Policy,
         *,
         limits: ArchiveLimits | None = None,
+        observers: Observers | None = None,
     ) -> None:
         self.store, self.history, self.policy, self.limits = store, history, authorize, limits
+        self.observers = observers if observers is not None else Observers()
 
     def _bound(self, count: int, size: int) -> None:
         if self.limits is not None and (
@@ -49,15 +52,20 @@ class ArchiveTransfer:
             raise StoreError("archive_limit")
 
     async def _authorize(self, actor: Actor, session_id: str, action: str = "read_session") -> None:
-        try:
-            decision = Decision.model_validate(
-                await self.policy.authorize(
-                    AuthzRequest(actor=copy_actor(actor), action=action, resource=session_id)
+        actor = copy_actor(actor)
+        self.observers.delivery.bind()
+        with self.observers.client.gate(actor, session_id, action, session_id) as gate:
+            try:
+                decision = Decision.model_validate(
+                    await self.policy.authorize(
+                        AuthzRequest(actor=copy_actor(actor), action=action, resource=session_id)
+                    )
                 )
-            )
-            allowed = decision.allowed
-        except Exception:
-            allowed = False
+                allowed = decision.allowed
+                reason = decision.reason
+            except Exception:
+                allowed, reason = False, "policy_unavailable"
+            gate.completed(allowed, reason)
         if not allowed:
             raise ExecutionDenied("archive_denied")
 

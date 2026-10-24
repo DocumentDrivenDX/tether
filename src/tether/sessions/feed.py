@@ -94,7 +94,11 @@ class Followers:
             raise ReadLimit("follower_limit")
         actor = copy_actor(actor)
         resource = session_id if session_id is not None else "owner:" + actor.id
-        await self.access.authorize(actor, resource)
+        await self.access.authorize(
+            actor,
+            resource,
+            session_id=session_id,
+        )
         position = await self.access.watermark(actor) if since is None else since
         queue: asyncio.Queue[PersistedChange | BaseException | Lagged | ResyncRequired] = (
             asyncio.Queue(self.access.limits.follower_queue_size)
@@ -112,9 +116,15 @@ class Followers:
                 values = variants(item) if isinstance(item, PersistedChange) else (item,)
                 for value in values:
                     self.access.check()
-                    await self.access.authorize(actor, resource)
+                    await self.access.authorize(
+                        actor,
+                        resource,
+                        session_id=session_id,
+                    )
                     if isinstance(item, PersistedChange):
-                        await self.access.authorize(actor, item.session_id)
+                        await self.access.authorize(
+                            actor, item.session_id, session_id=item.session_id
+                        )
                     self.access.size(value)
                     yield value
         finally:

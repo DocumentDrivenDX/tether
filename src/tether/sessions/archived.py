@@ -59,9 +59,16 @@ class ArchiveAccess:
         operation: Callable[[], Awaitable[T]],
         *,
         disclose: Callable[[T], Awaitable[T]] | None = None,
+        session_id: str | None = None,
     ) -> T:
         try:
-            return await self.access.metadata(actor, sid, operation, disclose=disclose)
+            return await self.access.metadata(
+                actor,
+                sid,
+                operation,
+                disclose=disclose,
+                session_id=session_id,
+            )
         except TimeoutError:
             raise ArchiveReadError("unavailable") from None
 
@@ -95,7 +102,11 @@ class ArchiveAccess:
 
         async def disclose(page: Page[SessionSummary]) -> Page[SessionSummary]:
             for item in page.items:
-                await self.access.authorize(actor, item.id)
+                await self.access.authorize(
+                    actor,
+                    item.id,
+                    session_id=item.id,
+                )
             return page
 
         return await self.bounded(actor, "owner:" + actor.id, operation, disclose=disclose)
@@ -109,7 +120,7 @@ class ArchiveAccess:
         return value.model_copy(update={"summary": self.summary(actor, value.summary)}, deep=True)
 
     async def get(self, actor: Actor, sid: str) -> SessionView:
-        return await self.bounded(actor, sid, lambda: self.view(actor, sid))
+        return await self.bounded(actor, sid, lambda: self.view(actor, sid), session_id=sid)
 
     async def page(
         self, actor: Actor, sid: str, start: int, limit: int, reverse: bool
@@ -135,21 +146,37 @@ class ArchiveAccess:
     ) -> EntryPage:
         self.access.limit(limit)
         self.access.position(start)
-        return await self.bounded(actor, sid, lambda: self.page(actor, sid, start, limit, reverse))
+        return await self.bounded(
+            actor, sid, lambda: self.page(actor, sid, start, limit, reverse), session_id=sid
+        )
 
     async def record(self, actor: Actor, sid: str, ref: HistoryRef) -> HistoryValue:
-        await self.access.authorize(actor, sid)
+        await self.access.authorize(
+            actor,
+            sid,
+            session_id=sid,
+        )
         if ref.kind == "model_exchange" and not await self.access.allowed(
-            actor, sid, "read_call_payload"
+            actor,
+            sid,
+            "read_call_payload",
+            session_id=sid,
         ):
             return HistoryValue(ref=ref, status="denied", reason="policy_denied")
         if self.capabilities is not None and self.capabilities.content == "facts_only":
             return HistoryValue(ref=ref, status="unsupported", reason="archive_facts_only")
         values = await self.selected().read((ref,), actor=copy_actor(actor))
         value = self.access.verify(ref, values)
-        await self.access.authorize(actor, sid)
+        await self.access.authorize(
+            actor,
+            sid,
+            session_id=sid,
+        )
         if ref.kind == "model_exchange" and not await self.access.allowed(
-            actor, sid, "read_call_payload"
+            actor,
+            sid,
+            "read_call_payload",
+            session_id=sid,
         ):
             return HistoryValue(ref=ref, status="denied", reason="policy_denied")
         return value
@@ -181,6 +208,7 @@ class ArchiveAccess:
             sid,
             operation,
             disclose=lambda page: disclosure.history(self.access, actor, sid, page),
+            session_id=sid,
         )
 
     def limits(self) -> ArchiveLimits:
@@ -197,7 +225,12 @@ class ArchiveAccess:
             raise Unsupported("archive_sink_unconfigured")
 
         async def operation() -> None:
-            await self.access.authorize(actor, sid, "x.tether.archive_session")
+            await self.access.authorize(
+                actor,
+                sid,
+                "x.tether.archive_session",
+                session_id=sid,
+            )
             if self.access.store_for(actor).workers.busy(sid):
                 raise WorkerOutstanding("worker_outstanding")
             snapshot = await self.access.store_for(actor).snapshot(sid, actor.id)
@@ -208,6 +241,7 @@ class ArchiveAccess:
                 self.access.history,
                 self.access.policy,
                 limits=self.limits(),
+                observers=self.access.observers,
             )
             bundle = await transfer.export(sid, actor)
             if await self.access.store_for(actor).snapshot(sid, actor.id) != snapshot:
@@ -217,10 +251,15 @@ class ArchiveAccess:
             )
             value = ArchivedSession(view=view, bundle=bundle)
             self.access.size(value)
-            await self.access.authorize(actor, sid, "x.tether.archive_session")
+            await self.access.authorize(
+                actor,
+                sid,
+                "x.tether.archive_session",
+                session_id=sid,
+            )
             await sink.archive(value)
 
-        await self.bounded(actor, sid, operation)
+        await self.bounded(actor, sid, operation, session_id=sid)
 
     async def restore(self, actor: Actor, sid: str) -> SessionSummary:
         source = self.selected()
@@ -228,10 +267,20 @@ class ArchiveAccess:
             raise NotRestorable("not_restorable")
 
         async def operation() -> SessionSummary:
-            await self.access.authorize(actor, sid, "x.tether.restore_session")
+            await self.access.authorize(
+                actor,
+                sid,
+                "x.tether.restore_session",
+                session_id=sid,
+            )
             if self.access.store_for(actor).workers.busy(sid):
                 raise WorkerOutstanding("worker_outstanding")
-            await self.access.authorize(actor, sid, "read_call_payload")
+            await self.access.authorize(
+                actor,
+                sid,
+                "read_call_payload",
+                session_id=sid,
+            )
             value = await source.restore(sid, actor=copy_actor(actor))
             self.access.size(value)
             value = value.model_copy(deep=True)
@@ -246,6 +295,7 @@ class ArchiveAccess:
                 self.access.history,
                 self.access.policy,
                 limits=self.limits(),
+                observers=self.access.observers,
             )
             await transfer.restore(value.bundle, actor)
             view = await self.access.store_for(actor).get(sid, actor.id)
@@ -253,4 +303,4 @@ class ArchiveAccess:
                 raise IntegrityError("archive_restore_missing")
             return view.summary
 
-        return await self.bounded(actor, sid, operation)
+        return await self.bounded(actor, sid, operation, session_id=sid)

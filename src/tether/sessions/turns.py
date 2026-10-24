@@ -68,7 +68,11 @@ class Handle:
 
     async def result(self) -> TurnResult:
         access = self._owner.access
-        await access.authorize(self._actor, self._session_id)
+        await access.authorize(
+            self._actor,
+            self._session_id,
+            session_id=self._session_id,
+        )
         if self._task is not None:
             await asyncio.shield(self._task)
         current = self._owner.jobs.get(self._session_id)
@@ -126,7 +130,11 @@ class OwnedTurns:
         self.access.check()
         actor = copy_actor(actor)
         start, identity = self._input(text, attachments, request_id, spec)
-        await self.access.authorize(actor, session_id)
+        await self.access.authorize(
+            actor,
+            session_id,
+            session_id=session_id,
+        )
         view = await self.access.store_for(actor).get(session_id, actor.id)
         if view is None:
             raise UnknownSession("unknown_session")
@@ -202,7 +210,11 @@ class OwnedTurns:
             lambda job: self._answer(actor, session_id, invocation_id, answer, job),
         )
         accepted = await asyncio.shield(job.ready)
-        await self.access.authorize(actor, session_id)
+        await self.access.authorize(
+            actor,
+            session_id,
+            session_id=session_id,
+        )
         if not accepted:
             return None
         return Handle(self, actor, session_id, job.start.turn_id, job.task)
@@ -214,7 +226,10 @@ class OwnedTurns:
         if capabilities.durability == "none" or not capabilities.fencing:
             raise Unsupported("unsupported_store")
         view = await self.access.metadata(
-            actor, session_id, lambda: self.access.store_for(actor).get(session_id, actor.id)
+            actor,
+            session_id,
+            lambda: self.access.store_for(actor).get(session_id, actor.id),
+            session_id=session_id,
         )
         if view is None:
             raise UnknownSession("unknown_session")
@@ -250,7 +265,10 @@ class OwnedTurns:
     async def _pending_turn(self, actor: Actor, session_id: str, invocation_id: str) -> str | None:
         async with asyncio.timeout(self.access.limits.read_timeout_seconds):
             view = await self.access.metadata(
-                actor, session_id, lambda: self.access.store_for(actor).get(session_id, actor.id)
+                actor,
+                session_id,
+                lambda: self.access.store_for(actor).get(session_id, actor.id),
+                session_id=session_id,
             )
             if view is None:
                 raise UnknownSession("unknown_session")
@@ -264,7 +282,11 @@ class OwnedTurns:
                 limit=self.access.limits.max_lookup_entries,
                 max_bytes=self.access.limits.max_read_bytes,
             )
-            await self.access.authorize(actor, session_id)
+            await self.access.authorize(
+                actor,
+                session_id,
+                session_id=session_id,
+            )
             return requested_turn(entries, invocation_id)
 
     async def _answer(
@@ -325,12 +347,20 @@ class OwnedTurns:
             raise RequestConflict("request_conflict")
         job = self.jobs.get(session_id)
         task = job.task if job is not None and job.start.turn_id == source.turn_id else None
-        await self.access.authorize(actor, session_id)
+        await self.access.authorize(
+            actor,
+            session_id,
+            session_id=session_id,
+        )
         return Handle(self, actor, session_id, source.turn_id, task)
 
     async def _accepted(self, actor: Actor, session_id: str, job: Job) -> TurnHandle:
         await asyncio.shield(job.ready)
-        await self.access.authorize(actor, session_id)
+        await self.access.authorize(
+            actor,
+            session_id,
+            session_id=session_id,
+        )
         return Handle(self, actor, session_id, job.start.turn_id, job.task)
 
     async def _run(
@@ -378,10 +408,18 @@ class OwnedTurns:
         observe(task)
 
     async def cancel(self, actor: Actor, session_id: str, *, turn_id: str | None = None) -> bool:
-        await self.access.authorize(actor, session_id)
+        await self.access.authorize(
+            actor,
+            session_id,
+            session_id=session_id,
+        )
         if await self.access.store_for(actor).get(session_id, actor.id) is None:
             raise UnknownSession("unknown_session")
-        await self.access.authorize(actor, session_id)
+        await self.access.authorize(
+            actor,
+            session_id,
+            session_id=session_id,
+        )
         job = self.jobs.get(session_id)
         if (
             job is None

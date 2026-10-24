@@ -848,3 +848,14 @@ summary and no commit. update_with_receipt(..., SessionPatch()) returns noop; an
 title=None appends the clearing fact and returns accepted with that exact Entry/seq. Conformance
 covers stable-ref races, intervening updates, empty/equal patches, concurrent exact frontiers,
 unknown acknowledgments, copied/bounded entries and current actor/credential forwarding.
+
+
+ClientLimits.max_mutation_receipt_bytes is an optional positive setting defaulting to4MiB. It bounds
+receipt serialization/validation/copy before semantic audit; max_read_bytes still governs the public
+summary response. An over-budget receipt raises ReadLimit("mutation_receipt_bytes"); invalid
+returned shape/version/scope raises StoreError("mutation_receipt_invalid"). No legacy fallback
+follows a possibly committed receipt call. These receipt errors may follow an accepted storage
+mutation and do not undo it. A later READ_SESSION denial or public response-size refusal occurs
+after valid known receipt admission under CONTRACT-002. Root/credential/owner and existing
+policy actions remain unchanged. Optional receipt mode is selected for audit-enabled commands;
+applications without audit retain the legacy summary call path.

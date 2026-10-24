@@ -22,7 +22,12 @@ async def history(
 ) -> HistoryPage:
     if not any(slot.value.ref.kind == "model_exchange" for slot in page.items):
         return page
-    if await access.allowed(actor, session_id, "read_call_payload"):
+    if await access.allowed(
+        actor,
+        session_id,
+        "read_call_payload",
+        session_id=session_id,
+    ):
         return page
     return page.model_copy(
         update={
@@ -36,7 +41,12 @@ async def history(
 async def calls(
     access: SessionAccess, actor: Actor, session_id: str, page: Page[CallDetail]
 ) -> Page[CallDetail]:
-    if await access.allowed(actor, session_id, "read_call_payload"):
+    if await access.allowed(
+        actor,
+        session_id,
+        "read_call_payload",
+        session_id=session_id,
+    ):
         return page
     items: list[CallDetail] = []
     for item in page.items:

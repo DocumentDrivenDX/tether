@@ -27,6 +27,7 @@ class Client(ClientReads):
             lambda: content.pending_view(
                 self._access, self._service.engine, self._actor, session_id
             ),
+            session_id=session_id,
         )
 
     def follow(

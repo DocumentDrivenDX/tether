@@ -707,3 +707,34 @@ in clean contexts, classify terminal state without exposing its content, and nev
 result. Existing bounded delivery owns admission/drop counters. Observer sealing can drop late
 metadata explicitly; observers cannot retain storage after actual execution drains. No new public
 port, exporter or Agent runner is introduced by these internal hooks.
+
+
+Client nonjournal authorization observations use kind authorization, origin="client", closed
+action/reason, strict allowed boolean and resource_digest. Identity is the digest of
+["tether.client.gate.v1", fresh gate-request UUID]; detail includes gate_request_id. Context carries
+current copied owner/principal and an explicitly supplied session id only; no journal position,
+source turn, lease or inferred session identity is added. Tracing uses tether.gate; metadata commands have tether.client.create/update parent spans. Canceled
+authorization propagates and produces no fabricated completed decision. Policy exceptions retain
+fail-closed behavior and normalize observational reason to policy_unavailable. Namespaced archive
+actions already used by the Client are registered metadata codes, not new policy actions.
+
+Receipt-backed Client genesis is session_started with identity digest
+["tether.audit.v1", "genesis", owner, session_id], commit_seq and origin="client", with no entry
+position. Only a validated created receipt emits it; existing returns emit no genesis. Each accepted
+metadata Entry emits session_settings with the existing accepted-event ID formula, exact
+entry_position/source_turn_id/commit_seq and category title|tags|settings. No values, custom
+setting names or raw receipts are audit detail. Noop emits no semantic metadata mutation.
+
+Client receipt acquisition is bounded separately by ClientLimits.max_mutation_receipt_bytes
+(default4MiB, positive). Fresh-dictionary validation/copy verifies version, shape, scope, exact
+frontier and requested identity before semantic admission. Invalid/over-budget/unknown receipts
+emit no accepted semantic event and never trigger a legacy write retry. A valid known mutation is
+admitted synchronously before later authorization and public summary-size/disclosure checks.
+Thus a later disclosure failure cannot erase known acceptance; bounded delivery remains lossy.
+
+For capability0 adapters, x.client.create_returned and x.client.metadata_returned are emitted only
+after the entire authorized return succeeds. They carry a fresh observational ID, origin="client"
+and semantic_receipts=false, without a commit sequence, entry position or genesis claim. They do
+not establish full semantic mutation-audit qualification. With audit disabled, legacy command paths
+are preserved. The fixed Client observer shares Engine delivery/cleanup; no new authority port,
+application callback, writer or runner is introduced.
