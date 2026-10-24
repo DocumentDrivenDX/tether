@@ -7,8 +7,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import cast
+from uuid import uuid4
 
-from tether.types import JsonValue, Message, ToolCall
+from tether.types import Message, ToolCall
 from tether.types.canonical import canonical, digest
 from tether.types.execution import (
     ENGINE_CONTRACT_VERSION,
@@ -18,7 +19,6 @@ from tether.types.execution import (
     Entry,
     ExecutionDenied,
     GuardInput,
-    NewEntry,
     PendingConfirmation,
     Provider,
     Refusal,
@@ -30,10 +30,10 @@ from tether.types.execution import (
 )
 from tether.types.tooling import Normalized, definition, normalize
 
-from .effects import unresolved_effects
+from .effects import unresolved_invocations
 from .governance import Governance, reason_code
 from .providers import provider_hook
-from .results import result_content_key
+from .results import prepare_result
 from .workers import Workers
 
 
@@ -91,6 +91,7 @@ class ToolExecutor:
         self.calls: dict[str, Invocation] = {}
         self.pending: dict[str, PendingConfirmation] = {}
         self.contexts: dict[str, ToolContext] = {}
+        self.replays: dict[str, Entry] = {}
 
     def bind(self, source: Entry) -> None:
         self.calls = {
@@ -100,8 +101,11 @@ class ToolExecutor:
             for m in source.call_manifest
         }
 
-    def unresolved(self) -> bool:
-        return unresolved_effects(self.gov.log.entries)
+    def unresolved(self, recovering: str | None = None) -> bool:
+        ids = set(unresolved_invocations(self.gov.log.entries))
+        if recovering is not None and recovering in self.replays:
+            ids.discard(recovering)
+        return bool(ids)
 
     async def execute(self, call: ToolCall) -> Message | None:
         if self.pending:
@@ -128,7 +132,7 @@ class ToolExecutor:
         return await self._dispatch(inv, pinned.tool, normalized)
 
     async def _gates(self, inv: Invocation, call: ToolCall, pinned: PinnedTool) -> Normalized:
-        if inv.manifest.effect == "effectful" and self.unresolved():
+        if inv.manifest.effect == "effectful" and self.unresolved(inv.id):
             await self.gov.fact(
                 "authorization",
                 action="call_tool",
@@ -249,13 +253,17 @@ class ToolExecutor:
         return True
 
     async def _dispatch(self, inv: Invocation, tool: Tool, args: Normalized) -> Message:
-        if any(e.key == "intent:" + inv.id for e in self.gov.log.entries):
-            raise ExecutionDenied("recovery_required")
+        existing_intent = next(
+            (e for e in self.gov.log.entries if e.key == "intent:" + inv.id), None
+        )
+        if existing_intent is not None:
+            await self._replay(inv, tool, args, existing_intent)
         needs_intent = tool.effect == "effectful" or tool.replay == "unsafe"
-        if needs_intent:
+        if needs_intent and existing_intent is None:
             await self.gov.fact(
                 "tool_call",
                 key="intent:" + inv.id,
+                source_turn_id=inv.source.turn_id,
                 status="started",
                 invocation_id=inv.id,
                 tool=tool.name,
@@ -358,43 +366,32 @@ class ToolExecutor:
     async def result(
         self, inv: Invocation, status: str, reason: str | None, message: Message | None = None
     ) -> Message:
-        message = message or Message(
-            role="tool", content=reason or status, tool_call_id=inv.manifest.call_id, is_error=True
+        message, entries = await prepare_result(
+            self.gov, inv.id, inv.manifest, status, reason, message
         )
-        ref = await self.gov.history.put(
-            actor=self.gov.actor,
-            session_id=self.gov.log.session.id,
-            key=result_content_key(inv.id, message),
-            message=message,
-        )
-        facts: dict[str, JsonValue] = {
-            "invocation_id": inv.id,
-            "tool": inv.manifest.tool,
-            "status": status,
-            "reason": reason,
-            "effect": inv.manifest.effect,
-            "replay": inv.manifest.replay,
-        }
-        entries = [
-            NewEntry(
-                kind="message",
-                key="message:result:" + inv.id,
-                turn_id=self.gov.turn_id,
-                history_ref=ref,
-                facts={
-                    "role": "tool",
-                    "tool_call_id": message.tool_call_id,
-                    "is_error": message.is_error,
-                },
-            ),
-            NewEntry(
-                kind="tool_call",
-                turn_id=self.gov.turn_id,
-                key="result:" + inv.id,
-                facts=facts,
-                history_ref=ref,
-            ),
-        ]
         await self.gov.commit(entries)
         self.pending.pop(inv.id, None)
         return message
+
+    async def _replay(self, inv: Invocation, tool: Tool, args: Normalized, intent: Entry) -> None:
+        planned = self.replays.pop(inv.id, None)
+        if planned is None or planned != intent or tool.replay != "safe":
+            raise ExecutionDenied("recovery_required")
+        if (
+            intent.facts.get("args_digest"),
+            intent.facts.get("tool_digest"),
+            intent.facts.get("spec_digest"),
+        ) != (
+            args.sha256,
+            digest(definition(tool)),
+            digest(self.spec.model_dump(mode="json")),
+        ):
+            raise ExecutionDenied("recovery_binding_changed")
+        await self.gov.fact(
+            "x.effects.replayed",
+            key="retry:" + str(uuid4()),
+            invocation_id=inv.id,
+            intent_index=intent.index,
+            args_digest=args.sha256,
+            tool_digest=inv.manifest.tool_digest,
+        )

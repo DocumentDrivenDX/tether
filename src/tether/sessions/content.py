@@ -173,7 +173,9 @@ async def pending_view(
         | {key: v for key, v in view.settings.items() if key in {"held", "approval"}}
     )
     try:
-        result = await engine.inspect_pending(actor, state, source, request, value.record.message)
+        result = await engine.inspect_pending(
+            actor, state, source, request, value.record.message, lifetime=access.store.workers
+        )
     except ExecutionDenied as error:
         return pending.model_copy(update={"history_status": "unsupported", "reason": error.reason})
     current = await access.store.get(session_id, actor.id)

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Callable
 from typing import Literal, Self
 
 from tether.stores.jsonl.store import JsonlSessionStore, utc_now
 from tether.types import JsonValue
 from tether.types.execution import Clock
+from tether.types.lifetime import WorkerLifetime
 from tether.types.storage import FileRecord, RootBusy, StorageLimits, StoreError
 
 
@@ -16,6 +18,7 @@ class MemoryFiles:
 
     def __init__(self, limits: StorageLimits | None = None) -> None:
         self.limits = limits or StorageLimits()
+        self.workers = WorkerLifetime()
         self._closed = False
         self.records: dict[str, list[FileRecord]] = {"journal": [], "history": []}
         self.claimed: set[str] = set()
@@ -26,6 +29,12 @@ class MemoryFiles:
 
     async def aclose(self) -> bool:
         self._closed = True
+        self.workers.closed = True
+        if self.workers.active:
+            _, pending = await asyncio.wait(
+                tuple(self.workers.active), timeout=self.limits.shutdown_seconds
+            )
+            return not pending
         return True
 
     def claim(self, name: Literal["journal", "history"]) -> None:

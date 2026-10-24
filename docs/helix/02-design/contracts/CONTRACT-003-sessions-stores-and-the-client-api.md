@@ -201,6 +201,7 @@ class SessionPatch(BaseModel):
 # clears tags, while supplied settings merge into existing settings after validation.
 
 class LiveStore(Protocol):
+    workers: WorkerLifetime                     # concrete namespace-scoped process lifetime
     capabilities: StoreCapabilities
     # reads (the client API's backing)
     async def get(self, session_id: str, owner: str) -> SessionView | None: ...
@@ -222,6 +223,7 @@ class LiveStore(Protocol):
     async def recover(self, *, now: datetime) -> tuple[RecoveredTurn, ...]: ...
 
 class TurnLog(Protocol):                              # the write handle for one turn; holds the session lease
+    workers: WorkerLifetime                           # same handle as owning store/files
     session: SessionState                             # a snapshot of the log at the lease (CONTRACT-002)
     async def append(self, entries: Sequence[NewEntry]) -> tuple[Entry, ...]: ...    # one atomic commit
     async def heartbeat(self) -> None: ...
@@ -465,7 +467,7 @@ Fork is a deferred capability, not a v1 client method. A future fork remains own
 
 The pre-release v1 now includes atomic reconnect snapshots, unresolved-effect paging/resolution, context records and attempt-scoped live text. No released cursor/event/API compatibility is claimed or shimmed.
 
-- Versioning: one integer, `SESSION_CONTRACT_VERSION`. A new entry kind is compatible, and a reader MUST ignore an entry kind it does not know.
+- Versioning: one integer, `SESSION_CONTRACT_VERSION=3`. Version 3 requires a namespace-scoped `WorkerLifetime` on SessionStore, TurnLog and JournalFiles; custom adapters must provide it and retain underlying resources through actual worker exit. A new entry kind is compatible, and a reader MUST ignore an entry kind it does not know.
 - Ordering or precedence: this contract governs persistence and the client API; CONTRACT-002 governs which entries the engine writes and when, and its gate sequence.
 - Backward-compatibility rules: adding an optional field, an entry kind, a capability, or a `Change` variant that a follower may ignore is compatible. Changing a signature, a rule, a guarantee, or a cursor format is a new version. A cursor format change invalidates outstanding cursors, which a store refuses with `InvalidCursor`.
 - Deprecation rules: a removed item is announced one version ahead and kept, with a warning, for that version.
@@ -555,3 +557,11 @@ actual lost provisional deltas require a positive count. A retained-window gap y
 `ResyncRequired` and resumes beyond the captured watermark. Every individual delivery is
 reauthorized, including every variant of one commit; closing composition wakes blocked feeds.
 Live ReplyText/ReplyReset production and contiguous coalescing remain slice 9a qualification.
+
+
+The same-process worker refusal applies across replacement Engines and SessionService instances
+sharing the namespace. Lease release, waiter cancellation and worker timeout MUST NOT release
+actual-worker ownership. Store/root close seals registrations before draining and retains root
+ownership through canceled or bounded close until actual exit. This handle does not strengthen
+cross-process guarantees or replace storage fencing. A resume result belongs to its original
+invocation group and remains manually resolvable after closing unknown during recovery.
