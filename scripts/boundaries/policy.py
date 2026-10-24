@@ -103,6 +103,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
     "tether.guards": ("tether.types", "tether.ports"),
     "tether.testing": (
         "tether.types",
+        "tether.context",
         "tether.ports",
         "tether.engine",
         "tether.sessions",

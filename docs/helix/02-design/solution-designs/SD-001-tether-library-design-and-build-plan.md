@@ -928,3 +928,36 @@ wording; reviewer did not run tests. Four installed profiles and140 matching pac
 recorded in the execution receipt. Context remains coupled to the missing functional slice9a
 pipeline; general governance extension, optional trace flags/real OTel receiver and broader
 Q5/Q7/release qualification remain.
+
+
+Slice9a begins with a pure context foundation checkpoint: strict source-addressed values,
+untouched-snapshot provenance alignment, two-stage visible/final filtered coverage validation,
+complete-group/protection checks, deterministic source/omission/existing-summary materialization,
+Full/Tail planners, bounded copied ScriptedContext/FixedEstimator doubles and public conformance
+factories with explicit independent estimator oracles. FixedEstimator is fabricated evidence only.
+No model, store, policy or Agent authority is conferred by these helpers. A provided summary text
+mapping is already verified content supplied by the future executor, never hydration or proof.
+
+The next checkpoint integrates default FullContext into the existing Agent ModelPort boundary,
+keeping the full SDK conversation a verified derivative. Bound initial history hydration as well as
+per-request preparation. Apply providers against untouched snapshots with explicit filtered IDs;
+retain current READ_SESSION and ModelPort policy gates, full-payload estimation and per-attempt
+rechecks. Commit lease-owned preparation ordinals and context_use before egress, refuse unknown
+acks until explicit fresh reconstruction, and add metadata-only context observations. Then add
+bounded tool-free governed summary calls, shared attempt/usage accounting, current identity/profile
+binding, content-before-compaction atomic facts, actual committed summary indices and restart reuse
+checks. No fallback loop, permissive provenance matching or synthetic precommit summary index is
+allowed. Qualify changed authorization/redaction/config/profile, failed/unknown commits, protected
+pending/unknown groups, oversize instructions/schemas/attachments, summary failure/refusal/truncation,
+shared deadlines and actual reopen/reconstruction. This foundation alone does not complete C4/Q3.
+
+
+The context foundation checkpoint passes1315 cases in42 bounded groups at92.60%
+branch-inclusive coverage with strict typing0 and unchanged gates. Its84 focused fabricated cases
+include an exhaustive small ordered-mapping oracle and independent underestimation/mutation/coverage
+negative controls. Independent final source review found no remaining blocker; reviewer ran no tests.
+Four fresh installed profiles and148 matching wheel/sdist package sources are
+recorded in the execution receipt. An initial unchanged native initialization cleanup timeout and
+its5.00-second isolated pass are retained there; no native assertion or deadline changed. This is
+pure foundation evidence. Engine preparation, actual wire fit, governed summaries, accepted context
+facts, restart and context telemetry remain the next C4/Q3 work.

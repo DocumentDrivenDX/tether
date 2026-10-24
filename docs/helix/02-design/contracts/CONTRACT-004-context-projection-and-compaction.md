@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-24
   authoring:
     home: repo
   links:
@@ -66,6 +66,7 @@ class TokenEstimator(Protocol):
 class ContextConfig(BaseModel):
     limits: dict[str, ModelLimits]                # keyed by tier; main and optional summary tiers
     summary_model: str | None = None
+    summary_identity_mode: Literal["inherit", "caller", "application", "anonymous"] = "inherit"
     max_summary_calls_per_step: int = 1           # >= 0; applies across retries/replanning
     max_source_bytes: int                        # > 0; bound materialized planning/summarization input
     timeout_seconds: float                       # > 0; one context preparation deadline
@@ -98,10 +99,11 @@ class ContextGroup(BaseModel):
 class ContextInput(BaseModel):
     session_id: str; through_index: int
     sources: tuple[ContextSource, ...]
-    summaries: tuple[CompactionRecord, ...]        # only currently reusable records, section 4
+    summaries: tuple[ContextSummary, ...]          # indexed currently reusable records, section 4
     protected: frozenset[int]
     limits: ModelLimits; source_view_digest: str
     fixed_estimate: TokenEstimate; groups: tuple[ContextGroup, ...]
+    filtered_indices: tuple[int, ...] = ()         # IDs only; engine-owned provider omissions
 
 class ContextPlan(BaseModel):
     strategy_id: str; strategy_version: str
@@ -126,11 +128,19 @@ class ContextStrategy(Protocol):
 
 The engine supplies a fixed-payload estimate (current system/provider instructions, tool schemas and envelope) and per-group estimates including framing. Strategies use these to select candidates within the input allowance `window - output - margin`; summing group estimates is preliminary, not a replacement for the final full-request estimate. Token estimation may inspect only the already byte-bounded source view. For `source` and `omit` parts, `summary_index` MUST be absent; `summary` requires an existing compatible compaction index; `summarize` may name one compatible predecessor. Only `omit` has a reason, which is required; other parts MUST leave it absent. Each part has at least one range. The engine validates each plan before materialization. An invalid plan ends `context_invalid`; there is no fallback that discards additional history without an explicit valid plan.
 
+Filtered indices are sorted, unique original message-entry IDs, disjoint from visible sources and at or before through_index. They disclose no pre-redaction message or attachment content. Groups form an ordered partition of visible sources; a group or whole part MUST NOT span a filtered ID, including a gap between two of its ranges. Interleaved messages within a tool group belong to its complete interval; ambiguous or partial groups refuse. Integer gaps are not message counts. The engine derives this catalog from the original snapshot; a strategy-provided catalog cannot prove completeness.
+
+Validation has two stages. The strategy plan covers every visible source exactly once and MUST NOT generate provider_filter omissions. The engine then merges its fixed single-ID provider_filter parts in chronological order and validates the final parts against the complete visible-plus-filtered catalog. A missing, invented, duplicated or reordered marker refuses; final ContextUse uses these merged parts. Other omission reasons remain subject to protection and complete-group rules. Source provenance requires an untouched snapshot: object identity may pin one source but never permits structural mutation. Fresh provider objects require a unique complete order-preserving structural mapping; equal text cannot resolve ambiguity. Roles, calls, names, arguments and error state remain exact; content may redact and attachment metadata may only narrow.
+
+All digest fields use lowercase 64-character hexadecimal SHA-256. Counts and positions are strict nonnegative integers; positive limits reject booleans and coercion. Context timeout is finite and positive. Values are copied and revalidated at trust boundaries, including already typed instances.
+
 ### 3. Engine-mediated summarization
 
 A `summarize` part requests one engine-owned auxiliary model call over its source ranges and optionally a prior compatible summary. The engine builds a fixed summarization prompt covering goals, constraints, decisions, progress, unresolved items, source ranges, and material to reload. Source text is delimited as untrusted material. A prompt asks the model not to follow source instructions; this is a heuristic, not a guarantee against injection. Structural validation and the tool-free, gated summary path are the enforceable boundaries. Summary generation does not replace its source material until its response, estimate and provenance are validated and committed. The same `ContextConfig.max_source_bytes` and deadline apply when loading/combining prior summaries. A summary request offers no tools; a response containing calls, a refused/truncated response, an empty summary, or a malformed response is rejected. The engine never repairs and executes a summary response.
 
 The engine authorizes `CALL_MODEL` separately for each summary call with `AuthzRequest.purpose="summary"`, the explicitly selected identity mode and current credential when required, selected tier, scope and accumulated usage. It records a `model_call` fact with `purpose="summary"` and charges its tokens, latency, and call count to turn usage. Auxiliary calls do not consume another agent step but cannot bypass call/cost/deadline policy. Calls are made through the same governed `ModelPort` and selected adapter, including an isolated optional SDK adapter under ADR-012. A strategy cannot bypass that port with its own provider client. Recursive compaction, tools and ungoverned background work are forbidden.
+
+ContextConfig.summary_identity_mode="inherit" copies the main request's explicitly selected identity mode. Caller mode uses the current caller credential only; application and anonymous modes carry no caller credential. Explicit application mode requires the selected adapter's explicitly configured application mechanism. A missing/unusable caller credential refuses caller-mode egress, never substitutes another mode. Principal metadata and policy attribution remain the current actor even when the explicitly selected summary mode differs from the main request.
 
 The summary request itself must fit its own profile. If source material is too large, the engine reports `context_exhausted`; it does not trim summary inputs silently or move to a larger/other model without explicit configuration. Strategies may propose bounded chunks in later steps, within the same coverage/protection rules. SDK/model conversation histories are transient conversions of this source-addressed view. A selected runner's cumulative usage and deferred execution metadata must be preserved as versioned derived state separate from the authoritative history and from engine approvals/effect facts. An existing summary may be folded into a new summary only when its entire coverage is included and its provenance is compatible; dependency cycles are invalid.
 
@@ -138,6 +148,10 @@ The summary request itself must fit its own profile. If source material is too l
 
 ```python
 class CompactionRecord(BaseModel):
+    preparation_ordinal: int; part_position: int    # >= 0; not journal entry positions
+    config_digest: str                            # effective context configuration
+    summary_profile_id: str; summary_profile_revision: str
+    summary_profile_digest: str                    # generation limits, distinct from main profile
     strategy_id: str; strategy_version: str
     through_index: int; source_ranges: tuple[SourceRange, ...]
     source_view_digest: str; scope_digest: str
@@ -146,7 +160,19 @@ class CompactionRecord(BaseModel):
     predecessor: int | None = None                # earlier compaction-entry index
     lossy: Literal[True] = True
 
+class ContextSummary(BaseModel):
+    index: int; record: CompactionRecord           # actual committed compaction-entry position
+
+class ContextPreparation(BaseModel):
+    ordinal: int; through_index: int              # >= 0; snapshot before this allocation entry
+    source_view_digest: str; scope_digest: str; spec_digest: str
+    config_digest: str; main_profile_digest: str
+    summary_profile_digest: str | None = None
+    strategy_id: str; strategy_version: str
+
 class ContextUse(BaseModel):
+    preparation_ordinal: int                     # >= 0; allocated under the lease
+    config_digest: str
     through_index: int
     parts: tuple[ContextPart, ...]                 # summarize replaced with committed summary reference
     source_view_digest: str; request_digest: str
@@ -160,7 +186,30 @@ A summary is a lossy derivative, never proof that every fact survives. The model
 
 Reuse requires reauthorization of session access and matching source-view, scope, spec, strategy, profile and version digests. A compaction source-view digest covers only its own covered ranges, including immutable HistoryRef ids/digests and the decoded message view: exact post-provider message bytes, positions and attachment metadata. Reuse recomputes that digest for those ranges, so appending unrelated new messages does not invalidate a summary. A context-use source-view digest covers the entire input snapshot. Newly protected positions invalidate any summary that covers them. A changed redaction, actor scope, spec instruction or profile invalidates reuse. Current provider instructions and tool schemas are rebuilt and included in the final estimate, never restored from a summary. The engine adds a current non-executable status notice for unresolved effects and pending interaction outside strategy control; its bytes count in the fixed estimate. A summary may not confer authorization or decide effect/approval state.
 
+A predecessor MUST be at or before the compaction record's captured through_index. Compaction entry indices cannot also identify original message entries. ContextSummary exposes a committed compaction Entry index with its copied record; tuple order, preparation ordinal and a precommit placeholder are never summary_index. CompactionRecord.profile_id/profile_revision identify the target main profile; its summary_profile fields identify the generation profile. Config and profile digests bind their effective values, including limits, rather than trusting unchanged revision names.
+
 Recovery reconstructs from log entries, not an in-memory cursor. A summary committed before a crash is reused only after these checks; an uncommitted summary may be regenerated. A context preparation ordinal is allocated under the session lease for each logical main step, including a resumed step. Summary and context-use keys use this ordinal and the summary part position; uncertain append outcomes are read back by that key before deciding whether a new record is needed. Model calls may consequently incur cost more than once; Tether does not promise exactly-once model billing. `context_use` describes the selected pre-adapter request, not evidence of provider acceptance. Replay cassettes capture the actual model-port request, including its context and output limit.
+
+Allocation uses a context_preparation Entry with ContextPreparation payload and key
+context:prepare:<ordinal>. Ordinals are dense, session-local, zero-based and allocated only under
+the current lease from accepted preparation records. through_index and source_view_digest describe
+the pre-allocation snapshot, excluding the allocation Entry itself. The allocation is accepted before
+strategy execution or auxiliary egress. Stable compaction and context-use keys are respectively
+context:summary:<ordinal>:<part_position> and context:use:<ordinal>. A new resumed logical preparation
+gets a fresh ordinal after unresolved prior identities are reconciled. Failed or unknown allocation
+never grants permission to proceed. Compaction/use uncertainty stops the preparation; readback
+requires explicit reopen/reconstruction and a fresh valid lease. A poisoned handle or stale cache
+cannot prove record absence, and no hidden broader root is opened. Summary content keys additionally
+include a content digest, so orphan content cannot conflict with a later different generated result;
+the stable journal key remains the single authority for the selected summary part.
+
+Provider projection retains original positions through each hook in registration order. Returning
+an input Message object proves its source identity only; it never permits altered roles, call IDs,
+names, arguments, error state or widened attachments. Validate structure against an untouched
+snapshot because nested JSON is mutable. For newly returned objects, require a unique complete
+order-preserving structural source mapping; ambiguous mappings fail context_invalid rather than
+greedily guessing positions. Copy validated outputs before another await. Only the authorized,
+post-provider copy reaches strategies and summary generation.
 
 ### 5. Materialization, cache stability, and failure
 
@@ -172,11 +221,14 @@ The engine rejects a plan with more new summary parts than its configured remain
 
 ### 6. Defaults and conformance
 
+The public context_strategy_suite accepts an asynchronous fresh ContextStrategy factory. It checks fabricated ordinary and complete-tool-group snapshots, source coverage/protection, declared strategy identity, input isolation and deterministic materialization, or refusal of an uncommitted summary. The token_estimator_suite accepts a fresh TokenEstimatorFixture containing the estimator, an independent request-to-inclusive-token-bounds oracle, an evidence label (fabricated or wire_oracle), and attachment behavior (estimates or refuses). Its cases cover framing, system instructions, messages, tool schemas and attachments, repeated estimates and input isolation. Attachment refusal must be context_unmeasurable. Reports list remaining external obligations; a fixed fabricated oracle does not qualify real wire counting, encoding, current authorization, executor deadlines, final egress fit or summary recovery. Factories own cleanup, and the whole suite has one finite positive deadline.
+
+
 - `FullContext` preserves every source, produces no summary and no omissions, and refuses an over-budget request.
 - `TailContext` retains protected groups and as many recent complete groups as fit, marking each omitted range. It preserves all user messages. It does not call a model.
 - `SummarizingContext` proposes summaries of completed older groups and retains protected groups. Its explicit options control whether old user messages may be summarized. It uses only engine-mediated summary calls.
 - `ScriptedContext` and `FixedEstimator` are deterministic dummies; `FullContext` is the default strategy. The default adapter supplies its declared wire-aware estimator; third-party adapters must supply an estimator explicitly.
-- `context_strategy_suite(factory)` verifies coverage, bounds, atomic groups, protected inputs, immutable sources and deterministic materialization. `token_estimator_suite(factory)` verifies full-payload accounting, declared quality, framing/attachments and repeatability. `context_executor_suite` verifies authorization, identity, usage, cancellation, failed commits, source compatibility, bounded calls, and restart reconstruction. Dummies and built-ins MUST pass their applicable suites.
+- Dummies and built-ins MUST pass their applicable logical suites above. Separate executor qualification MUST verify authorization, identity, usage, cancellation, byte/deadline/call bounds, protected pending/unknown groups, failed commits, source compatibility, real wire estimates and restart reconstruction; a logical suite report alone cannot establish those guarantees.
 
 ## Precedence and Compatibility
 
