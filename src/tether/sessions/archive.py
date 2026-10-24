@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-
 from tether.types import JsonValue
+from tether.types.archive import ArchiveLimits
+from tether.types.archive_codec import dump_archive as dump_archive
+from tether.types.archive_codec import load_archive as load_archive
+from tether.types.archive_codec import references, verify_bundle
 from tether.types.canonical import canonical, digest
 from tether.types.execution import (
     Actor,
@@ -29,21 +31,22 @@ from tether.types.storage import (
 )
 
 
-def references(value: JsonValue) -> Iterator[HistoryRef]:
-    if isinstance(value, dict):
-        if {"provider", "key", "sha256", "codec", "owner", "session_id", "kind"} <= value.keys():
-            yield HistoryRef.model_validate(value)
-        else:
-            for item in value.values():
-                yield from references(item)
-    elif isinstance(value, list):
-        for item in value:
-            yield from references(item)
-
-
 class ArchiveTransfer:
-    def __init__(self, store: SessionStore, history: HistoryProvider, authorize: Policy) -> None:
-        self.store, self.history, self.policy = store, history, authorize
+    def __init__(
+        self,
+        store: SessionStore,
+        history: HistoryProvider,
+        authorize: Policy,
+        *,
+        limits: ArchiveLimits | None = None,
+    ) -> None:
+        self.store, self.history, self.policy, self.limits = store, history, authorize, limits
+
+    def _bound(self, count: int, size: int) -> None:
+        if self.limits is not None and (
+            count > self.limits.max_entries or size > self.limits.max_bytes
+        ):
+            raise StoreError("archive_limit")
 
     async def _authorize(self, actor: Actor, session_id: str, action: str = "read_session") -> None:
         try:
@@ -69,6 +72,9 @@ class ArchiveTransfer:
         while True:
             page: EntryPage = await self.store.entries(session_id, actor.id, start=start, limit=100)
             entries.extend(page.items)
+            self._bound(
+                len(entries), sum(len(canonical(e.model_dump(mode="json"))) for e in entries)
+            )
             if page.next_start is None:
                 break
             start = page.next_start
@@ -81,6 +87,11 @@ class ArchiveTransfer:
         for ref in refs.values():
             stored = await self._record(actor, session_id, ref)
             records.append(stored.model_dump(mode="json"))
+            self._bound(
+                len(entries),
+                sum(len(canonical(e.model_dump(mode="json"))) for e in entries)
+                + sum(len(canonical(record)) for record in records),
+            )
         if await self.store.snapshot(session_id, actor.id) != snapshot:
             raise StoreError("archive_session_changed")
         summary, settings = snapshot.view.summary, snapshot.view.settings
@@ -106,6 +117,7 @@ class ArchiveTransfer:
         bundle = bundle.model_copy(
             update={"sha256": digest(bundle.model_dump(mode="json", exclude={"sha256"}))}
         )
+        self._bound(len(entries), len(canonical(bundle.model_dump(mode="json"))))
         await self._authorize(actor, session_id)
         if any(ref.kind == "model_exchange" for ref in refs.values()):
             await self._authorize(actor, session_id, "read_call_payload")
@@ -130,53 +142,28 @@ class ArchiveTransfer:
         return StoredHistory(ref=ref, record=record)
 
     async def restore(self, bundle: ArchiveBundle, actor: Actor) -> None:
+        actor = copy_actor(actor)
+        self._bound(len(bundle.session.entries), len(canonical(bundle.model_dump(mode="json"))))
         verify_bundle(bundle)
         if actor.id != bundle.session.state.owner:
             raise ExecutionDenied("archive_denied")
         await self._authorize(actor, bundle.session.state.id, "x.tether.restore_session")
         for raw in bundle.records:
             stored = StoredHistory.model_validate(raw)
+            if stored.ref.kind == "model_exchange":
+                await self._authorize(actor, bundle.session.state.id, "read_call_payload")
             actual = await self.history.put(
-                actor=actor,
+                actor=copy_actor(actor),
                 session_id=stored.ref.session_id,
                 key=stored.ref.key,
                 record=stored.record,
             )
             if actual != stored.ref:
                 raise StoreError("archive_provider_incompatible")
-        await self.store.restore(bundle.session, created_at=bundle.created_at)
-
-
-def verify_bundle(bundle: ArchiveBundle) -> None:
-    payload = bundle.model_dump(mode="json", exclude={"sha256"})
-    if digest(payload) != bundle.sha256:
-        raise IntegrityError("archive_integrity")
-    records = {}
-    for raw in bundle.records:
-        stored = StoredHistory.model_validate(raw)
-        if (
-            stored.ref.owner != bundle.session.state.owner
-            or stored.ref.session_id != bundle.session.state.id
-            or stored.record.kind != stored.ref.kind
-            or digest(stored.record.model_dump(mode="json")) != stored.ref.sha256
+        await self._authorize(actor, bundle.session.state.id)
+        if any(
+            StoredHistory.model_validate(raw).ref.kind == "model_exchange" for raw in bundle.records
         ):
-            raise IntegrityError("archive_reference_integrity")
-        records[canonical(stored.ref.model_dump(mode="json"))] = stored
-    for entry in bundle.session.entries:
-        for ref in references(entry.model_dump(mode="json")):
-            if canonical(ref.model_dump(mode="json")) not in records:
-                raise IntegrityError("archive_reference_missing")
-
-
-def dump_archive(bundle: ArchiveBundle) -> bytes:
-    verify_bundle(bundle)
-    return canonical(bundle.model_dump(mode="json"))
-
-
-def load_archive(data: bytes) -> ArchiveBundle:
-    try:
-        bundle = ArchiveBundle.model_validate_json(data)
-        verify_bundle(bundle)
-        return bundle
-    except ValueError:
-        raise IntegrityError("archive_integrity") from None
+            await self._authorize(actor, bundle.session.state.id, "read_call_payload")
+        await self._authorize(actor, bundle.session.state.id, "x.tether.restore_session")
+        await self.store.restore(bundle.session, created_at=bundle.created_at)

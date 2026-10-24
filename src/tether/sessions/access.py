@@ -127,7 +127,7 @@ class SessionAccess:
         try:
             async with asyncio.timeout(self.limits.read_timeout_seconds):
                 values = await self.history.read((ref,), actor=copy_actor(actor))
-            value = self._verify(ref, values)
+            value = self.verify(ref, values)
         except Exception:
             value = HistoryValue(ref=ref, status="unavailable", reason="history_unavailable")
         await self.authorize(actor, session_id)
@@ -139,7 +139,7 @@ class SessionAccess:
         return value
 
     @staticmethod
-    def _verify(ref: HistoryRef, values: tuple[HistoryValue, ...]) -> HistoryValue:
+    def verify(ref: HistoryRef, values: tuple[HistoryValue, ...]) -> HistoryValue:
         if len(values) != 1 or values[0].ref != ref:
             return HistoryValue(ref=ref, status="integrity_error", reason="history_integrity")
         value = values[0].model_copy(deep=True)

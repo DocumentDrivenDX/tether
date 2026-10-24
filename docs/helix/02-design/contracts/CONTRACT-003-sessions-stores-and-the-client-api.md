@@ -282,11 +282,15 @@ class ArchiveCapabilities(BaseModel):
     call_detail: bool                                 # optional legacy provider-id import, not the live Client lookup
     content: Literal["full", "facts_only"]
 
-class ArchivedSession(BaseModel):  summary: SessionSummary; view: SessionView; entries: tuple[Entry, ...]
+class ArchivedSession(BaseModel):
+    view: SessionView                               # metadata projection, tier=archive
+    bundle: ArchiveBundle                          # exact journal and reference-complete content
+# The bundle is an authoritative transfer surface. Metadata/entry reads never return it.
+# Derived sources have no restorable bundle and cannot satisfy ArchiveSink.
 
 class ArchiveSink(Protocol):
     capabilities: ArchiveCapabilities
-    async def archive(self, session: ArchivedSession) -> None: ...                  # idempotent by (session id, entry_count)
+    async def archive(self, session: ArchivedSession) -> None: ...                  # idempotent by exact snapshot/bundle identity
 
 class ArchiveSource(Protocol):
     capabilities: ArchiveCapabilities
@@ -294,7 +298,10 @@ class ArchiveSource(Protocol):
     async def get(self, session_id: str, *, actor: Actor) -> SessionView | None: ...
     async def entries(self, session_id: str, *, actor: Actor, start: int, limit: int, reverse: bool) -> EntryPage: ...
     async def call_detail(self, request_ids: Sequence[str], *, actor: Actor) -> Mapping[str, LegacyCallDetail | Pending | Denied | Unavailable]: ...
+    async def read(self, refs: Sequence[HistoryRef], *, actor: Actor) -> tuple[HistoryValue, ...]: ...
     async def restore(self, session_id: str, *, actor: Actor) -> ArchivedSession: ...   # only if `restorable`
+# ArchiveReadError.status is pending, denied, or unavailable; get(None) means absent only.
+# NotRestorable refuses derived/facts-only recovery; it never becomes a live empty session.
 
 class LegacyCallDetail(BaseModel): request_id: str; request: JsonValue | None; response: JsonValue | None
 class CallDetail(BaseModel):
@@ -310,7 +317,7 @@ class CallDetail(BaseModel):
 |------|-------------|
 | Optional | A deployment without an archive works. No turn, list of live sessions, or recovery depends on one. |
 | History is separate | An external history provider may be required to hydrate source text or tool arguments, with a bounded explicit failure. That dependency is not an archive read, cannot be hidden by empty payloads, and never changes execution facts. `call_detail` resolves known model-call refs through HistoryProvider; legacy derived-archive detail is optional historical import only. |
-| Never in the turn's path | The engine calls `ArchiveSink.archive` only after a session is closed or idle by the application's policy, never inside a turn, and a failure is audited and never raised into a turn. |
+| Never in the turn's path | Application retention policy invokes an explicit bounded composition helper after idle/close, outside Agent turns. It exports a verified bundle and sends it to the configured sink. No automatic archive_on driver is selected; sink failure is explicit to that helper and cannot change a turn outcome. Archival never evicts live data. |
 | Authoritative | An authoritative archive written by tether MUST hold every journal entry unchanged and declare whether it also preserves all referenced history records. `lossless/restorable` require closure over those refs or a verified durable binding; metadata-only export cannot claim complete offline history. |
 | Derived | A derived archive reconstructs what an external log holds (content and usage). It MUST declare `lossless=false` and `restorable=false`, MUST mark every summary and entry page it returns `partial`, and MUST NOT present tool executions, approvals, or intents it does not have. |
 | As the caller | Every read takes the calling actor and uses its credential (ADR-011). A read is bounded by a time limit. |
@@ -355,7 +362,7 @@ class Client(Protocol):                               # obtained as `tether.clie
     async def get(self, session_id: str, *, tier: Literal["live", "archive"] | None = None) -> SessionView: ...
     async def entries(self, session_id: str, *, tier: Literal["live", "archive"] | None = None,
                       start: int = 0, limit: int = 100, reverse: bool = False) -> EntryPage: ...
-    async def history(self, session_id: str, *, start: int = 0, limit: int = 100) -> HistoryPage: ...
+    async def history(self, session_id: str, *, tier: Literal["live", "archive"] = "live", start: int = 0, limit: int = 100) -> HistoryPage: ...
     async def pending(self, session_id: str) -> PendingConfirmation | None: ...
     async def snapshot(self, session_id: str) -> SessionSnapshot: ...
     async def effects(self, session_id: str, *, start: int = 0, limit: int = 50) -> EffectPage: ...
@@ -441,7 +448,7 @@ loop; a wrong-loop call raises `RuntimeError("wrong_event_loop")` before touchin
 An external thread bridge may submit to the bound loop; no blocking bridge may run on it.
 Engine and storage lifetimes cannot migrate async pools/locks/tasks between loops.
 
-**`Tether` options.** `history` is an explicit HistoryProvider; reference clients supply local JSONL and tests supply InMemoryHistory.  Executor limits and shutdown deadline are explicit finite settings (CONTRACT-002); `max_resolution_reason_chars` bounds operator text. `max_pending_argument_bytes` and `max_resolution_reason_chars` are positive finite limits; oversized inputs are refused before persistence. Read/argument/context limits are shared with CONTRACT-001/004/005. The demo uses `resume="off"` on the non-durable in-memory store.  `resume` (`"off"`, `"report"`, or `"auto"`; the durable reference default is `"report"`), `resume_actor` (a function that returns an actor with a live credential for a session, or `None`, used only with `"auto"`), `recover_interval`, `max_resumes` (the reference configuration proposes 3, qualified before release), `lease_window` and `heartbeat_interval`, `approval_ttl` (none by default), `archive` and `archive_on` (a policy for when a session is archived), and the archive read time limit. The numeric defaults other than those named are supplied by the owner after the first baseline.
+**`Tether` options.** `history` is an explicit HistoryProvider; reference clients supply local JSONL and tests supply InMemoryHistory.  Executor limits and shutdown deadline are explicit finite settings (CONTRACT-002); `max_resolution_reason_chars` bounds operator text. `max_pending_argument_bytes` and `max_resolution_reason_chars` are positive finite limits; oversized inputs are refused before persistence. Read/argument/context limits are shared with CONTRACT-001/004/005. The demo uses `resume="off"` on the non-durable in-memory store.  `resume` (`"off"`, `"report"`, or `"auto"`; the durable reference default is `"report"`), `resume_actor` (a function that returns an actor with a live credential for a session, or `None`, used only with `"auto"`), `recover_interval`, `max_resumes` (the reference configuration proposes 3, qualified before release), `lease_window` and `heartbeat_interval`, `approval_ttl` (none by default), `archive: ArchiveSource | None` and `archive_sink: ArchiveSink | None` are independent optional halves. The explicit `Tether.archive_session(actor, session_id)` helper uses ClientLimits read/entry/byte bounds; application retention policy invokes it outside turns. Automatic archive_on scheduling is deferred, with no inert policy option. The numeric defaults other than those named are supplied by the owner after the first baseline.
 
 ### 7. Performance rules
 
@@ -565,3 +572,40 @@ actual-worker ownership. Store/root close seals registrations before draining an
 ownership through canceled or bounded close until actual exit. This handle does not strengthen
 cross-process guarantees or replace storage fencing. A resume result belongs to its original
 invocation group and remains manually resolvable after closing unknown during recovery.
+
+
+Archive routing is explicit: list/history use the selected tier; get/entries with tier=None try
+live first and fall back only after an actual absent live session. Denial, timeout, integrity and
+unavailable failures never cause fallback. Cursor identities include version, owner, query and
+tier and cross-tier reuse refuses. All archive reads use copied present actors, finite read-byte,
+page and deadline bounds, and current policy before and after adapter I/O. Derived sources must
+mark summaries and entry pages partial and cannot claim lossless/restorable capability.
+
+A full archive's read(refs, actor) resolves only records reachable in an owning archived snapshot;
+unknown/unreachable refs are explicit failures. Client archive history pages hydrate those refs
+under READ_SESSION and exchange-specific READ_CALL_PAYLOAD, including aggregate rechecks.
+Legacy provider-id call_detail remains separate from logical model-call authority.
+
+An authoritative sink verifies content closure and metadata/bundle identity, deep-copies accepted
+state, and rejects equal-count conflicts, stale prefixes or non-prefix replacement. Retry of the
+same snapshot is idempotent. The volatile reference archive has explicit finite session/entry/byte
+capacity. Configuring the sink selects retention authority; the explicit export helper also checks
+x.tether.archive_session and all original/payload read permissions. Export bounds include total
+entries, encoded bytes and deadline, not just page size.
+
+Restore verifies the bundle as the present owner, prepares original history, rechecks current
+x.tether.restore_session before atomic journal restoration, and preserves closure, pending,
+unknown effects and every original entry. It never approves or dispatches. Reference-preserving
+restore currently requires the same provider/codec address profile; cross-provider remapping is
+unqualified and refuses rather than rewriting immutable evidence.
+
+Full-bundle restore requires current READ_CALL_PAYLOAD before source fetch, as well as current
+READ_SESSION and x.tether.restore_session. Each exchange write and the final journal commit
+recheck payload access. Archive history resolves every reachable original reference in the
+selected entry page, including nested exchange/annotation refs, under a total reference cap.
+Aggregate disclosure runs after the last awaited metadata check. Facts-only sources return
+unsupported content slots without fetching raw records; metadata remains partial.
+
+Each provider boundary receives a separate actor snapshot; provider mutation cannot alter later policy subjects or attributes. Query inputs are copied before cursor binding and adapter I/O.
+
+HistoryPage.partial defaults false and propagates the selected archive entry page partial flag, including empty pages. A derived/facts-only history page therefore cannot silently imply a complete empty transcript.

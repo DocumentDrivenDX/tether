@@ -7,6 +7,7 @@ from typing import Literal
 
 from tether.sessions import content, disclosure
 from tether.sessions.access import SessionAccess
+from tether.sessions.archived import ArchiveAccess
 from tether.types.canonical import canonical
 from tether.types.client import CallDetail, HistoryPage, ReadLimit
 from tether.types.execution import Actor, ExecutionDenied, copy_actor
@@ -24,8 +25,11 @@ from tether.types.storage import (
 
 
 class ClientReads:
-    def __init__(self, access: SessionAccess, actor: Actor) -> None:
+    def __init__(
+        self, access: SessionAccess, actor: Actor, archives: ArchiveAccess | None = None
+    ) -> None:
         self._access, self._actor = access, copy_actor(actor)
+        self._archives = archives or ArchiveAccess(access, None, None)
 
     @staticmethod
     def _tier(tier: str | None) -> None:
@@ -40,9 +44,11 @@ class ClientReads:
         cursor: str | None = None,
         limit: int = 50,
     ) -> Page[SessionSummary]:
+        query = query or SessionQuery(owner=self._actor.id)
+        if tier == "archive":
+            return await self._archives.list(self._actor, query, cursor=cursor, limit=limit)
         self._tier(tier)
         self._access.limit(limit)
-        query = query or SessionQuery(owner=self._actor.id)
         if query.owner != self._actor.id:
             raise ExecutionDenied("denied")
 
@@ -57,6 +63,8 @@ class ClientReads:
     async def get(
         self, session_id: str, *, tier: Literal["live", "archive"] | None = None
     ) -> SessionView:
+        if tier == "archive":
+            return await self._archives.get(self._actor, session_id)
         self._tier(tier)
 
         async def operation() -> SessionView:
@@ -65,7 +73,12 @@ class ClientReads:
                 raise UnknownSession("unknown_session")
             return view
 
-        return await self._access.metadata(self._actor, session_id, operation)
+        try:
+            return await self._access.metadata(self._actor, session_id, operation)
+        except UnknownSession:
+            if tier is not None or self._archives.source is None:
+                raise
+            return await self._archives.get(self._actor, session_id)
 
     async def entries(
         self,
@@ -76,16 +89,23 @@ class ClientReads:
         limit: int = 100,
         reverse: bool = False,
     ) -> EntryPage:
+        if tier == "archive":
+            return await self._archives.entries(self._actor, session_id, start, limit, reverse)
         self._tier(tier)
         self._access.limit(limit)
         self._access.position(start)
-        return await self._access.metadata(
-            self._actor,
-            session_id,
-            lambda: self._access.store.entries(
-                session_id, self._actor.id, start=start, limit=limit, reverse=reverse
-            ),
-        )
+        try:
+            return await self._access.metadata(
+                self._actor,
+                session_id,
+                lambda: self._access.store.entries(
+                    session_id, self._actor.id, start=start, limit=limit, reverse=reverse
+                ),
+            )
+        except UnknownSession:
+            if tier is not None or self._archives.source is None:
+                raise
+            return await self._archives.entries(self._actor, session_id, start, limit, reverse)
 
     async def snapshot(self, session_id: str) -> SessionSnapshot:
         return await self._access.metadata(
@@ -112,7 +132,17 @@ class ClientReads:
 
         return await self._access.metadata(self._actor, "owner:" + self._actor.id, operation)
 
-    async def history(self, session_id: str, *, start: int = 0, limit: int = 100) -> HistoryPage:
+    async def history(
+        self,
+        session_id: str,
+        *,
+        tier: Literal["live", "archive"] = "live",
+        start: int = 0,
+        limit: int = 100,
+    ) -> HistoryPage:
+        if tier == "archive":
+            return await self._archives.history(self._actor, session_id, start, limit)
+        self._tier(tier)
         self._access.limit(limit)
         self._access.position(start)
         return await self._access.metadata(

@@ -70,3 +70,12 @@ An external table has no atomic intent/approval/resolution record and can omit a
 ## Concern Impact
 
 - **No concern override**: A port per responsibility, with explicit capabilities and conformance.
+
+
+The selected composition exposes optional independent ArchiveSource/ArchiveSink halves, a bounded
+volatile reference archive and an explicit off-turn archive_session helper. Application policy owns
+scheduling and eviction; no automatic archive_on driver is selected. Full transfer carries the
+existing reference-complete ArchiveBundle plus a metadata projection. Restore preserves original
+closure and invocation facts, uses fresh caller authority and rejects conflicting immutable identity.
+Cached archival content is never itself a disclosure grant. Cross-provider address remapping remains
+unqualified; the implemented profile restores original provider/codec addresses unchanged.
