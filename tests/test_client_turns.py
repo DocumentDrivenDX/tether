@@ -304,13 +304,14 @@ async def test_retry_rechecks_canonical_key_under_lease_after_stale_empty_lookup
         return await original(*args, **kwargs)
 
     monkeypatch.setattr(h.store, "lookup", stale_once)
-    if conflict:
-        with pytest.raises(RequestConflict):
-            await h.client.send(h.sid, "Changed", request_id="race")
-    else:
-        retry = await h.client.send(h.sid, "Fabricated", request_id="race")
-        assert retry.turn_id == first.turn_id
-        assert await retry.result() == expected
+    async with asyncio.timeout(5):
+        if conflict:
+            with pytest.raises(RequestConflict):
+                await h.client.send(h.sid, "Changed", request_id="race")
+        else:
+            retry = await h.client.send(h.sid, "Fabricated", request_id="race")
+            assert retry.turn_id == first.turn_id
+            assert await retry.result() == expected
     assert lookups == 2
     assert (await h.client.snapshot(h.sid)).through_index == before.through_index
     assert len(h.model.requests) == 1
@@ -524,3 +525,21 @@ async def test_request_retry_after_real_root_and_composition_restart(
         assert not model.requests
         assert not second.turns.jobs
     assert second.drained
+
+
+async def test_new_input_clears_interrupted_resumable_projection(turns):
+    h = turns
+    first = await h.client.send(h.sid, "Canceled fabricated input")
+    await entered(h.model)
+    await first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first.result()
+    assert (await h.client.get(h.sid)).summary.resumable
+    h.model.entered.clear()
+    second = await h.client.send(h.sid, "New fabricated input")
+    await entered(h.model)
+    running = await h.client.get(h.sid)
+    assert running.summary.status == "running"
+    assert not running.summary.resumable
+    h.model.release.set()
+    assert (await second.result()).stop_reason == "final"

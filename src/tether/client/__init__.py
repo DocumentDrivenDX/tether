@@ -6,7 +6,7 @@ from tether.sessions import content
 from tether.sessions.service import SessionService
 from tether.types import AttachmentRef
 from tether.types.client import Change, TurnHandle
-from tether.types.execution import Actor, PendingConfirmation
+from tether.types.execution import Actor, Answer, PendingConfirmation
 
 from .reads import ClientReads
 
@@ -45,3 +45,11 @@ class Client(ClientReads):
 
     async def cancel(self, session_id: str) -> bool:
         return await self._service.turns.cancel(self._actor, session_id)
+
+    async def confirm(
+        self,
+        session_id: str,
+        invocation_id: str,
+        answer: Answer,
+    ) -> TurnHandle | None:
+        return await self._service.turns.confirm(self._actor, session_id, invocation_id, answer)

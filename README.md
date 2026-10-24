@@ -8,7 +8,7 @@ reference CLI/terminal clients are planned in later build slices.
 **Status: gated execution, local durability and partial Client commands (slices 2–4 subset).** Pydantic AI Agent now runs tools through
 Tether's policy, validation, approval and commit gates. Model doubles and shared codecs remain
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
-Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Confirmation/resume/update/close/resolve commands, provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Create/resume/update/close/resolve commands, provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
 
 ## Development
 
@@ -100,6 +100,13 @@ policy and verified original sources; unavailable or denied sources refuse conte
 substituting an empty transcript. Result reads have a finite deadline after execution completes.
 An external still-running turn without a local task reports `TurnInProgress` on result lookup;
 cross-process following and automatic recovery remain separate qualification.
+
+`client.confirm(session_id, invocation_id, Answer(approved=True))` returns a handle after
+known decision acceptance, before the continuing Agent finishes. Late or superseded answers
+return `None`; concurrent answers have one winner. Continuation uses the current actor's policy,
+principal and credential, with the original logical turn id. Existing successful send handles
+wait for an accepted continuation before returning its latest outcome. Optional answer notes
+are bounded informational history, outside executable arguments and automatic model input.
 
 Tether bounds its owned jobs by `ClientLimits.max_active_turns`. Lease loss stops the Agent;
 shutdown cancels owned turns and retains storage until actual workers and in-flight heartbeats

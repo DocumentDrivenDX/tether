@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import TypeVar
 from uuid import uuid4
 
 from tether.engine import Engine
+from tether.engine.reconstruction import requested_turn
 from tether.types import AttachmentRef
 from tether.types.canonical import canonical, input_digest
 from tether.types.client import ReadLimit, RequestConflict, TurnHandle
 from tether.types.execution import (
     Actor,
     AgentSpec,
+    Answer,
     ExecutionDenied,
     TurnResult,
     TurnStart,
@@ -23,7 +25,7 @@ from tether.types.execution import (
 from tether.types.storage import SessionClosed, TurnInProgress, UnknownSession
 
 from .access import SessionAccess
-from .outcomes import outcome
+from .outcomes import read_outcome
 from .supervision import supervise
 
 T = TypeVar("T")
@@ -38,8 +40,13 @@ def observe(future: asyncio.Future[T]) -> None:
 class Job:
     start: TurnStart
     digest: str
-    ready: asyncio.Future[None]
-    task: asyncio.Task[TurnResult] | None = None
+    ready: asyncio.Future[bool]
+    accepted: bool = False
+    task: asyncio.Task[TurnResult | None] | None = None
+
+    def accept(self) -> None:
+        self.accepted = True
+        self.ready.set_result(True)
 
 
 class Handle:
@@ -49,7 +56,7 @@ class Handle:
         actor: Actor,
         session_id: str,
         turn_id: str,
-        task: asyncio.Task[TurnResult] | None,
+        task: asyncio.Task[TurnResult | None] | None,
     ):
         self._owner, self._actor = owner, copy_actor(actor)
         self._session_id, self._turn_id, self._task = session_id, turn_id, task
@@ -63,13 +70,17 @@ class Handle:
         await access.authorize(self._actor, self._session_id)
         if self._task is not None:
             await asyncio.shield(self._task)
-        async with asyncio.timeout(access.limits.read_timeout_seconds):
-            value = await outcome(
-                access, self._owner.engine, self._actor, self._session_id, self.turn_id
-            )
-            access.size(value)
-            await access.authorize(self._actor, self._session_id)
-        return value
+        current = self._owner.jobs.get(self._session_id)
+        if (
+            current is not None
+            and current.accepted
+            and current.start.turn_id == self.turn_id
+            and current.task is not None
+        ):
+            await asyncio.shield(current.task)
+        return await read_outcome(
+            access, self._owner.engine, self._actor, self._session_id, self.turn_id
+        )
 
     async def cancel(self) -> None:
         await self._owner.cancel(self._actor, self._session_id, turn_id=self.turn_id)
@@ -135,15 +146,121 @@ class OwnedTurns:
         if selected is None:
             raise ExecutionDenied("spec_unavailable")
         definition = self.engine.spec(selected)
+        job = self._launch(
+            session_id,
+            start,
+            identity,
+            lambda job: self._run(actor, session_id, text, definition, job),
+        )
+        return await self._accepted(actor, session_id, job)
+
+    def _launch(
+        self,
+        session_id: str,
+        start: TurnStart,
+        identity: str,
+        operation: Callable[[Job], Awaitable[TurnResult | None]],
+    ) -> Job:
         self.access.check()
+        if session_id in self.jobs:
+            raise TurnInProgress("turn_in_progress")
         if self.closed or len(self.jobs) >= self.access.limits.max_active_turns:
             raise ReadLimit("active_turn_limit")
         job = Job(start, identity, asyncio.get_running_loop().create_future())
         job.ready.add_done_callback(observe)
         self.jobs[session_id] = job
-        job.task = asyncio.create_task(self._run(actor, session_id, text, definition, job))
+
+        async def run() -> TurnResult | None:
+            return await operation(job)
+
+        job.task = asyncio.create_task(run())
         job.task.add_done_callback(lambda task: self._finished(session_id, job, task))
-        return await self._accepted(actor, session_id, job)
+        return job
+
+    async def confirm(
+        self,
+        actor: Actor,
+        session_id: str,
+        invocation_id: str,
+        answer: Answer,
+    ) -> TurnHandle | None:
+        self.access.check()
+        actor, answer = copy_actor(actor), answer.model_copy(deep=True)
+        if (
+            len(invocation_id) > self.access.limits.max_request_bytes
+            or len(canonical(answer.model_dump(mode="json"))) > self.access.limits.max_request_bytes
+        ):
+            raise ReadLimit("request_bytes")
+        turn_id = await self._pending_turn(actor, session_id, invocation_id)
+        if turn_id is None or session_id in self.jobs:
+            return None
+        job = self._launch(
+            session_id,
+            TurnStart(turn_id=turn_id),
+            "approval:" + invocation_id,
+            lambda job: self._answer(actor, session_id, invocation_id, answer, job),
+        )
+        accepted = await asyncio.shield(job.ready)
+        await self.access.authorize(actor, session_id)
+        if not accepted:
+            return None
+        return Handle(self, actor, session_id, job.start.turn_id, job.task)
+
+    async def _pending_turn(self, actor: Actor, session_id: str, invocation_id: str) -> str | None:
+        async with asyncio.timeout(self.access.limits.read_timeout_seconds):
+            view = await self.access.metadata(
+                actor, session_id, lambda: self.access.store.get(session_id, actor.id)
+            )
+            if view is None:
+                raise UnknownSession("unknown_session")
+            if view.pending is None or view.pending.invocation_id != invocation_id:
+                return None
+            entries = await self.access.store.lookup(
+                session_id,
+                actor.id,
+                kind="invocation",
+                value=invocation_id,
+                limit=self.access.limits.max_lookup_entries,
+                max_bytes=self.access.limits.max_read_bytes,
+            )
+            await self.access.authorize(actor, session_id)
+            return requested_turn(entries, invocation_id)
+
+    async def _answer(
+        self,
+        actor: Actor,
+        session_id: str,
+        invocation_id: str,
+        answer: Answer,
+        job: Job,
+    ) -> TurnResult | None:
+        try:
+            async with self.access.store.turn(
+                session_id, actor.id, turn_id=job.start.turn_id
+            ) as log:
+                result = await supervise(
+                    self.engine.answer(
+                        actor,
+                        log,
+                        invocation_id,
+                        answer,
+                        accepted=job.accept,
+                    ),
+                    log,
+                    self.access.limits.heartbeat_interval_seconds,
+                )
+                if not job.ready.done():
+                    job.ready.set_result(False)
+                return result
+        except (TurnInProgress, SessionClosed):
+            if job.ready.done():
+                raise
+            job.ready.set_result(False)
+            return None
+        except BaseException as error:
+            if not job.ready.done():
+                job.ready.set_exception(error)
+            raise
 
     async def _existing(
         self, actor: Actor, session_id: str, request_id: str, identity: str
@@ -188,8 +305,10 @@ class OwnedTurns:
                     )
                     if existing is not None:
                         job.start = job.start.model_copy(update={"turn_id": existing.turn_id})
-                        job.ready.set_result(None)
-                        return await existing.result()
+                        job.accept()
+                        return await read_outcome(
+                            self.access, self.engine, actor, session_id, existing.turn_id
+                        )
                 return await supervise(
                     self.engine.run_turn(
                         actor,
@@ -197,7 +316,7 @@ class OwnedTurns:
                         text,
                         spec=spec,
                         start=job.start,
-                        accepted=lambda: job.ready.set_result(None),
+                        accepted=job.accept,
                     ),
                     log,
                     self.access.limits.heartbeat_interval_seconds,
@@ -207,7 +326,7 @@ class OwnedTurns:
                 job.ready.set_exception(error)
             raise
 
-    def _finished(self, session_id: str, job: Job, task: asyncio.Task[TurnResult]) -> None:
+    def _finished(self, session_id: str, job: Job, task: asyncio.Task[TurnResult | None]) -> None:
         if not job.ready.done():
             if task.cancelled():
                 job.ready.cancel()

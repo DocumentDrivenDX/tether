@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-24
   authoring:
     home: repo
   links:
@@ -84,6 +84,7 @@ class Entry(BaseModel):                               # a discriminated union on
 #   model_receipt    identity: AttemptIdentity; receipt: ResponseReceipt
 #   history_linked   message_index: int; previous: HistoryRef; verified: HistoryRef; canonical_digest: str
 #   turn_started     spec_id: str; spec_version: str; spec_digest: str | None; trace_id: str | None; resumes: str | None
+#   turn_resumed     purpose: str; invocation_id: str | None; resumes: str | None; no extra turn count
 #   turn_ended       stop_reason: StopReason; reason: str | None
 #   model_call       tier: str; request_id: str | None; status: Literal["ok", "error"]; duration_ms: int
 #                    model_call_id: str; attempt_ids: tuple[str, ...]; receipt: ResponseReceipt | None
@@ -395,7 +396,7 @@ class Tether:                                          # the composition: engine
 | One turn | `send` to a session with a running turn raises `TurnInProgress`; the running turn is unaffected. |
 | Supersession | `send` to a session with a pending approval supersedes it: each pending call gets a denied result with reason `superseded`, then the new turn starts (ADR-015). |
 | Reconnect | A client clears provisional output, calls `snapshot`, reads entries only through its returned head, and starts `follow(since=snapshot.seq)`. Replayed changes beyond that head are merged by entry index; `seq` is an atomic commit watermark, not a unique event id, so all variants of one commit are consumed before advancing it at `last_in_commit=true`. Exactly one last marker closes each nonempty filtered commit, and replay repeats the whole commit if the previous connection stopped before that marker. If retention is lost, abandon the bootstrap and obtain a new snapshot. Pending approvals come from the snapshot plus subsequent persisted changes; a stream delta never recreates or approves them. |
-| Confirm | `confirm` answers the pending approval named by `invocation_id`. It takes the lease, checks the answer's key, and resumes the turn as a new task. It returns `None`, and changes nothing, when `invocation_id` is not pending or another answer already won. |
+| Confirm | `confirm` answers the pending approval named by `invocation_id`. It takes the lease and checks authoritative journal pending state before using any cached runner. The accepted confirmation and `turn_resumed` running projection commit atomically, without incrementing the logical turn count. Known acceptance precedes fallible continuation; the command returns a Tether-owned handle and current bindings/policy still govern dispatch. It returns `None` without recording an approval or starting a continuation when `invocation_id` is not pending or another answer already won. Store lease/recovery housekeeping retains its separate contract. |
 | Resume | `resume` continues the session's interrupted turn as a new turn (ADR-010). It raises `NotInterrupted` when there is none, `ResumeLimit` when the chain limit is reached, and `UnsupportedStore` as in section 3. |
 | Cancel | cancel cancels the session's running turn and returns whether there was one. Steps already committed remain. A cancel on a pending-approval turn returns false; it does not count as a declined approval. Use confirm(declined), a superseding send, or close to settle waiting work. |
 | Close | close is owner-authorized and lease-serialized with send/confirm/resolve/update. An active turn refuses with TurnInProgress; a real outstanding worker refuses with WorkerOutstanding; an unresolved effect refuses with EffectsUnresolved so resolution remains possible. Otherwise close seals any incomplete non-effectful call groups, supersedes every pending approval with non-success results, and commits closure/projections/feed atomically. Content writes precede that commit; failure leaves the accepted session state unchanged or explicitly CommitUnknown. Repeating close returns the existing closed summary. A closed session remains readable but accepts no new turn, approval or settings mutation. Closing is not deletion, eviction, or proof that an external effect stopped. Races have one accepted ordering; a late confirm cannot revive closed work. |
@@ -407,6 +408,18 @@ class Tether:                                          # the composition: engine
 | Settings | `update` records a `settings` or `session` entry and the change appears in the feed. |
 | Defaults | A `SessionQuery` of `None` lists the owner's live sessions, most recently updated first. |
 | Application references | A `ref` ties a session to an application's own record; tether never reads the application's records (ADR-018). |
+
+**Approval annotations.** `Answer.note` is an informational caller annotation. Preserve a
+supplied value, including an empty string, through a message-kind history reference on the
+accepted confirmation with `note_kind="approval_note"`; never put its text in audit facts.
+Prepare that content before the atomic decision/resume commit. A failed write leaves the
+approval pending and cannot dispatch. The encoded note is bounded by the execution input
+budget, in addition to the Client request-packet limit. It is outside executable arguments,
+approval authority and automatic model input; an application/context strategy must explicitly
+choose any later use. Hydration uses current caller READ_SESSION/source access, and archive
+closure includes the reference. Retained successful handles wait for an accepted matching
+continuation; a newer resumed phase without a terminal fact is `TurnInProgress`, never the
+previous phase's waiting result.
 
 **Collection authorization.** Client list/find authorize READ_SESSION on `owner:<actor.id>`
 for the bound owner and on each returned session id. A denied row stops the operation without

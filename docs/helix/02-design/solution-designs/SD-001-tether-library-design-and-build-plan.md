@@ -338,8 +338,14 @@ finish before lease release; bounded shutdown retains ownership through deferred
 Real root/composition restart retries, stale handle cancellation and post-acceptance setup failure
 have source regressions. External active-turn result following remains unqualified; selected
 local recovery reports interrupted state, and result lookup without a local task refuses a still
-running turn. Confirmation/resume/update/close/resolve and remaining command race qualification
-stay in this slice; provisional text/reset/coalescing remain slice 9a. The Agent remains the only
+running turn. Client confirmation now checks journal pending facts before cached Run state,
+accepts decisions and the running projection atomically, and returns a shielded owned handle
+before fallible continuation. Continuing requests refresh current principal/credential; the
+logical turn count is unchanged. Late/concurrent answers cannot repeat execution. Retained
+successful send handles follow an accepted continuation; journal result lookup refuses an old
+terminal while a newer continuation is running. Informational approval notes are bounded
+immutable history outside executable inputs, audit text and automatic model input. Create,
+resume/update/close/resolve and remaining command race qualification stay in this slice; provisional text/reset/coalescing remain slice 9a. The Agent remains the only
 model/tool iterator. Full qualification status is in the execution record.
 
 ### Consumer boundary review and implementation plan

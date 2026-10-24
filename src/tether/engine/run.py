@@ -82,7 +82,13 @@ class Run:
         await self.gov.authorize("call_model", "model:" + request.model)
         self.steps += 1
         self.current_call = str(uuid4())
-        tags = request.tags.model_copy(update={"model_call_id": self.current_call})
+        tags = request.tags.model_copy(
+            update={
+                "model_call_id": self.current_call,
+                "principal": self.gov.actor.principal or self.gov.actor.id,
+                "context": self.gov.log.session.held,
+            }
+        )
         self.recorder = (
             self.attempt_factory(tags)
             if self.attempt_factory
