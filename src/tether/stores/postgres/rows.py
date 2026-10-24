@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from psycopg import AsyncConnection, sql
 from psycopg.errors import UniqueViolation
 
-from tether.stores.indexing import pending_confirmation
 from tether.stores.projection import Projection, new_projection
 from tether.types.canonical import canonical
 from tether.types.execution import Actor, Entry, EntryConflict, copy_actor
@@ -21,7 +20,10 @@ from tether.types.storage import (
     UnknownSession,
 )
 
+from .metadata import verify
 from .root import DatabaseRoot
+from .row_codec import lease_turn, pending
+from .row_codec import summary as summary_row
 
 Connection = AsyncConnection[tuple[object, ...]]
 
@@ -88,32 +90,56 @@ class Rows:
     async def frame(self, connection: Connection, session_id: str, *, write: bool) -> Frame:
         cursor = await connection.execute(
             sql.SQL(
-                "SELECT CASE WHEN octet_length(summary)+octet_length(projection)<=%s "
-                "THEN summary END, CASE WHEN octet_length(summary)+octet_length(projection)<=%s "
-                "THEN projection END, entry_count,created_at,updated_at,status, "
-                "ref,title_fold,tags, "
-                "generation,lease_turn,lease_until FROM {} WHERE owner=%s AND id=%s FOR {}"
+                "SELECT CASE WHEN size<=%s THEN summary END, "
+                "CASE WHEN size<=%s THEN projection END,entry_count,generation, "
+                "CASE WHEN size<=%s THEN lease_turn END,lease_until,size FROM "
+                "(SELECT *,octet_length(summary)+octet_length(projection)+"
+                "COALESCE(octet_length(lease_turn),0) AS size FROM {} "
+                "WHERE owner=%s AND id=%s FOR {}) AS locked"
             ).format(self.table("sessions"), sql.SQL("UPDATE" if write else "SHARE")),
-            (
-                self.root.limits.max_batch_bytes,
-                self.root.limits.max_batch_bytes,
-                self.owner,
-                session_id.encode(),
-            ),
+            (*([self.root.limits.max_batch_bytes] * 3), self.owner, session_id.encode()),
         )
         row = await cursor.fetchone()
         if row is None:
             raise UnknownSession("unknown_session")
-        return self.decode(session_id, row)
+        if not isinstance(row[0], bytes) or not isinstance(row[1], bytes):
+            raise StoreError("projection_read_bytes")
+        try:
+            summary = summary_row(row[0], session_id.encode(), self.actor.id)
+        except ValueError:
+            raise IntegrityError("projection_integrity") from None
+        await self.metadata_matches(connection, summary)
+        values = (
+            summary.entry_count,
+            summary.created_at,
+            summary.updated_at,
+            summary.status,
+            summary.ref.encode() if summary.ref is not None else None,
+            (summary.title or "").casefold().encode(),
+            [tag.encode() for tag in summary.tags],
+        )
+        frame = self.decode(session_id, (row[0], row[1], *values, *row[3:6]))
+        if row[2] != summary.entry_count or not isinstance(row[6], int):
+            raise IntegrityError("projection_integrity")
+        frame.bytes_used = row[6]
+        return frame
+
+    async def metadata_matches(self, connection: Connection, summary: SessionSummary) -> None:
+        await verify(connection, self.table("sessions"), self.owner, (summary,))
 
     def decode(self, session_id: str, row: tuple[object, ...]) -> Frame:
         if not isinstance(row[0], bytes) or not isinstance(row[1], bytes):
             raise StoreError("projection_read_bytes")
         try:
-            summary = SessionSummary.model_validate_json(row[0])
+            summary = summary_row(row[0], session_id.encode(), self.actor.id)
             stored = StoredProjection.model_validate_json(row[1])
         except ValueError:
             raise IntegrityError("projection_integrity") from None
+        if (
+            canonical(summary.model_dump(mode="json")) != row[0]
+            or canonical(stored.model_dump(mode="json")) != row[1]
+        ):
+            raise IntegrityError("projection_integrity")
         expected = (
             summary.entry_count,
             summary.created_at,
@@ -151,7 +177,7 @@ class Rows:
             Projection(stored.state, stored.init, summary, stored.specs),
             stored.missing_usage,
             generation,
-            turn.decode() if isinstance(turn, bytes) else None,
+            lease_turn(turn if isinstance(turn, bytes) else None),
             until,
             len(row[0]) + len(row[1]),
         )
@@ -275,13 +301,17 @@ class Rows:
         maximum = self.root.limits.max_batch_bytes - frame.bytes_used
         cursor = await connection.execute(
             sql.SQL(
-                "SELECT p.invocation, "
-                "CASE WHEN octet_length(e.envelope)+COALESCE(octet_length(s.envelope),0)<=%s "
+                "SELECT CASE WHEN octet_length(p.invocation)<=%s THEN p.invocation END, "
+                "CASE WHEN octet_length(p.invocation)+octet_length(e.envelope)+"
+                "COALESCE(octet_length(s.envelope),0)<=%s "
                 "THEN e.envelope END, "
-                "CASE WHEN octet_length(e.envelope)+COALESCE(octet_length(s.envelope),0)<=%s "
+                "CASE WHEN octet_length(p.invocation)+octet_length(e.envelope)+"
+                "COALESCE(octet_length(s.envelope),0)<=%s "
                 "THEN s.envelope END, "
-                "octet_length(e.envelope)+COALESCE(octet_length(s.envelope),0) "
-                "FROM {} p JOIN {} e ON e.owner=p.owner AND e.session=p.session "
+                "octet_length(p.invocation)+octet_length(e.envelope)+"
+                "COALESCE(octet_length(s.envelope),0) "
+                ",e.position,s.position FROM {} p JOIN {} e "
+                "ON e.owner=p.owner AND e.session=p.session "
                 "AND e.position=p.position "
                 "LEFT JOIN {} i ON i.owner=p.owner AND i.session=p.session "
                 "AND i.invocation=p.invocation "
@@ -294,27 +324,25 @@ class Rows:
                 self.table("sources"),
                 self.table("entries"),
             ),
-            (maximum, maximum, self.owner, sid.encode()),
+            (maximum, maximum, maximum, self.owner, sid.encode()),
         )
         row = await cursor.fetchone()
-        pending = None
+        confirmation = None
         if row is not None:
-            if not isinstance(row[3], int) or row[3] > maximum or not isinstance(row[1], bytes):
+            if (
+                not isinstance(row[3], int)
+                or row[3] > maximum
+                or not isinstance(row[0], bytes)
+                or not isinstance(row[1], bytes)
+            ):
                 raise StoreError("projection_read_bytes")
-            if not isinstance(row[0], bytes):
-                raise IntegrityError("pending_integrity")
-            try:
-                requested = Entry.model_validate_json(row[1])
-                source = Entry.model_validate_json(row[2]) if isinstance(row[2], bytes) else None
-                pending = pending_confirmation(sid, row[0].decode(), requested, source)
-            except ValueError:
-                raise IntegrityError("pending_integrity") from None
-        if bool(pending) != frame.projection.summary.pending:
+            confirmation = pending(row, sid, self.actor.id)
+        if bool(confirmation) != frame.projection.summary.pending:
             raise IntegrityError("pending_integrity")
         projection = frame.projection
         return SessionView(
             summary=projection.summary,
             settings=projection.init.settings,
             specs=projection.specs,
-            pending=pending,
+            pending=confirmation,
         )

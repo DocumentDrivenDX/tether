@@ -600,3 +600,15 @@ Root close retains physical work; cross-process fencing protects journal writes 
 intent/unknown barriers govern effects. Differential tests compare SQL projections to a fresh
 SessionIndex rebuild. Keep incomplete primitives internal until complete-port and real-process
 qualification passes; optional live notifications are separate from bounded persisted polling.
+
+
+The following slice5 checkpoint adds the internal bounded SQL read spine before public lease
+exposure. Metadata/snapshot reads hold the owner watermark through pending lookup; cached columns
+are compared inside SQL without returning redundant untrusted values. Canonical rows require
+nonnegative positions and aware timestamps. Shared query/cursor semantics drive SQL filters and
+keysets, with bounded aggregate summary/entry lookahead and indexed group membership checks.
+Unresolved-effect pages retain original intent positions. Persisted polling advances across
+unrelated owner changes, yields bounded prefixes and explicitly refuses gaps, malformed changes
+or oversized first events. These read primitives remain internal; they do not advertise a complete
+SessionStore. Next implement leased append/update/recovery, current-caller facades and real-process
+fencing/takeover before exposing the selected SQL execution profile.

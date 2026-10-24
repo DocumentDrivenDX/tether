@@ -70,7 +70,13 @@ LAYERS: dict[str, tuple[str, ...]] = {
         "databricks",
     ),
     "tether.stores": ("tether.types", "tether.ports"),
-    "tether.stores.jsonl": ("tether.types", "tether.ports", "tether.stores.projections", "anyio"),
+    "tether.stores.jsonl": (
+        "tether.types",
+        "tether.ports",
+        "tether.stores.projections",
+        "tether.stores.queries",
+        "anyio",
+    ),
     "tether.stores.postgres": (
         "tether.types",
         "tether.ports",
@@ -78,6 +84,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
         "tether.stores.projection",
         "tether.stores.indexing",
         "tether.stores.usage",
+        "tether.stores.queries",
         "psycopg",
         "psycopg_pool",
         "anyio",

@@ -215,7 +215,7 @@ with the existing JSONL journal and close the database root explicitly. It never
 in one transaction. `migrate` explicitly upgrades a verified revision1 schema to revision2,
 preserving its namespace and immutable history bytes; repeat calls verify the current revision.
 Ordinary opening refuses revision1 until that upgrade. Conflicting or drifted tables refuse
-rather than receiving implicit repair. Revision2 includes internal indexed journal primitives;
+rather than receiving implicit repair. Revision2 includes internal indexed journal, metadata/paging and persisted-feed primitives;
 the public session-store adapter and its cross-process qualification remain unfinished.
 
 This checkpoint qualifies PostgreSQL18.6 with logged ordinary tables, `fsync=on`,
