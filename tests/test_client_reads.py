@@ -8,6 +8,7 @@ import pytest
 from test_gated_execution import DemoTool, final, proposal
 
 from tether import Tether
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.history.jsonl import JsonlHistory
 from tether.history.messages import MessageHistoryAdapter
@@ -58,6 +59,7 @@ async def harness(request, tmp_path, limits, client_limits):
     )
     model = ScriptedModel([proposal(), final()])
     engine = Engine(
+        **fabricated_context(),
         model=model,
         history=MessageHistoryAdapter(history),
         history_provider=history,

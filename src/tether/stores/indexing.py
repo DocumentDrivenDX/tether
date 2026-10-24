@@ -17,7 +17,13 @@ def entry_groups(session_id: str, entry: Entry) -> set[tuple[str, str]]:
         if isinstance(identity, dict)
         else entry.facts.get("model_call_id")
     )
-    if isinstance(call, str) and entry.kind in {"model_attempt", "model_receipt", "model_call"}:
+    if isinstance(call, str) and entry.kind in {
+        "model_attempt",
+        "model_receipt",
+        "model_call",
+        "context_preparation",
+        "context_use",
+    }:
         groups.add(("model_call", call))
     binding = entry.facts.get("binding")
     inv = (

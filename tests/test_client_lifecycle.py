@@ -9,6 +9,7 @@ import pytest
 from test_gated_execution import DemoTool, proposal
 
 from tether import Tether
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.history.jsonl import JsonlHistory
 from tether.history.messages import MessageHistoryAdapter
@@ -30,7 +31,10 @@ async def test_context_seals_clients_and_store_and_refuses_wrong_loop(limits, cl
     files = MemoryFiles()
     store, history = await JsonlSessionStore.open(files), await JsonlHistory.open(files)
     engine = Engine(
-        model=ScriptedModel([]), history=MessageHistoryAdapter(history), model_limits=limits
+        **fabricated_context(),
+        model=ScriptedModel([]),
+        history=MessageHistoryAdapter(history),
+        model_limits=limits,
     )
     actor = Actor(id="owner")
     session = await store.create(actor.id, SessionInit())
@@ -58,7 +62,10 @@ async def test_volatile_profile_requires_explicit_recovery_off(limits, client_li
     files = MemoryFiles()
     store, history = await JsonlSessionStore.open(files), await JsonlHistory.open(files)
     engine = Engine(
-        model=ScriptedModel([]), history=MessageHistoryAdapter(history), model_limits=limits
+        **fabricated_context(),
+        model=ScriptedModel([]),
+        history=MessageHistoryAdapter(history),
+        model_limits=limits,
     )
     with pytest.raises(Unsupported, match="unsupported_store"):
         Tether(engine=engine, store=store, history=history, limits=client_limits)
@@ -90,6 +97,7 @@ async def test_close_keeps_root_owned_until_actual_tool_exit(
         tools=(tool.name,),
     )
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([proposal()]),
         history=MessageHistoryAdapter(history),
         history_provider=history,
@@ -167,7 +175,10 @@ async def test_recovery_refuses_weaker_or_unqualified_history(
     history = await JsonlHistory.open(files)
     history.capabilities = history.capabilities.model_copy(update={"durability": "os"} | profile)
     engine = Engine(
-        model=ScriptedModel([]), history=MessageHistoryAdapter(history), model_limits=limits
+        **fabricated_context(),
+        model=ScriptedModel([]),
+        history=MessageHistoryAdapter(history),
+        model_limits=limits,
     )
     recovered = False
 

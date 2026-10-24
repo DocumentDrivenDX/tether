@@ -961,3 +961,33 @@ recorded in the execution receipt. An initial unchanged native initialization cl
 its5.00-second isolated pass are retained there; no native assertion or deadline changed. This is
 pure foundation evidence. Engine preparation, actual wire fit, governed summaries, accepted context
 facts, restart and context telemetry remain the next C4/Q3 work.
+
+
+The next main-request runtime checkpoint integrates FullContext and TailContext into the existing
+Agent preparation boundary. It preserves the complete original SDK conversation, carries original
+source positions through sequential provider narrowing, refuses protected/partial tool-group loss,
+and estimates the complete selected request. Explicit configuration and estimator are required.
+Accepted preparation/use records share a logical model-call id and bounded lookup group. Dense
+ordinals reconstruct from authoritative journal facts; unknown acknowledgement requires reopen.
+Initial hydration and every physical retry admission share the context deadline. Custom recorders
+receive the same context rechecks, and final admission follows recorder/policy waits. Current
+READ_SESSION is checked again after the last estimator await. Metadata observations follow only
+known acceptance; observers remain secondary.
+
+Focused qualification covers real JSONL lost-ack/reopen and approval reconstruction, default/custom
+recorder retries through the selected native HTTP adapter, mutation/provenance/protection, explicit
+Tail omissions, deadline/retained-worker ownership and metadata privacy. These fixtures do not
+establish real token counting. Summary execution/reuse, actual wire-aware estimators and attachment
+source/SDK encoding, provisional streaming and the complete C4/Q3 fault/profile matrix remain open.
+A summarize proposal currently refuses explicitly; unsupported attachment content cannot reach
+ModelPort. No default model-window guess or silent fallback qualifies this checkpoint.
+
+
+The Full/Tail main-request runtime checkpoint passes1368 cases in43 bounded groups at
+92.47% branch-inclusive coverage with strict typing0 and unchanged gates. Its53 new cases
+include actual JSONL reopen/unknown acknowledgement, native HTTP retry admission on default/custom
+recorders, final admission deadlines and accepted metadata privacy. Independent final source review
+found no blocker; reviewer ran no tests. Four fresh hash-locked installed profiles and
+154 matching wheel/sdist sources are recorded in the execution receipt. Precise
+context refusal assertions replace the former model-error classification without weakening no-egress
+checks. Hosted matrix, summaries, actual token estimators, attachments and streaming remain open.

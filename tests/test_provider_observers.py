@@ -69,7 +69,8 @@ async def test_hook_returned_does_not_claim_validated_provider_output(limits, mo
     sink, tracer = observers()
     h = Harness(limits, providers=(provider,), audit=sink, tracer=tracer)
     result = await h.run()
-    assert result.reason == "provider_output_invalid"
+    assert (result.stop_reason, result.reason) == ("context_unavailable", "context_invalid")
+    assert not h.model.requests
     assert not h.tool.calls
     assert await h.engine.aclose()
     row = next(r for r in hooks(sink) if r.detail["method"] == "before_request")

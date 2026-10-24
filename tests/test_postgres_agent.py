@@ -9,6 +9,7 @@ from test_client_resume import FreshCredential
 from test_gated_execution import DemoTool, final, proposal
 
 from tether import Tether
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.history.messages import MessageHistoryAdapter
 from tether.models.testing import ScriptedModel
@@ -26,6 +27,7 @@ def anyio_backend():
 
 def engine(provider, limits, tool, spec, responses):
     return Engine(
+        **fabricated_context(),
         model=ScriptedModel(responses),
         history=MessageHistoryAdapter(provider),
         history_provider=provider,

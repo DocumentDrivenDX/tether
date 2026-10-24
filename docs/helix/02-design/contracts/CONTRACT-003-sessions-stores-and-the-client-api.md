@@ -103,6 +103,7 @@ class Entry(BaseModel):                               # a discriminated union on
 #   settings         changes: dict[str, JsonValue]
 #   session          event: Literal["created", "closed", "titled", "tagged"]; value: JsonValue | None
 #   compaction       record: CompactionRecord       # generated summary ref and provenance, CONTRACT-004
+#   context_preparation preparation: ContextPreparation # accepted ordinal/source/config/model-call binding, CONTRACT-004
 #   context_use      use: ContextUse                 # source selection, estimates and summary references, CONTRACT-004
 #   x.<provider>.<kind>   reserved for providers; no writer in v1
 ```

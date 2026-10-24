@@ -7,6 +7,7 @@ import pytest
 from test_telemetry_ports import id_factory
 
 from tether import Tether
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.history.jsonl import JsonlHistory
 from tether.history.messages import MessageHistoryAdapter
@@ -45,6 +46,7 @@ async def observed(request, tmp_path, limits, client_limits):
     policy, sink = Policy(), ListAuditSink(capacity=512)
     tracer = RecordingTracer(id_factory(), capacity=512)
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([]),
         history=MessageHistoryAdapter(history),
         history_provider=history,
@@ -453,6 +455,7 @@ async def test_client_hung_sink_does_not_hold_mutation_or_root(tmp_path, limits,
     root = await JsonlRoot.open(tmp_path)
     store, history = await JsonlSessionStore.open(root), await JsonlHistory.open(root)
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([]),
         history=MessageHistoryAdapter(history),
         history_provider=history,

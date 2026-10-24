@@ -132,7 +132,7 @@ on empty pages. Full restore requires raw-payload authority, isolated actor copi
 original address/codec compatibility and exact reconstructed identity on retry. It never dispatches,
 approves or reopens closure. Explicit Tether.archive_session runs after idle/close outside Agent turns;
 application retention scheduling and eviction remain external. No automatic archive_on driver exists.
-Provisional stream production, broader process/storage fault qualification, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
+Provisional stream production and broader process/storage/context/telemetry qualification remain work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.
 The new-input seam adopts the lease turn id, prepares content before atomic supersession/start/
@@ -277,15 +277,18 @@ Mediated retrieval and provider-hook instrumentation retains actual Worker Opera
 returned/raised/cancelled observations describe waits, never effect proof or output validation.
 Only known committed policy denial becomes RetrievalDenied. Provider observation namespaces are
 pinned/validated; unknown or mutated IDs are omitted with a secondary counter. Never forward raw
-provider dictionaries or unknown x.* facts into audit. Source-addressed context preparation remains
-functional slice9a work before context telemetry can claim completion.
+provider dictionaries or unknown x.* facts into audit. Source-addressed main-request context preparation now supplies accepted metadata observations;
+summary and full slice9a qualification remain work.
 
 
 Context foundation helpers live in tether.context and tether.types.context (CONTRACT-004).
 They provide strict copied source plans, complete-group/protected coverage, provider provenance,
 fixed omission markers, Full/Tail planners and fabricated bounded doubles/conformance fixtures.
-They confer no authority and do not yet integrate Agent preparation. Keep untouched original source
+They confer no authority; Engine now integrates main-request Full/Tail preparation. Keep untouched original source
 snapshots and require unique ordered provenance for fresh provider objects. Provider omissions are
 engine-owned IDs without pre-redaction content; validate visible plans before merged final coverage.
-Summarizing execution, wire estimators, lease-owned preparation/context-use facts, restart and context
-telemetry remain qualification work. Never treat fixed-token fixture conformance as wire evidence.
+Engine commits lease-owned preparation/context-use facts, reconstructs dense ordinals on restart,
+and mirrors accepted context metadata. Initial hydration and retry admission share a finite deadline;
+custom attempt recorders cannot bypass context rechecks. Summarizing execution, actual wire estimators,
+attachment codecs and provisional stream integration remain qualification work. Explicit context
+configuration and an estimator are required; fabricated_context is a fabricated test composition only. Never treat fixed-token fixture conformance as wire evidence.

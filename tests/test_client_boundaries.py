@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.engine.governance import AllowAll
 from tether.history.jsonl import JsonlHistory
@@ -52,6 +53,7 @@ async def test_model_principal_does_not_change_owner_or_policy_subject(principal
     model = ScriptedModel([ModelResponse(content="Fabricated answer", finish_reason="stop")])
     policy = MetadataOnly()
     engine = Engine(
+        **fabricated_context(),
         model=model,
         history=MessageHistoryAdapter(history),
         history_provider=history,
@@ -116,6 +118,7 @@ async def test_wrong_loop_refuses_before_closing_or_disclosing_resources(tmp_pat
         provider = await JsonlHistory.open(root)
         session = await store.create(actor.id, SessionInit())
         engine = Engine(
+            **fabricated_context(),
             model=ScriptedModel([ModelResponse(content="Fabricated", finish_reason="stop")]),
             history=MessageHistoryAdapter(provider),
             model_limits=limits,

@@ -6,6 +6,7 @@ import httpx2 as httpx
 import pytest
 from test_compatible_adapter import CredentialProbe, adapter, wire_response
 
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.engine.attempts import JournalAttemptRecorder
 from tether.engine.governance import AllowAll, Governance
@@ -107,6 +108,7 @@ def test_terminal_failure_records_physical_coverage_without_phantom_missing(limi
             ),
         )
         engine = Engine(
+            **fabricated_context(),
             model=model,
             history=MessageHistoryAdapter(provider),
             history_provider=provider,

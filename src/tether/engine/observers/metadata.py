@@ -6,9 +6,12 @@ from dataclasses import dataclass
 
 from tether.types import JsonValue
 from tether.types.canonical import digest
+from tether.types.context import CODES
 from tether.types.execution import Entry
 from tether.types.telemetry import AuditContext, AuditRecord, TraceIds
 from tether.types.usage import UsageLedger
+
+from .context import context_detail
 
 ACTIONS = frozenset(
     {
@@ -28,7 +31,7 @@ ACTIONS = frozenset(
         "x.tether.restore_session",
     }
 )
-REASONS = frozenset(
+REASONS = CODES | frozenset(
     {
         "allowed",
         "denied",
@@ -67,11 +70,14 @@ ENUMS = {
             "step_limit",
             "model_denied",
             "model_unavailable",
+            "context_unavailable",
         }
     ),
     "finish_reason": frozenset({"stop", "tool_calls", "length", "filtered", "unknown"}),
 }
 KINDS = {
+    "context_use": "x.context.prepared",
+    "x.context.failed": "x.context.failed",
     "authorization": "authorization",
     "model_call": "model_call",
     "model_attempt": "x.model.prepared",
@@ -86,6 +92,7 @@ KINDS = {
     "x.effects.replayed": "x.effects.replayed",
 }
 FIELDS = {
+    "x.context.failed": ("reason",),
     "authorization": ("action", "allowed", "reason", "purpose"),
     "model_call": ("status", "purpose", "finish_reason", "reason"),
     "model_attempt": ("status",),
@@ -149,6 +156,8 @@ def _fields(entry: Entry) -> dict[str, JsonValue]:
 def _links(entry: Entry) -> dict[str, JsonValue]:
     facts = entry.facts
     detail: dict[str, JsonValue] = {}
+    if entry.kind in {"context_use", "x.context.failed"}:
+        return context_detail(entry)
     if entry.kind == "authorization":
         resource = facts.get("resource")
         if type(resource) is str:
