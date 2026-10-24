@@ -30,6 +30,8 @@ include that extra for its tests; the installed base excludes it. No hosted acco
 
 `make check` is shared by local work, the hook and CI. It includes planted negative controls
 for forbidden imports, private SDK modules, cycles, missing dependencies and raised ceilings.
+It runs every publicly collected test in bounded subprocess groups and checks aggregate
+branch coverage against the same 85% floor; the per-child deadline remains 180 seconds.
 
 ## Current model integration
 

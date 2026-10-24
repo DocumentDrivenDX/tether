@@ -142,7 +142,7 @@ class SessionAccess:
     def _verify(ref: HistoryRef, values: tuple[HistoryValue, ...]) -> HistoryValue:
         if len(values) != 1 or values[0].ref != ref:
             return HistoryValue(ref=ref, status="integrity_error", reason="history_integrity")
-        value = values[0]
+        value = values[0].model_copy(deep=True)
         if value.status == "ready":
             if (
                 value.record is None

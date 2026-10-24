@@ -5,7 +5,7 @@ ddx:
   activity: test
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-24
   authoring:
     home: repo
   links:
@@ -120,21 +120,30 @@ Use fabricated messages, documents, tools, actors and effects only. Build any cr
 
 ## Known Gaps
 
-The local JSONL journal is fully specified as a single-writer profile; its durability and atomicity are unproved until file fault tests pass. Gateway request-tag transport is documented, but exact selected-workspace header/tag/row correspondence needs live fabricated evidence. AGENTS.md retains an obsolete blanket SDK rule outside this HELIX root; reconcile repository guidance with the owner's Agent decision and ADR-002/003/012 before implementation. The governed runner decision is settled; that stale rule is not an implementation alternative.
+Local JSONL file/restart qualification is recorded in SD-001's execution receipts with its single-writer profile and versions; it does not establish actual operating-system power-cut behavior. Gateway request-tag transport is documented, but exact selected-workspace header/tag/row correspondence still needs live fabricated evidence. AGENTS.md follows the owner's Agent decision and ADR-002/003/012.
 
-Primary production suites remain planned; no accepted performance measurements are supplied here. [SPIKE-004](../02-design/spikes/SPIKE-004-pydantic-ai-agent-boundary-integration.md) supplies scoped actual Agent integration evidence for authorization/READ_SESSION, invocation-bound approval, fault/restart recovery, source/runner separation and per-attempt correlation. Its runnable suite uses a custom nonstreaming model, mocked HTTP transport and a bounded fixture store, including five abrupt process exits; it does not certify the production JSONL profile, streaming/native transports, full context coverage or live Gateway joins. Source delivery and feature/story detail remain SD-001 work. Summary fidelity and approximate token estimates require workload/model qualification; no universal recall or server-acceptance guarantee is claimed. Actual OS-crash durability and cross-session business-effect deduplication remain consumer qualification. These limits do not waive any P0 suite.
+Full release qualification remains incomplete; executed production subsets and their versions live in SD-001's execution receipts. No accepted performance budget is supplied here. [SPIKE-004](../02-design/spikes/SPIKE-004-pydantic-ai-agent-boundary-integration.md) supplies scoped actual Agent integration evidence for authorization/READ_SESSION, invocation-bound approval, fault/restart recovery, source/runner separation and per-attempt correlation. Its runnable suite uses a custom nonstreaming model, mocked HTTP transport and a bounded fixture store, including five abrupt process exits; it does not certify the production JSONL profile, streaming/native transports, full context coverage or live Gateway joins. Source delivery and feature/story detail remain SD-001 work. Summary fidelity and approximate token estimates require workload/model qualification; no universal recall or server-acceptance guarantee is claimed. Actual OS-crash durability and cross-session business-effect deduplication remain consumer qualification. These limits do not waive any P0 suite.
 
 ## Build Commands
 
-Planned commands for the implementation slices, not commands claimed runnable against a docs-only checkout:
+The shared local/pre-commit/CI recipe is executable for the implemented subsets:
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run pyright
-uv run pytest
-python3 scripts/check_layers.py
+uv sync --locked
+make check
+uv build
+uv run --locked python scripts/check_distribution.py dist
+uv run --locked python scripts/check_distribution.py dist openai
 ```
+
+The quality recipe collects exact pytest node ids through its public plugin API, refuses an
+empty/invalid/duplicate inventory, and executes every node in collection order in groups of
+at most 32 cases and 64 KiB of ids. Each subprocess retains the existing 180-second deadline.
+This bounds individual jobs while permitting the growing complete suite to finish; it is not
+a Client latency budget. Coverage is erased before collection, accumulates branch/source data
+across every successful group, and is checked once with the unchanged configured 85% floor.
+Any collection, group or final-report failure fails the recipe. Real negative controls prove
+that passing assertions with insufficient branch coverage still fail the overall command.
 
 **Blocking gate**: Every implemented P0 contract path passes its primary suite and relevant process/store qualification; boundary negative controls reject planted forbidden imports. Core substitution, vendor-type leakage, private imports/cycles and extension trust obligations receive explicit review. Missing tests, failed commands or missing profile evidence remain failures, never skips or weaker assertions. Exact commands/markers for story suites are added with their implementation, not invented as passing checks here.
 
