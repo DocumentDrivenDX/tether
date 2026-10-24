@@ -4,7 +4,7 @@
   "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
   "authority": "Explicit owner instruction in integration-lead session; includes source control, merge and Tether-session coordination.",
   "status": "active",
-  "branch": "codex/tether-client-commands",
+  "branch": "codex/tether-client-turns",
   "baseline_commit": "d680c4d",
   "completed_slices": [
     0,
@@ -52,14 +52,14 @@
     "mcp_disposition": "MCP is P2 and outside selected 0.1 slices. Consumer adoption/MCP Apps require separate qualification; do not silently promote advisory scope.",
     "inventory": "Recent app inventory reconfirmed the integration-lead and read-only MCP/durability chats; both have role-specific titles."
   },
-  "next_action": "Finish Client port/query/feed/commands and safety seams; merge each reviewed/tested PR promptly, do not maintain a PR stack.",
+  "next_action": "Finish task-owned Client send/handles, canonical request retry and journal-derived results, heartbeat supervision, then confirm/cancel/update/close/resolve and remaining slice-4 qualification. Merge each reviewed/tested PR promptly; continue every remaining build-plan slice.",
   "qualification_limits": [
     "Only local POSIX single-writer JSONL is implemented; Postgres cross-process profile is slice 5.",
     "No OS power-cut guarantee is inferred from process-exit tests.",
     "Started-invocation recovery, manual resolve and actual-worker/lease-loss qualification remain slice 9.",
     "Live Gateway/profile credentials and real server correspondence are not supplied or qualified."
   ],
-  "source_control": "PRs 1 and 2 merged promptly after review and testing. Continue commands/follow locally, rebase onto merged main before publishing another PR; no stack of open PRs.",
+  "source_control": "PRs 1, 2 and 3 merged promptly after review/testing; no open PR stack. Continue Client turn commands locally on current main.",
   "metering": "Active goal has no user-specified token/time ceiling; runtime metering is available via get_goal; no invented total-budget claim.",
   "boundary_review": {
     "status": "Sub-agent review complete; sanitized plan recorded and omissions corrected.",
@@ -107,14 +107,16 @@
       "src/tether/client/__init__.py": "ac8aeb3d18a6037976097043468917f3ff3a762a1489207d335fc7f2edd6d785",
       "src/tether/client/reads.py": "ce9c9eab896b34c94c8c8185d7cdafdee8f24685ba12c9c0beb7ce2dc4a770d3",
       "src/tether/engine/__init__.py": "1183b25c405d18ddd5000e54431da6c561552093767396994431aaa46c156837",
-      "src/tether/engine/agent.py": "936d6c5d0331f80c6eb95a7cf20deb66d58c12eabff729b20fd69ed5e141ffd1",
+      "src/tether/engine/agent.py": "98732daffef6982dcf3e48f2020acc8c4cb420b67f2c7e6e2e0a7591b7ebb65f",
       "src/tether/engine/attempts.py": "54ed20be771f60fe32af288af0e8812b2b7d55f026b6f44649a43068b8e99f07",
       "src/tether/engine/governance.py": "43e3db47f691ba2ee637d0be7e1c47c1f5d9c06bc985d8dd5aff4223dd93f209",
       "src/tether/engine/inspection.py": "2d17153c21c594c542f595bbc67d01af322fddf3239ce97ab1627ae454dcbac2",
       "src/tether/engine/providers.py": "90634017ec07c522af922b403c45562ecc5402f6e6c240924a8bd9e138003dab",
       "src/tether/engine/reconstruction.py": "109ab2d7031f0db9d42c814717763a8cfdb1fc1375b3543c5cf9f916edc7044f",
+      "src/tether/engine/results.py": "e09d02bee7bb2a6c12909e468702e7a35b5d128e252eba602912a5afa449d9f2",
       "src/tether/engine/run.py": "b34c5efaf978858bbd1171f9fb062cfdbaac80ec31375504668c9d1b8d47a314",
-      "src/tether/engine/tools.py": "52b7e7ec4a5cdbba2331b6b45a0034e0949ed9b5d6683765fd2a4dd979915dde",
+      "src/tether/engine/starts.py": "d05bef2f59d3c2e4b5b72f9c685381c893d036a87c9ec8975a474d31701d3e7d",
+      "src/tether/engine/tools.py": "d121651cb4c105264270343a35726c6d8290139b2a1c9d712bf6f657130b9525",
       "src/tether/engine/workers.py": "1e8b4d5c5fb8fca7f8fd0f7f924188372e27af69f978cdd1ad776104ab0cc362",
       "src/tether/history/__init__.py": "ea68cfb69401288cdddcf789a03641aeb637b3c1e4316fda0d20d904ab775443",
       "src/tether/history/jsonl.py": "1164355a2c6ddcb75ba86358f7ca61ed3f6a634dd845632e05189add082d9ac7",
@@ -151,11 +153,11 @@
       "src/tether/stores/memory.py": "39f123834c1710046c101461c739b660ec6554cf84a9f21a4e48e0237d3b5700",
       "src/tether/stores/projections.py": "a483275cb12ca94ed9fa9f9a835469a720d9abc34c900d114da38b2c4b1760eb",
       "src/tether/testing/__init__.py": "50f56407ca46e6fe037b6ca044bcd03cc1d1e7bac7b4b774ae30a675dc349100",
-      "src/tether/testing/execution.py": "c52f1fd02cdd4c08dbf348489c37381badabf3fa89f9f2f47ad0502138897738",
+      "src/tether/testing/execution.py": "679873123161c8ea0b2b288b7211bd213657eb08fd94a8c4f749b6a8d5b3c99b",
       "src/tether/types/__init__.py": "56cbb9baa19db76bf8831a79fd7fea68d7cdc558bfae1f92ddfc18de4ad57c4a",
       "src/tether/types/canonical.py": "b6fc0999bb80038619b33e077b2fb720c101410b3443ae640f2ffe1767bcc033",
       "src/tether/types/client.py": "4089c61051f2495f89f88672d037b5d4dadba3c5690783e8f24a76a661080c1a",
-      "src/tether/types/execution.py": "254408492920651ca0fb683671a5933bc23696bcde364282328387286d3b4048",
+      "src/tether/types/execution.py": "fbd8247b994e896b5a0f4e09bb209c24ca38ae0cfab9d8755605fb63c6f16b51",
       "src/tether/types/history.py": "486eb935a8742eca3a78202806e6cdbf955e29f3c3e7a780e39ba9e1bbcd6209",
       "src/tether/types/storage.py": "108ef9092bdf300bda90e932a12de3fb43310cc79a659a9fdb56cec51dc0427c",
       "src/tether/types/tooling.py": "43e1d6d00a588ed33388f72e44b36d1a74df90063d7242f17f88579a4e976735",
@@ -165,7 +167,7 @@
       "tests/test_archive_transfer.py": "abafe66db8123656d0edd17535bf415e58d01625bfc052530b01163ce9b06f7b",
       "tests/test_client_boundaries.py": "70428ba092792b842a59c6f02ff0cf7849eb84b97b1b876267597af35bef39f1",
       "tests/test_client_follow.py": "25fc8cea4ae19717eda67a91352e0f47bbd8da0779a09d3dd5ec64b70ccdca6b",
-      "tests/test_client_lifecycle.py": "d3b70634922c36edfda2d869c77fb6abc73bf4c00f4adf5bc7d17bf81c9005e3",
+      "tests/test_client_lifecycle.py": "0ad46dfe78b6cad00e76d38f7ceae845a53bcf38b48ce8e889f1ff9ec3ed3dab",
       "tests/test_client_reads.py": "58ead278423f828de50f89d73878a6d743754ed10e1b0c4c5833e7b518f52518",
       "tests/test_commands.py": "d23090e0c261f84615695891ab160f06e405d488bf580cad44de25307f1c8dcb",
       "tests/test_compatible_adapter.py": "a99a865a10f7088691ccf80d1652bbff3164653ecc4b52c8e85aa7affc2fe55f",
@@ -183,6 +185,7 @@
       "tests/test_session_reads.py": "99ba76d62a27ce37fa95a572682b945b274c23a82ae049a8aae24d1e2d712651",
       "tests/test_storage_faults.py": "e214b4ee63af08809cddb8d23dec934eaca61beb259677c87c27552d96eb51c5",
       "tests/test_tooling.py": "f02db19425ae8b81fdaaa19df0730d2f12a5646c571a585a47e19f6603bea186",
+      "tests/test_turn_acceptance.py": "028b2d49f55d67a90fd5d0a5f33a3a267417c0a7bdb0e49d2594f1f005e7aeb4",
       "scripts/__init__.py": "16195c466e50527338158918c1ddf182c142a560538fabf2de6fe6cd8a3b09ad",
       "scripts/boundaries/__init__.py": "adb8f3047fb180656691d416293800213684fa93ef8df519275de05696a9d3f2",
       "scripts/boundaries/checker.py": "267da1da6f362a312696142f1c9a497c0ee693d7453bd1dcf0eb65866221b132",
@@ -213,7 +216,24 @@
       "tests": "14 targeted cases pass across memory and real JSONL, including snapshot/replay, per-variant revocation, bounded slow replay, retention reset, idle close, limits and interrupted follower-close cleanup.",
       "review": "Independent read-only review found follower-shutdown cancellation could bypass Engine sealing. Fixed, exact cancel/timeout regressions pass, and fix re-review found no residual defect. No independent reexecution claim.",
       "limits": "No live ReplyText/ReplyReset producer, coalescing or application SSE transport claim; provisional production remains slice9a."
-    }
+    },
+    "acceptance_seam": {
+      "status": "Implemented and reviewed; final stable-source full gate passed: 326 tests, 92.15% branch-inclusive coverage, 0 strict typing errors, lint/format, unchanged shape/size/layer/negative-control gates, base SDK count 0. Fresh wheel/sdist built; clean artifact checks running at this commit.",
+      "implemented": [
+        "Optional lease-bound TurnLog.turn_id and validated TurnStart; default adopts lease id, mismatches/reused input ids refuse",
+        "Copied pinned spec/start values; explicit unambiguous spec selection",
+        "Prepare original user and supersession/interruption content, then atomic closure/start/input-ref/request-key commit",
+        "Canonical accepted-input digest binds text, immutable attachment refs and requested spec",
+        "Known acceptance notification precedes fallible Run/SDK setup",
+        "Content keys include canonical result payload digest so orphan actual output cannot block an unknown-outcome closure; one journal result key remains authoritative",
+        "Discard prior derived Run immediately after accepted supersession, before notification/setup, so late confirmation reconstructs authoritative nonpending state even after setup failure"
+      ],
+      "targeted": "65 focused acceptance/execution/restart cases passed before the final cache addition; all 14 acceptance cases pass after cache invalidation, including late confirmation returning None after accepted setup failure. Final full/installed gate in progress.",
+      "review": "Independent read-only review reproduced orphan immutable-key collision and post-commit notification gap. Both fixed with exact regressions; fix re-review found no residual defect. No independent reexecution claim. Follow-up cache invalidation was also independently re-reviewed; its late-confirmation regression passes.",
+      "limits": "Task-owned Client.send/handle/result reconstruction, request retry selection, confirm/cancel/close/update/resolve and heartbeat supervision are not implemented by this seam. No owned SDK iteration loop.",
+      "fixture_qualification": "One rerun failed an incidental two-second tool-entry setup assertion and later hit the unchanged 180-second quality-child limit. Exact diagnostic identified startup latency; fixture now uses an actual-entry async barrier with finite ten-second setup bound and detects premature turn completion. Removing its worker self-exit timer strengthens actual-exit ownership assertions; shutdown deadlines and all root/worker/unknown-effect assertions are unchanged. Twenty-three focused lifecycle/acceptance cases and final full gate pass; independent review found no weakening of intended ownership proof."
+    },
+    "consumer_entry_inspection": "Inspected consumer turn-entry/session editing code before further porting. Domain routing, attachment claiming, HTTP response mapping and naming callbacks remain application-owned. Existing owner isolation, defensive-copy, turn-lock and failure scenarios inform conformance. Synchronous route/context-manager code and whole-turn transcript patching are not copied into the async per-step durable core."
   },
   "merged_pull_requests": [
     {
@@ -231,6 +251,14 @@
       "status": "merged",
       "merge_commit": "179d3f372d745e712a701518b7a151a0df31f868",
       "qualification": "Source macOS/Python3.11.17 full gate: 298 tests/91.84%; exact-head isolated macOS/Python3.13.16: 298 tests/91.82%, all gates and fresh clean base/optional-extra installed journeys passed. Hosted jobs queued at merge; not claimed passed."
+    },
+    {
+      "number": 3,
+      "url": "https://github.com/DocumentDrivenDX/tether/pull/3",
+      "head": "9ab891f9330ba6ffb211c3716bd0a2ff91c1c301",
+      "merge_commit": "a2da3be6dbc627aceb297a43376714152511cc0f",
+      "status": "merged",
+      "qualification": "Full local macOS/Python3.11 gate: 312 tests/91.99%; exact isolated macOS/Python3.13 head: 312 tests/91.94%, all gates passed. Hosted jobs queued at merge; no hosted/Linux claim. Follow source conformance covers both memory and JSONL; installed base/extra evidence belongs to prior read checkpoint."
     }
   ]
 }

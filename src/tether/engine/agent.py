@@ -27,7 +27,6 @@ from tether.types.execution import (
     ExecutionDenied,
     ExecutionLimits,
     MessageHistory,
-    NewEntry,
     PendingConfirmation,
     Policy,
     Provider,
@@ -36,6 +35,7 @@ from tether.types.execution import (
     Tool,
     TurnLog,
     TurnResult,
+    TurnStart,
     copy_actor,
 )
 from tether.types.history import HistoryProvider
@@ -45,7 +45,8 @@ from .governance import AllowAll, Governance, utc_now
 from .inspection import describe_pending
 from .reconstruction import pinned_spec, requested_turn, restore_pending, restored_usage
 from .run import Run
-from .tools import Invocation, Registry, ToolExecutor
+from .starts import accept_input
+from .tools import Registry, ToolExecutor
 from .workers import Workers
 
 
@@ -105,36 +106,26 @@ class Engine:
         self._idle.clear()
 
     async def run_turn(
-        self, actor: Actor, log: TurnLog, text: str, *, spec: AgentSpec
+        self,
+        actor: Actor,
+        log: TurnLog,
+        text: str,
+        *,
+        spec: AgentSpec,
+        start: TurnStart | None = None,
+        accepted: Callable[[], None] | None = None,
     ) -> TurnResult:
         self._enter(actor, log)
         try:
-            await self._supersede(actor, log)
+            spec = spec.model_copy(deep=True)
+            start = (start or TurnStart(turn_id=log.turn_id or str(uuid4()))).model_copy(deep=True)
             gov = Governance(
-                actor, log, self.history, self.policy, str(uuid4()), self.limits, self.clock
+                actor, log, self.history, self.policy, start.turn_id, self.limits, self.clock
             )
-            await gov.authorize("read_session", log.session.id)
-            await self._close_incomplete(gov, spec)
-            ref = await self.history.put(
-                actor=actor,
-                session_id=log.session.id,
-                key="user:" + gov.turn_id,
-                message=Message(role="user", content=text),
-            )
-            await gov.commit(
-                [
-                    NewEntry(
-                        kind="turn_started",
-                        turn_id=gov.turn_id,
-                        facts={
-                            "spec_digest": digest(spec.model_dump(mode="json")),
-                            "spec_id": spec.id,
-                            "spec_version": spec.version,
-                        },
-                    ),
-                    NewEntry(kind="message", turn_id=gov.turn_id, history_ref=ref),
-                ]
-            )
+            await accept_input(gov, spec, text, start)
+            self._runs.pop(log.session.id, None)
+            if accepted is not None:
+                accepted()
             run = self._create(gov, spec)
             self._runs[log.session.id] = run
             return await run.finish()
@@ -143,36 +134,11 @@ class Engine:
             if not self._running:
                 self._idle.set()
 
-    async def _close_incomplete(self, gov: Governance, spec: AgentSpec) -> None:
-        executor = ToolExecutor(gov, self.registry, spec, self.workers, self.guards)
-        entries = gov.log.entries
-        keys = {e.key for e in entries}
-        for source in entries:
-            for manifest in source.call_manifest:
-                inv_id = digest([gov.log.session.id, source.index, manifest.position])
-                if "result:" + inv_id in keys:
-                    continue
-                requested = next((e for e in entries if e.key == "pending:" + inv_id), None)
-                if requested is not None and "approval:" + inv_id not in keys:
-                    await gov.fact(
-                        "confirmation",
-                        key="approval:" + inv_id,
-                        state="superseded",
-                        binding=requested.facts.get("binding"),
-                    )
-                started = "intent:" + inv_id in keys
-                reason = (
-                    "outcome_unknown"
-                    if started and manifest.effect == "effectful"
-                    else "superseded"
-                    if requested is not None
-                    else "interrupted"
-                )
-                await executor.result(
-                    Invocation(source, manifest, inv_id),
-                    "interrupted" if started else "denied",
-                    reason,
-                )
+    def spec(self, spec_id: str) -> AgentSpec:
+        values = [value for value in self._specs.values() if value.id == spec_id]
+        if len(values) != 1:
+            raise ExecutionDenied("spec_unavailable")
+        return values[0].model_copy(deep=True)
 
     def _create(self, gov: Governance, spec: AgentSpec) -> Run:
         self._specs[digest(spec.model_dump(mode="json"))] = spec.model_copy(deep=True)
@@ -209,24 +175,6 @@ class Engine:
             self.attempt_factory,
             self.history_provider,
         )
-
-    async def _supersede(self, actor: Actor, log: TurnLog) -> None:
-        previous = self._runs.get(log.session.id)
-        if previous is None:
-            return
-        previous.gov.actor, previous.gov.log, previous.gov.policy = actor, log, self.policy
-        for inv_id in tuple(previous.executor.pending):
-            pending = previous.executor.pending[inv_id]
-            await previous.gov.fact(
-                "confirmation",
-                key="approval:" + inv_id,
-                state="superseded",
-                binding=ApprovalBinding.model_validate(
-                    pending.model_dump(include=set(ApprovalBinding.model_fields))
-                ).model_dump(mode="json"),
-            )
-            inv = next(i for i in previous.executor.calls.values() if i.id == inv_id)
-            await previous.executor.result(inv, "denied", "superseded")
 
     async def answer(
         self, actor: Actor, log: TurnLog, invocation_id: str, answer: Answer

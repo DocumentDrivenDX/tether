@@ -443,3 +443,16 @@ def send_email(ctx: ToolContext, to: str, body: str) -> str:
 | The time limit for a provider hook, the default tool timeout, and `approval_ttl`, if any | Erik LaBianca |
 | Qualified target-specific reconcilers and cross-session business-effect deduplication | Application/tool author; core never infers equivalence |
 | Whether `tether.scope` matches the first downstream platform's needs, checked in its parity run | Erik LaBianca |
+
+The session integration may supply a validated `TurnStart` with the journal lease/handle's
+turn id, request id, requested spec and immutable attachment refs. Engine computes the canonical
+accepted-input digest from text, refs and requested spec. It prepares user content and any
+interrupted/superseded call-result content before one commit of closure facts, turn start and
+input reference. A trusted synchronous `accepted` notification runs only after that commit;
+it carries no dispatch permission. Missing/ambiguous supplied pinned spec ids refuse rather
+than selecting a version heuristically. Agent remains the sole model/tool iterator.
+
+`TurnLog.turn_id` carries the lease-bound logical id (None only for volatile test doubles).
+New input adopts that id by default and refuses a different supplied id. The acceptance signal
+runs immediately after known input commit, before fallible SDK/run setup. A later setup failure
+is therefore an accepted-turn failure. Specs and supplied start values are copied before await.

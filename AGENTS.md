@@ -89,6 +89,10 @@ provisional stream production,
 full safe-invocation recovery/manual resolution, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.
+The new-input seam adopts the lease turn id, prepares content before atomic supersession/start/
+input acceptance, and notifies only after the known commit. Result content uses invocation plus
+payload-digest keys; the journal retains one result key. Orphan content is never outcome proof.
+Accepted supersession invalidates derived Run caches before fallible SDK setup.
 Development dependencies include the optional
 provider SDK for tests; it must stay out of the runtime base closure. Do not promote fabricated
 transport checks to live server/profile qualification.

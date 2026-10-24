@@ -235,3 +235,9 @@ Turn `turn-a` makes answer call `model-a` with attempts `attempt-1` and `attempt
 Current official Databricks documentation describes request/invocation ids, request tags, schema version, logging errors and at-least-once delivery; rows can be delayed and some payload/error records omitted. These are provider limitations, not Tether settings. [Inference tables](https://docs.databricks.com/aws/en/ai-gateway/inference-tables), updated 2026-09-17, and [request tagging](https://docs.databricks.com/aws/en/ai-gateway/usage-tracking#tag-requests-for-usage-tracking), updated 2026-10-16, accessed 2026-10-22. Qualification must name the actual workspace/cloud/profile; no live integration was run for this design.
 
 The inspected downstream implementation supplies a reusable pattern: capture response-header ids separately from body ids, retain turn/span/call facts, render bounded session attribution, query only known call ids using parameterized SQL, isolate readers by caller context and bound slow warehouse reads. Its source marks header-to-table equality unverified and currently collapses repeated request ids; that behavior needs the multi-invocation/conflict handling above before reuse. Its blocking I/O, environment/context-global wiring and platform-specific names must be removed during a scrubbed port with adapted regression tests.
+
+Tool-result content keys include invocation id and the canonical Message payload digest.
+The execution journal still accepts only one `result:<invocation_id>` fact. This separates an
+unreferenced successful-result content write from a later interrupted/unknown closure after
+its journal commit failed. Orphan content never proves execution outcome, gets adopted without
+an accepted fact, or prevents a distinct authorized closure from being written.

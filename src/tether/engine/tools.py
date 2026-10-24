@@ -32,6 +32,7 @@ from tether.types.tooling import Normalized, definition, normalize
 
 from .governance import Governance, reason_code
 from .providers import provider_hook
+from .results import result_content_key
 from .workers import Workers
 
 
@@ -375,7 +376,7 @@ class ToolExecutor:
         ref = await self.gov.history.put(
             actor=self.gov.actor,
             session_id=self.gov.log.session.id,
-            key="result:" + inv.id,
+            key=result_content_key(inv.id, message),
             message=message,
         )
         facts: dict[str, JsonValue] = {
