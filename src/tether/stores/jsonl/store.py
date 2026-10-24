@@ -22,6 +22,7 @@ from tether.types.execution import (
     WorkerOutstanding,
 )
 from tether.types.lifetime import WorkerLifetime
+from tether.types.mutations import CreateReceipt, UpdateReceipt, created, updated
 from tether.types.storage import (
     IntegrityError,
     JournalEvent,
@@ -51,7 +52,7 @@ class JsonlSessionStore(SessionReads):
         super().__init__(files, clock=clock)
         self.files.workers.check_loop()
         self.capabilities = StoreCapabilities(
-            durability=files.durability, lease="process", fencing=True
+            durability=files.durability, lease="process", fencing=True, mutation_receipts=1
         )
         self.leases = Leases(clock, files.limits.lease_seconds)
         self._index_bytes = 0
@@ -180,20 +181,33 @@ class JsonlSessionStore(SessionReads):
         )
 
     async def create(self, owner: str, init: SessionInit) -> SessionSummary:
+        return (await self.create_with_receipt(owner, init)).summary
+
+    async def create_with_receipt(self, owner: str, init: SessionInit) -> CreateReceipt:
+        init = init.model_copy(deep=True)
         self._limit(1)
         async with self.lock:
             existing = self.refs.get((owner, init.ref)) if init.ref is not None else None
             if existing is not None:
-                return self.index[existing].summary.model_copy(deep=True)
+                return CreateReceipt(
+                    summary=self.index[existing].summary.model_copy(deep=True),
+                    disposition="existing",
+                )
             staged = create_index(str(uuid4()), owner, init.model_copy(deep=True), self.clock())
             await self._commit(self._event("create", staged, (), staged.init))
-            return self.index[staged.state.id].summary.model_copy(deep=True)
+            return created(self.index[staged.state.id].summary)
 
     async def update(self, session_id: str, owner: str, patch: SessionPatch) -> SessionSummary:
-        values = patch_entries(patch)
+        return (await self.update_with_receipt(session_id, owner, patch)).summary
+
+    async def update_with_receipt(
+        self, session_id: str, owner: str, patch: SessionPatch
+    ) -> UpdateReceipt:
+        values = patch_entries(patch.model_copy(deep=True))
         async with self.turn(session_id, owner, turn_id="update:" + str(uuid4())) as log:
-            await log.append(values)
-        return self.owned(session_id, owner).summary.model_copy(deep=True)
+            entries, summary = await self._append_result(session_id, owner, log.generation, values)
+            receipt = updated(summary, entries)
+        return receipt
 
     async def restore(self, session: SessionArchive, *, created_at: datetime) -> SessionSummary:
         self._limit(1)
@@ -224,6 +238,11 @@ class JsonlSessionStore(SessionReads):
     async def append(
         self, session_id: str, owner: str, generation: int, entries: Sequence[NewEntry]
     ) -> tuple[Entry, ...]:
+        return (await self._append_result(session_id, owner, generation, entries))[0]
+
+    async def _append_result(
+        self, session_id: str, owner: str, generation: int, entries: Sequence[NewEntry]
+    ) -> tuple[tuple[Entry, ...], SessionSummary]:
         self._check_loop()
         async with self.lock:
             staged = self.owned(session_id, owner).clone()
@@ -237,7 +256,8 @@ class JsonlSessionStore(SessionReads):
                     self.leases.check(session_id, generation)
 
                 await self._commit(self._event("append", staged, new), guard)
-            return tuple(e.model_copy(deep=True) for e in accepted)
+            summary = self.owned(session_id, owner).summary.model_copy(deep=True)
+            return tuple(e.model_copy(deep=True) for e in accepted), summary
 
     @asynccontextmanager
     async def turn(

@@ -13,6 +13,7 @@ from tether.types.storage import (
 )
 
 from .ledger import pending_effects, snapshot_feed
+from .mutations import REQUIRED_EXTERNAL, logical_mutation_receipts
 from .types import ConformanceFailure, LiveStoreFactory, LiveStoreFixture, SuiteReport, require
 
 
@@ -107,6 +108,8 @@ async def live_store_suite(
         async with factory() as h:
             capabilities = h.store.capabilities.model_copy(deep=True)
             await caller_scope(h)
+            if capabilities.mutation_receipts == 1:
+                await logical_mutation_receipts(h)
             await metadata(h, ref)
             store = h.store.for_actor(h.actor)
             sid = (await store.create(h.actor.id, SessionInit(ref=ref + "-journal"))).id
@@ -141,7 +144,9 @@ async def live_store_suite(
     return SuiteReport(
         suite="live_store",
         capabilities=capabilities.model_dump(mode="json"),
-        checks=checks + (("durable_reopen",) if durable else ()),
+        checks=checks
+        + (("durable_reopen",) if durable else ())
+        + (("mutation_receipts",) if capabilities.mutation_receipts else ()),
         required_external=(
             "projection_rebuild_equivalence",
             "contended_snapshot_approval_writes",
@@ -154,6 +159,7 @@ async def live_store_suite(
             "worker_shutdown",
             "adapter_faults",
         )
+        + (REQUIRED_EXTERNAL if capabilities.mutation_receipts else ())
         + (("restart_faults",) if durable else ())
         + (("cross_process_fencing",) if capabilities.lease == "cross_process" else ()),
     )

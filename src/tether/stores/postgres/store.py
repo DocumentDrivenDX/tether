@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from tether.stores.projections import patch_entries
 from tether.types.execution import Actor, copy_actor
+from tether.types.mutations import CreateReceipt, UpdateReceipt, updated
 from tether.types.storage import (
     RecoveredTurn,
     SessionArchive,
@@ -36,8 +37,11 @@ class PostgresSessionStore(StoreReads):
         return True if self._actor is not None else await self.root.aclose()
 
     async def create(self, owner: str, init: SessionInit) -> SessionSummary:
+        return (await self.create_with_receipt(owner, init)).summary
+
+    async def create_with_receipt(self, owner: str, init: SessionInit) -> CreateReceipt:
         store = Capture(self.root, self._owner(owner))
-        return await store.create(init.model_copy(deep=True), str(uuid4()))
+        return await store.create_with_receipt(init.model_copy(deep=True), str(uuid4()))
 
     def turn(
         self, session_id: str, owner: str, *, turn_id: str
@@ -59,11 +63,16 @@ class PostgresSessionStore(StoreReads):
                 handle.seal()
 
     async def update(self, session_id: str, owner: str, patch: SessionPatch) -> SessionSummary:
+        return (await self.update_with_receipt(session_id, owner, patch)).summary
+
+    async def update_with_receipt(
+        self, session_id: str, owner: str, patch: SessionPatch
+    ) -> UpdateReceipt:
         store = Capture(self.root, self._owner(owner))
         values = patch_entries(patch.model_copy(deep=True))
         async with lease(store, session_id, "update:" + str(uuid4())) as token:
             result = await store.commit(token, values)
-            return result.summary
+            return updated(result.summary, result.entries)
 
     async def restore(self, session: SessionArchive, *, created_at: datetime) -> SessionSummary:
         store = Capture(self.root, self._owner(session.state.owner))

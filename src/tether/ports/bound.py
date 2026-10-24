@@ -6,6 +6,7 @@ from typing import Literal
 
 from tether.types.execution import Actor, Entry, ExecutionDenied, copy_actor
 from tether.types.lifetime import WorkerLifetime
+from tether.types.mutations import CreateReceipt, UpdateReceipt, receipt_store
 from tether.types.storage import (
     ChangeFeed,
     EffectPage,
@@ -122,6 +123,26 @@ class ActorStore(BoundReads):
     async def update(self, session_id: str, owner: str, patch: SessionPatch) -> SessionSummary:
         self._owner(owner)
         return await self._store.update(session_id, owner, patch.model_copy(deep=True))
+
+    async def create_with_receipt(self, owner: str, init: SessionInit) -> CreateReceipt:
+        self._owner(owner)
+        companion = receipt_store(self._store)
+        if companion is None:
+            raise Unsupported("mutation_receipts_unavailable")
+        return (await companion.create_with_receipt(owner, init.model_copy(deep=True))).model_copy(
+            deep=True
+        )
+
+    async def update_with_receipt(
+        self, session_id: str, owner: str, patch: SessionPatch
+    ) -> UpdateReceipt:
+        self._owner(owner)
+        companion = receipt_store(self._store)
+        if companion is None:
+            raise Unsupported("mutation_receipts_unavailable")
+        return (
+            await companion.update_with_receipt(session_id, owner, patch.model_copy(deep=True))
+        ).model_copy(deep=True)
 
     def turn(
         self, session_id: str, owner: str, *, turn_id: str

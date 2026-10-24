@@ -7,7 +7,7 @@ from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Generic, Literal, Protocol, TypeVar
 
-from pydantic import Field, JsonValue
+from pydantic import Field, JsonValue, field_validator
 
 from tether.types import Payload, PositiveInt, PositiveSeconds, TokenUsage
 from tether.types.execution import Actor, Entry, PendingConfirmation, SessionState, TurnLog
@@ -70,6 +70,14 @@ class StoreCapabilities(Payload):
     lease: Literal["process", "cross_process"]
     fencing: bool
     notifications: bool = False
+    mutation_receipts: Literal[0, 1] = 0
+
+    @field_validator("mutation_receipts", mode="before")
+    @classmethod
+    def receipt_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("mutation_receipt_version_invalid")
+        return value
 
 
 class SessionInit(Payload):

@@ -9,6 +9,7 @@ from psycopg.errors import UniqueViolation
 from tether.stores.projection import Projection, new_projection
 from tether.types.canonical import canonical
 from tether.types.execution import Actor, Entry, EntryConflict, copy_actor
+from tether.types.mutations import CreateReceipt, created
 from tether.types.storage import (
     IntegrityError,
     PersistedChange,
@@ -184,9 +185,12 @@ class Rows:
         )
 
     async def create(self, init: SessionInit, session_id: str) -> SessionSummary:
+        return (await self.create_with_receipt(init, session_id)).summary
+
+    async def create_with_receipt(self, init: SessionInit, session_id: str) -> CreateReceipt:
         init = init.model_copy(deep=True)
 
-        async def create(connection: Connection) -> SessionSummary:
+        async def create(connection: Connection) -> CreateReceipt:
             await self.head(connection, write=True)
             if init.ref is not None:
                 cursor = await connection.execute(
@@ -205,13 +209,16 @@ class Rows:
                     except UnicodeDecodeError:
                         raise IntegrityError("session_identity_integrity") from None
                     frame = await self.frame(connection, existing_id, write=False)
-                    return frame.projection.summary
+                    return CreateReceipt(
+                        summary=frame.projection.summary.model_copy(deep=True),
+                        disposition="existing",
+                    )
             frame = Frame(
                 new_projection(session_id, self.owner_id, init, await self.clock(connection))
             )
             await self.insert(connection, frame)
             await self.publish(connection, frame, ())
-            return frame.projection.summary
+            return created(frame.projection.summary)
 
         return await self.root.run(self.actor, None, create, write=True)
 

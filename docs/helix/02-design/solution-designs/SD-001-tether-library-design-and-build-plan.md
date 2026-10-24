@@ -851,3 +851,25 @@ ownership and recovery cases passed before the final three targeted additions; t
 includes all cases. Independent source review found no concrete blocker; reviewer did not rerun
 tests. Installed-artifact evidence belongs to the execution receipt. This remains scoped lifecycle
 evidence rather than complete Q5/Q7, Client/retrieval/context, OTel or release qualification.
+
+
+Implement the optional version1 atomic mutation-receipt companion before nonjournal Client audit.
+Preserve legacy summary APIs, require exact scope/frontier and bounded copied metadata entries,
+and discover only through current actor-bound facades. JSONL captures genesis under its existing
+lock and factors the existing fenced append result; MemoryFiles uses the same path. PostgreSQL
+reuses its locked create/publish transaction and existing Appended(entries,summary,prefix), without
+schema changes, extra acquisitions or transcript reconstruction. Qualify the companion independently
+through a public logical suite and adapter fault/credential/concurrency cases. Only then wire Client
+audit after known receipts and before later disclosure checks. This prerequisite alone does not
+complete nonjournal Client semantic audit.
+
+The atomic mutation-receipt prerequisite passes1132 cases in36 bounded groups at92.55% branch
+coverage with strict typing0 and all unchanged gates. Its47 new cases cover local/volatile/SQL
+logical suites, stable-ref races, exact frontiers through later lease-release updates, empty/equal
+patches, expired-phase recovery without a metadata commit, unknown create/update acknowledgments,
+current credentials, foreign owner, bounds, loop/close/copy isolation and two detected conformance
+negative controls. Another60 focused receipt/Client metadata/store-suite cases passed before the
+final fault/concurrency additions; the full gate includes all cases. Independent source review
+corrected shared qualification reporting and found no remaining concrete blocker; reviewer did not
+rerun tests. Installed-artifact evidence belongs to the execution receipt. Client nonjournal audit
+still requires separate validated receipt mapping and current authorization observations.
