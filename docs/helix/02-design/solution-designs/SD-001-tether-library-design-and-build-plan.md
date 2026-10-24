@@ -344,8 +344,11 @@ before fallible continuation. Continuing requests refresh current principal/cred
 logical turn count is unchanged. Late/concurrent answers cannot repeat execution. Retained
 successful send handles follow an accepted continuation; journal result lookup refuses an old
 terminal while a newer continuation is running. Informational approval notes are bounded
-immutable history outside executable inputs, audit text and automatic model input. Create,
-resume/update/close/resolve and remaining command race qualification stay in this slice; provisional text/reset/coalescing remain slice 9a. The Agent remains the only
+immutable history outside executable inputs, audit text and automatic model input. Client create/update now use bounded copied owner-scoped requests,
+reference-idempotent creation, store-owned lease serialization and current read authorization.
+Title omission preserves the value; explicit None clears it. Public settings cannot replace
+binder-managed held context; governed binding remains a separate extension seam.
+Resume/close/resolve and remaining command race qualification stay in this slice; provisional text/reset/coalescing remain slice 9a. The Agent remains the only
 model/tool iterator. Full qualification status is in the execution record.
 
 ### Consumer boundary review and implementation plan

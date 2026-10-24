@@ -8,7 +8,7 @@ reference CLI/terminal clients are planned in later build slices.
 **Status: gated execution, local durability and partial Client commands (slices 2–4 subset).** Pydantic AI Agent now runs tools through
 Tether's policy, validation, approval and commit gates. Model doubles and shared codecs remain
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
-Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Create/resume/update/close/resolve commands, provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Resume/close/resolve commands, provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
 
 ## Development
 
@@ -85,6 +85,13 @@ The fabricated examples and faults are in [the execution tests](tests/test_gated
 and [the integration review](tests/test_execution_review.py).
 
 ## Client command subset
+
+`client.create(ref=..., spec=..., title=..., tags=..., settings=...)` creates an owner-scoped
+session; a repeated reference returns the existing session. `client.update(session_id, ...)`
+merges supplied settings and replaces supplied tags. Omitting title preserves it; passing
+`title=None` clears it. Public settings refuse binder-managed `held` context. Updates use the
+store lease and refuse while another turn owns it. Current read policy governs command access
+and returned summaries; a refused final disclosure cannot undo a known committed change.
 
 Within an active `Tether` context, `client.send(session_id, text, request_id=...)`
 returns a handle after durable input acceptance. Await `handle.result()` for completion;

@@ -368,7 +368,7 @@ class Client(Protocol):                               # obtained as `tether.clie
     async def resume(self, session_id: str) -> TurnHandle: ...
     async def resolve(self, session_id: str, invocation_id: str, outcome: Literal["completed", "not_completed"], *, reason: str) -> SessionSummary: ...
     async def cancel(self, session_id: str) -> bool: ...
-    async def update(self, session_id: str, *, title: str | None = None, tags: Sequence[str] | None = None,
+    async def update(self, session_id: str, *, title: str | Unset | None = UNSET, tags: Sequence[str] | None = None,
                      settings: Mapping[str, JsonValue] | None = None) -> SessionSummary: ...
     async def close(self, session_id: str) -> SessionSummary: ...
     async def restore(self, session_id: str) -> SessionSummary: ...                  # only from a restorable archive
@@ -405,7 +405,7 @@ class Tether:                                          # the composition: engine
 | Read limits | list/entries/history/effects/call_detail enforce positive finite page, id-count, decoded-byte and deadline caps from explicit client limits; oversized/invalid requests refuse before allocation/provider I/O. A cursor is owner/query/tier/version-bound and never an authorization grant. No error reason includes content. |
 | Resolve | P0. `resolve` requires a current actor, `Policy.authorize(RESOLVE_EFFECT)`, the session lease and an unresolved invocation. A same-process running worker refuses it. Append `resolved` with its outcome/actor/reason and atomically clear the indexed barrier; identical retries return the existing summary, different outcomes/reasons raise `ResolutionConflict`. Already-known non-unknown invocations raise `NotUnresolved`. If the unknown invocation lacks a terminal tool-result message, resolution first appends its single interrupted/unknown result in the same transaction; an optional reconciler output is a labelled assistant resolution notice, not another tool result. Resolution creates no new execution and cannot change its original evidence. |
 | Shutdown | Leaving `Tether`'s context cancels turns and waits for cleanup at most `shutdown_timeout_seconds`, then closes stores without promising running threads/effects stopped. Their actual lifetime retains executor permits, and late callbacks cannot write through a closed or stale log. No automatic replay is authorized by shutdown. |
-| Settings | `update` records a `settings` or `session` entry and the change appears in the feed. |
+| Settings | `update` records a `settings` or `session` entry and the change appears in the feed. Omitted title preserves its value; explicit `None` clears it. Omitted/None tags or settings preserve them; empty tags clear and supplied settings merge. Public create/update refuse engine-managed `held` settings before mutation; governed binders may journal authorized context changes through their separate extension seam. Generic metadata cannot manufacture scope authority. Commands copy and bound requests before policy awaits, require current owner/read authorization and recheck disclosure after the store returns. Store update owns the lease; the facade never nests a lease. A denied final disclosure does not undo a known committed mutation. |
 | Defaults | A `SessionQuery` of `None` lists the owner's live sessions, most recently updated first. |
 | Application references | A `ref` ties a session to an application's own record; tether never reads the application's records (ADR-018). |
 
