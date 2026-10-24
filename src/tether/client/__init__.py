@@ -1,13 +1,14 @@
 """Owner-bound Client facade."""
 
 from collections.abc import AsyncIterator, Mapping, Sequence
+from typing import Literal
 
-from tether.sessions import closing, content
+from tether.sessions import closing, content, resolution
 from tether.sessions.metadata import MetadataCommands
 from tether.sessions.service import SessionService
 from tether.types import AttachmentRef, JsonValue
 from tether.types.client import UNSET, Change, TurnHandle, Unset
-from tether.types.execution import Actor, Answer, PendingConfirmation
+from tether.types.execution import Actor, Answer, PendingConfirmation, Resolution
 from tether.types.storage import SessionInit, SessionPatch, SessionSummary
 
 from .reads import ClientReads
@@ -95,4 +96,20 @@ class Client(ClientReads):
     async def close(self, session_id: str) -> SessionSummary:
         return await closing.close_session(
             self._access, self._service.engine, self._actor, session_id
+        )
+
+    async def resolve(
+        self,
+        session_id: str,
+        invocation_id: str,
+        outcome: Literal["completed", "not_completed"],
+        *,
+        reason: str,
+    ) -> SessionSummary:
+        return await resolution.resolve(
+            self._access,
+            self._service.engine,
+            self._actor,
+            session_id,
+            Resolution(invocation_id=invocation_id, outcome=outcome, reason=reason),
         )
