@@ -106,6 +106,9 @@ Manual resolve requires current RESOLVE_EFFECT and a lease, refuses live workers
 decisions, and commits unknown-result closure/decision/barrier atomically without new execution.
 Reused partial-group refs need scope/profile/call correlation; malformed immutable groups refuse.
 Volatile MemoryHistory refs carry and verify owner/session/message scope.
+Pure plan_resume uses scoped dense journal facts and immutable digest/replay declarations;
+no schema hook, content hydration or dispatch runs inside the planner. Session identity comes
+from the leased log. Canceled/superseded ancestry and malformed source identity refuse planning.
 Resume commands, provisional stream production,
 full safe-invocation recovery, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation

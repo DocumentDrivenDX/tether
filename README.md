@@ -83,6 +83,12 @@ non-JSON executable argument leaves and lossy argument serializers are refused b
 The fabricated examples and faults are in [the execution tests](tests/test_gated_execution.py)
 and [the integration review](tests/test_execution_review.py).
 
+The pure `tether.engine.plan_resume(entries, declarations, session_id=...)` planner classifies
+interrupted invocation states from scoped journal facts and immutable `ResumeTool` snapshots.
+It preserves source-derived invocation ids, refuses canceled or superseded ancestry, and never
+hydrates content or dispatches tools/models. This is a recovery prerequisite; `Client.resume`
+and runtime safe replay remain unfinished.
+
 ## Client command subset
 
 `client.create(ref=..., spec=..., title=..., tags=..., settings=...)` creates an owner-scoped

@@ -332,10 +332,11 @@ The engine runs these steps in this order. A provider relies on the order and ca
 ### 10. Execution states and the resume planner
 
 ```python
+class ResumeTool(BaseModel):  tool_digest: str; replay: Literal["safe", "unsafe"]  # immutable current declaration snapshot
 class ResumeStep(BaseModel):  kind: Literal["run", "rerun", "record_interrupted", "model_step"]; call_entry_index: int | None = None; call_position: int | None = None; invocation_id: str | None = None
 class ResumePlan(BaseModel):  interrupted_turn_id: str; steps: tuple[ResumeStep, ...]
 
-def plan_resume(entries: Sequence[Entry], tools: Mapping[str, Tool]) -> ResumePlan: ...   # pure: reads only journal facts/manifests and declarations; returns source positions, never hydrates history
+def plan_resume(entries: Sequence[Entry], tools: Mapping[str, ResumeTool], *, session_id: str) -> ResumePlan: ...   # pure: reads only journal facts/manifests and declarations; returns source positions, never hydrates history
 ```
 
 | State | The log shows | Resume rule |
@@ -348,7 +349,7 @@ def plan_resume(entries: Sequence[Entry], tools: Mapping[str, Tool]) -> ResumePl
 | Rule | Requirement |
 |------|-------------|
 | Referenced calls | Message entries carry a content-free call manifest (call position, tool-call id, tool name, pinned tool digest, effect/replay declarations and canonical raw-proposal argument digest). The planner returns source entry/call positions; the engine resolves arguments through authorized history before validation/dispatch. A missing source cannot become an empty argument object or a new model call. |
-| Pure and deterministic | `plan_resume` MUST depend only on the entries and the tool declarations, and MUST give the same plan for the same inputs. |
+| Pure and deterministic | `plan_resume` MUST depend only on the entries, their explicit owning session id and the tool declarations, and MUST give the same plan for the same inputs. The engine supplies session identity from the leased log, never a model call id or SDK cache; entries alone do not carry that identity. Tool inputs are immutable declaration snapshots; schema hooks and other extension code run outside the pure planner. Every resumed parent must have been interrupted at its child start, without an intervening superseding input. Missing or contradictory source scope/positions refuse planning. A committed final answer may yield an empty plan only with its matching original assistant source; the executor must still authorize and verify that source before finalizing. |
 | Effect versus replay | `effect="read_only"` asserts no external mutation; `effect="effectful"` is the default and writes intent regardless of replay. A read-only tool with `replay="unsafe"` also writes intent to preserve its no-automatic-rerun declaration; only read-only plus replay-safe omits intent. `replay="safe"` asserts convergence only under the same invocation id, including idempotent writers. A new id of such a writer is blocked by an unresolved effect. These are tool-author assertions, not sandbox guarantees. |
 | What `replay` guarantees | `safe` is the tool author's assertion that rerunning with the same invocation id converges: the tool is read-only, or its downstream is idempotent by that key. `unsafe`, the default, means tether never reruns the tool automatically. Neither is a guarantee about a downstream system. |
 | What tether guarantees | Each committed entry appears once. On a store that declares durable commits and fenced leases (CONTRACT-003 section 3), a tool that is not safe is run at most once automatically, and a replay-safe invocation is eligible for repeated same-id attempts while current authorization, its original digests, readable arguments and configured recovery bounds permit them. This is not an unconditional completion or at-least-once liveness guarantee. When tether cannot tell whether a tool ran, it says `outcome_unknown`. |
