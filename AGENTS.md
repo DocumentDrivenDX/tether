@@ -240,3 +240,12 @@ storage before observer drain. Keep observer failures secondary and all dispatch
 contexts. Client nonjournal/genesis/settings observations, actual worker/tool/retrieval/context
 instrumentation and optional OTel receiver remain separate work. Idempotent create/update summaries
 are not exact mutation receipts; never infer genesis or append audit facts during reads.
+
+Actual execution ownership includes async hooks and same-loop awaitables returned by sync hooks.
+Keep physical executor permits separate from retained-operation admission (ExecutionLimits
+max_workers and max_worker_operations). Admit the shielded completion proxy before execution;
+cancelled callers never release actual child ownership. Drain returned live children even after
+depth rejection, close abandoned unstarted coroutines and preserve primary cancellation. The
+clean-context WorkerLifetime timer retains weak task cycles until actual completion; do not
+remove it merely because the caller and Workers object have become unreachable. No arbitrary
+detached-work discovery or foreign-loop adoption is promised. Worker telemetry remains separate.

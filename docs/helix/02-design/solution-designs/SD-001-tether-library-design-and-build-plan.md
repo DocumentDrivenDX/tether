@@ -806,3 +806,25 @@ the isolated unchanged case and complete unchanged rerun pass. Fresh four-profil
 installs exercise Agent audit/trace/usage correlation; SQL profiles retain typed usage/public testkit
 proof. All133 package sources match wheel/sdist. This is scoped evidence, not complete Q7,
 worker/Client/retrieval/context instrumentation, OTel receiver, hosted-matrix or release qualification.
+
+
+Worker observation requires actual operation ownership first. Separate bounded physical executor
+permits from bounded retained operations (defaults8 and32). Admit a shielded completion proxy
+before submission or async task creation; retain it across raw function return and same-loop
+awaitable adoption. A cancelled waiter returns promptly while cancellation-resistant child work
+keeps the session busy and storage owned. Close preserves one finite caller deadline. Copy the
+execution context, and keep completion callbacks and the lifetime retainer in clean contexts.
+Bound fresh awaitable chains to16, close unstarted abandoned coroutines and drain existing live
+returned children even after depth refusal. Refuse foreign-loop adoption and completed cycles.
+Qualify nested mediated reads with physical capacity1, queued cancellation, late failures, failed
+submission/task creation/cancellation requests, depth refusal, GC ownership and root reopen.
+This correction adds no worker telemetry and does not claim complete Q5 or Q7 qualification.
+
+The operation-ownership correction passes1057 cases in34 bounded groups at92.38% branch
+coverage with strict typing0 and unchanged gates. Its120 focused cases include async
+cancellation resistance, sync-to-awaitable handoff, one-slot nested reads, late failures,
+queued cancellation, creation failure, depth/cycle refusal and root ownership through GC.
+A disabled-retainer negative control detects premature task collection. Independent source
+review found no remaining blocker after live-descendant draining and cancellation-failure
+fixes; reviewer did not rerun tests. Installed-artifact qualification is recorded in the
+execution receipt; broader Q5/Q7 remains open.

@@ -142,6 +142,7 @@ class ExecutionLimits(Payload):
     max_argument_bytes: PositiveInt = 65536
     max_result_bytes: PositiveInt = 1048576
     max_workers: PositiveInt = 8
+    max_worker_operations: PositiveInt = 32
     shutdown_timeout_seconds: PositiveSeconds = 1
     approval_ttl_seconds: PositiveSeconds | None = None
     max_resumes: PositiveInt = 3

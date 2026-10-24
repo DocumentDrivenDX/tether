@@ -93,7 +93,9 @@ class Engine:
             clock,
         )
         self.observers = Observers(audit, tracer, telemetry_limits)
-        self.workers = Workers(self.limits.max_workers)
+        self.workers = Workers(
+            self.limits.max_workers, operation_capacity=self.limits.max_worker_operations
+        )
         self._runs: dict[str, Run] = {}
         self._specs = {digest(s.model_dump(mode="json")): s.model_copy(deep=True) for s in specs}
         self._running: set[str] = set()
