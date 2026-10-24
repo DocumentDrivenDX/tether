@@ -59,8 +59,9 @@ async def provider_hook(
 ) -> object:
     try:
         copies = [_copy(a) for a in args]
-        async with asyncio.timeout(gov.limits.hook_timeout_seconds):
-            return await workers.call(gov.log.session.id, getattr(provider, method), *copies)
+        with gov.observers.steps.provider(gov.scope, provider, method):
+            async with asyncio.timeout(gov.limits.hook_timeout_seconds):
+                return await workers.call(gov.log.session.id, getattr(provider, method), *copies)
     except Exception:
         raise ExecutionDenied(f"x.{provider.id}.provider_error") from None
 

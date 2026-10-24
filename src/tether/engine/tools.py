@@ -23,6 +23,7 @@ from tether.types.execution import (
     Provider,
     Refusal,
     ResultGuard,
+    RetrievalDenied,
     Tool,
     ToolContext,
     ToolOutput,
@@ -31,7 +32,7 @@ from tether.types.execution import (
 from tether.types.tooling import Normalized, definition, normalize
 
 from .effects import unresolved_invocations
-from .governance import Governance, reason_code
+from .governance import Governance, PolicyDenied, reason_code
 from .observers.metadata import Scope
 from .providers import provider_hook
 from .results import prepare_result
@@ -190,17 +191,32 @@ class ToolExecutor:
             if any(not isinstance(k, type) or k in capabilities for k in supplied):
                 raise ExecutionDenied("provider_output_invalid")
             capabilities.update(cast(Mapping[type, object], supplied))
+
+        async def retrieve(resource: str, fetch: Callable[[], object]) -> object:
+            return await self._read(inv, resource, fetch)
+
         return ToolContext(
             actor=copy_actor(self.gov.actor),
             invocation_id=inv.id,
             scope=self.gov.log.session.held,
             capabilities=capabilities,
-            retrieve=self._read,
+            retrieve=retrieve,
         )
 
-    async def _read(self, resource: str, fetch: Callable[[], object]) -> object:
-        await self.gov.authorize("retrieve", resource)
-        return await self.workers.call(self.gov.log.session.id, fetch)
+    async def _read(self, inv: Invocation, resource: str, fetch: Callable[[], object]) -> object:
+        try:
+            accepted = await self.gov.authorize("retrieve", resource)
+        except PolicyDenied as error:
+            raise RetrievalDenied(error.reason) from None
+        with self.gov.observers.steps.retrieval(
+            self.gov.scope,
+            invocation_id=inv.id,
+            source_position=inv.source.index,
+            source_turn_id=inv.source.turn_id,
+            authorization_position=accepted.index,
+            resource=resource,
+        ):
+            return await self.workers.call(self.gov.log.session.id, fetch)
 
     async def _approval(self, inv: Invocation, tool: Tool, args: Normalized) -> bool:
         binding = ApprovalBinding(

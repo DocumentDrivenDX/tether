@@ -268,3 +268,14 @@ still include expired-phase housekeeping. No schema/pool/transcript scan or stor
 belongs in this seam. Receipts contain content; future Client audit must validate/copy/bound results
 and map registered metadata only. The public logical suite and live suite share external credential,
 bounds, concurrency and unknown-ack requirements. MemorySessionStore is the volatile dummy profile.
+
+
+Client receipt-backed genesis/settings and direct authorization observations now share the fixed
+Engine observer owner. Validate/bound copied receipts before metadata admission; later disclosure
+failure cannot erase known acceptance. Capability0 return observations are explicitly incomplete.
+Mediated retrieval and provider-hook instrumentation retains actual Worker Operation ownership;
+returned/raised/cancelled observations describe waits, never effect proof or output validation.
+Only known committed policy denial becomes RetrievalDenied. Provider observation namespaces are
+pinned/validated; unknown or mutated IDs are omitted with a secondary counter. Never forward raw
+provider dictionaries or unknown x.* facts into audit. Source-addressed context preparation remains
+functional slice9a work before context telemetry can claim completion.
