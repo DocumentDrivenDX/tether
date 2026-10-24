@@ -229,3 +229,14 @@ Reports list actual conditional checks; fabricated trace ids are not receiver pr
 records have explicit capacity/byte bounds and copied snapshots across caller loops. Engine
 operational wiring, bounded delivery, failure/content and physical-worker qualification remain
 slice6 work; preserve the trusted acceptance frontier and actual worker/storage ownership.
+
+
+Engine telemetry now mirrors only validated accepted journal facts through a closed metadata
+registry and one bounded observer owner. Preserve source proposal versus current lease phase and
+principal, source-captured gate/model context, and shared per-call retry usage/missingness. The fixed
+runtime model observation scope yields only traceparent and ends after response acceptance; it adds
+no request/result authority or agent loop. Session close drains physical execution and releases
+storage before observer drain. Keep observer failures secondary and all dispatch tasks in clean
+contexts. Client nonjournal/genesis/settings observations, actual worker/tool/retrieval/context
+instrumentation and optional OTel receiver remain separate work. Idempotent create/update summaries
+are not exact mutation receipts; never infer genesis or append audit facts during reads.

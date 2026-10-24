@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from uuid import uuid4
 
 from tether.ports import ModelPort
@@ -41,6 +42,7 @@ from tether.types.execution import (
 )
 from tether.types.history import HistoryProvider
 from tether.types.lifetime import WorkerLifetime
+from tether.types.telemetry import AuditSink, DeliveryStats, TelemetryLimits, Tracer
 from tether.types.tooling import tool_spec
 
 from . import resuming
@@ -48,6 +50,7 @@ from .closing import close_session
 from .confirmations import approval_entries
 from .governance import AllowAll, Governance, utc_now
 from .inspection import describe_pending
+from .observers.facade import Observers
 from .reconstruction import pinned_spec, requested_turn, restore_pending
 from .recovery import resume_chain
 from .resolution import resolve
@@ -76,6 +79,9 @@ class Engine:
         clock: Clock = utc_now,
         max_output_tokens: int = 1024,
         specs: tuple[AgentSpec, ...] = (),
+        audit: AuditSink | None = None,
+        tracer: Tracer | None = None,
+        telemetry_limits: TelemetryLimits | None = None,
     ) -> None:
         self.model, self.history, self.model_limits = model, history, model_limits
         self.history_provider = history_provider
@@ -86,6 +92,7 @@ class Engine:
             limits if limits is not None else ExecutionLimits(),
             clock,
         )
+        self.observers = Observers(audit, tracer, telemetry_limits)
         self.workers = Workers(self.limits.max_workers)
         self._runs: dict[str, Run] = {}
         self._specs = {digest(s.model_dump(mode="json")): s.model_copy(deep=True) for s in specs}
@@ -100,6 +107,7 @@ class Engine:
             self._loop = current
         if current is not self._loop:
             raise RuntimeError("wrong_event_loop")
+        self.observers.delivery.bind()
 
     def _enter(self, actor: Actor, log: TurnLog) -> None:
         self._bind_loop()
@@ -113,6 +121,48 @@ class Engine:
         self._running.add(log.session.id)
         self._idle.clear()
 
+    def _governance(self, actor: Actor, log: TurnLog, turn_id: str) -> Governance:
+        return Governance(
+            actor,
+            log,
+            self.history,
+            self.policy,
+            turn_id,
+            self.limits,
+            self.clock,
+            observers=self.observers,
+        )
+
+    @contextmanager
+    def _operation(self, actor: Actor, log: TurnLog) -> Generator[None, None, None]:
+        self._enter(actor, log)
+        try:
+            with self.observers.tracer.start_as_current_span(
+                "tether.turn",
+                attributes={
+                    "tether.owner": log.session.owner,
+                    "tether.session_id": log.session.id,
+                    "tether.principal": actor.principal or actor.id,
+                },
+            ):
+                yield
+        finally:
+            self._running.discard(log.session.id)
+            if not self._running:
+                self._idle.set()
+
+    @property
+    def audit_stats(self) -> DeliveryStats:
+        return self.observers.delivery.stats
+
+    @property
+    def observation_failures(self) -> int:
+        return self.observers.failures + self.observers.tracer.failures
+
+    async def wait_observers_closed(self) -> None:
+        """Wait separately from physical cleanup; this never owns session storage."""
+        await self.observers.delivery.wait_closed()
+
     async def run_turn(
         self,
         actor: Actor,
@@ -123,13 +173,11 @@ class Engine:
         start: TurnStart | None = None,
         accepted: Callable[[], None] | None = None,
     ) -> TurnResult:
-        self._enter(actor, log)
-        try:
+        with self._operation(actor, log):
             spec = spec.model_copy(deep=True)
             start = (start or TurnStart(turn_id=log.turn_id or str(uuid4()))).model_copy(deep=True)
-            gov = Governance(
-                actor, log, self.history, self.policy, start.turn_id, self.limits, self.clock
-            )
+            gov = self._governance(actor, log, start.turn_id)
+            gov.spec_id, gov.spec_version = spec.id, spec.version
             await accept_input(gov, spec, text, start)
             self._runs.pop(log.session.id, None)
             if accepted is not None:
@@ -137,10 +185,6 @@ class Engine:
             run = self._create(gov, spec)
             self._runs[log.session.id] = run
             return await run.finish()
-        finally:
-            self._running.discard(log.session.id)
-            if not self._running:
-                self._idle.set()
 
     def spec(self, spec_id: str) -> AgentSpec:
         values = [value for value in self._specs.values() if value.id == spec_id]
@@ -149,6 +193,7 @@ class Engine:
         return values[0].model_copy(deep=True)
 
     def _create(self, gov: Governance, spec: AgentSpec) -> Run:
+        gov.spec_id, gov.spec_version = spec.id, spec.version
         self._specs[digest(spec.model_dump(mode="json"))] = spec.model_copy(deep=True)
         selected = tuple(
             tool_spec(p.tool)
@@ -199,8 +244,7 @@ class Engine:
             return None
         if log.session.id in self._running:
             return None
-        self._enter(actor, log)
-        try:
+        with self._operation(actor, log):
             run.gov.actor, run.gov.log, run.gov.policy = actor, log, self.policy
             pending = run.executor.pending[invocation_id]
             await run.gov.authorize("approve", invocation_id)
@@ -221,10 +265,6 @@ class Engine:
                     pending=tuple(run.executor.pending.values()),
                 )
             return await run.finish(continuing=True)
-        finally:
-            self._running.discard(log.session.id)
-            if not self._running:
-                self._idle.set()
 
     async def _pending_run(self, actor: Actor, log: TurnLog, invocation_id: str) -> Run | None:
         source_turn = requested_turn(log.entries, invocation_id)
@@ -243,9 +283,7 @@ class Engine:
         if source_turn is None:
             return None
         spec = pinned_spec(log.entries, self._specs)
-        gov = Governance(
-            actor, log, self.history, self.policy, source_turn, self.limits, self.clock
-        )
+        gov = self._governance(actor, log, source_turn)
         run = self._create(gov, spec)
         chain = frozenset(resume_chain(log.entries, source_turn))
         gov.configure_usage(chain)
@@ -300,17 +338,8 @@ class Engine:
         *,
         accepted: Callable[[], None] | None = None,
     ) -> TurnResult:
-        self._enter(actor, log)
-        try:
-            gov = Governance(
-                copy_actor(actor),
-                log,
-                self.history,
-                self.policy,
-                log.turn_id or str(uuid4()),
-                self.limits,
-                self.clock,
-            )
+        with self._operation(actor, log):
+            gov = self._governance(copy_actor(actor), log, log.turn_id or str(uuid4()))
             await resuming.decisions(gov)
             plan = await resuming.planned(gov, self.registry, self.workers)
             spec = pinned_spec(log.entries, self._specs)
@@ -324,48 +353,18 @@ class Engine:
             return await run.finish(
                 continuing=bool(run.deferred_ids), recovered_final=not plan.steps
             )
-        finally:
-            self._running.discard(log.session.id)
-            if not self._running:
-                self._idle.set()
 
     async def close_session(self, actor: Actor, log: TurnLog) -> None:
-        self._enter(actor, log)
-        try:
-            gov = Governance(
-                actor,
-                log,
-                self.history,
-                self.policy,
-                log.turn_id or str(uuid4()),
-                self.limits,
-                self.clock,
-            )
+        with self._operation(actor, log):
+            gov = self._governance(actor, log, log.turn_id or str(uuid4()))
             await close_session(gov)
             self._runs.pop(log.session.id, None)
-        finally:
-            self._running.discard(log.session.id)
-            if not self._running:
-                self._idle.set()
 
     async def resolve(self, actor: Actor, log: TurnLog, value: Resolution) -> None:
-        self._enter(actor, log)
-        try:
-            gov = Governance(
-                actor,
-                log,
-                self.history,
-                self.policy,
-                log.turn_id or str(uuid4()),
-                self.limits,
-                self.clock,
-            )
+        with self._operation(actor, log):
+            gov = self._governance(actor, log, log.turn_id or str(uuid4()))
             await resolve(gov, value.model_copy(deep=True))
             self._runs.pop(log.session.id, None)
-        finally:
-            self._running.discard(log.session.id)
-            if not self._running:
-                self._idle.set()
 
     async def wait_closed(self) -> None:
         """Wait for actual exits after aclose sealed submissions; caller may bound this wait."""
@@ -376,8 +375,25 @@ class Engine:
         if self.workers.active:
             await asyncio.wait(tuple(self.workers.active))
 
-    async def aclose(self) -> bool:
-        """Bounded shutdown; False explicitly means active work has not exited."""
+    async def aclose_execution(self, *, deadline: float | None = None) -> bool:
+        """Seal execution; observer delivery cannot delay physical drain or store release."""
         self._bind_loop()
-        drained = await self.workers.close(self.limits.shutdown_timeout_seconds)
+        seconds = self.limits.shutdown_timeout_seconds
+        if deadline is not None:
+            seconds = max(0, min(seconds, deadline - asyncio.get_running_loop().time()))
+        drained = await self.workers.close(seconds)
         return drained and not self._running
+
+    async def aclose_observers(self, *, deadline: float | None = None) -> bool:
+        self._bind_loop()
+        return await self.observers.delivery.aclose(deadline=deadline)
+
+    async def aclose(self) -> bool:
+        """Bounded physical/observational waits sharing one absolute deadline."""
+        self._bind_loop()
+        deadline = asyncio.get_running_loop().time() + self.limits.shutdown_timeout_seconds
+        try:
+            drained = await self.aclose_execution(deadline=deadline)
+        finally:
+            observed = await self.aclose_observers(deadline=deadline)
+        return drained and observed

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractContextManager
 
 from pydantic import JsonValue
 from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults, RunContext, Tool
@@ -39,9 +40,10 @@ class GatedAgent:
         execute: Callable[[ToolCall], Awaitable[Message | None]],
         deferred_ids: frozenset[str] = frozenset(),
         recovery_tools: tuple[ToolSpec, ...] = (),
+        observe_model: Callable[[ModelRequest], AbstractContextManager[str | None]] | None = None,
     ) -> None:
         self._execute = execute
-        self._bridge = PortModel(model, request, limits, prepare, accept_response)
+        self._bridge = PortModel(model, request, limits, prepare, accept_response, observe_model)
         self._agent: Agent[None, str | DeferredToolRequests] = Agent(
             deps_type=type(None),
             model=self._bridge,

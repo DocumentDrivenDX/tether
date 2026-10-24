@@ -26,6 +26,9 @@ from tether.types.execution import (
 from tether.types.history import HistoryRecord
 from tether.types.usage import UsageLedger
 
+from .observers.facade import Observers
+from .observers.metadata import ACTIONS, code
+
 
 def reason_code(value: str, fallback: str = "policy_reason_invalid") -> str:
     return value if re.fullmatch(r"[a-z][a-z0-9_.]{0,95}", value) else fallback
@@ -52,9 +55,14 @@ class Governance:
         turn_id: str,
         limits: ExecutionLimits,
         clock: Clock = utc_now,
+        *,
+        observers: Observers | None = None,
     ) -> None:
         self.actor, self.log, self.history, self.policy = actor, log, history, policy
         self.turn_id, self.limits, self.clock = turn_id, limits, clock
+        self.observers = observers if observers is not None else Observers()
+        self.spec_id: str | None = None
+        self.spec_version: str | None = None
         self.configure_usage(frozenset({turn_id}))
         self.policy_reasons = frozenset(
             {
@@ -100,6 +108,16 @@ class Governance:
             if entry.turn_id in self.usage_turns:
                 self.accounting.apply(entry)
         self.usage = self.accounting.snapshot()
+        self.observers.accepted(
+            self.actor,
+            self.log.session,
+            self.log.turn_id or self.turn_id,
+            entries,
+            accepted,
+            self.accounting,
+            spec_id=self.spec_id,
+            spec_version=self.spec_version,
+        )
         return accepted
 
     async def decision(
@@ -121,32 +139,43 @@ class Governance:
             usage=self.usage,
             purpose=(purpose or "answer") if action == "call_model" else None,
         )
-        try:
-            async with asyncio.timeout(self.limits.hook_timeout_seconds):
-                isolated = AuthzRequest.model_validate(
-                    request.model_dump(mode="python") | {"actor": copy_actor(self.actor)}
+        with self.observers.tracer.start_as_current_span(
+            "tether.gate", attributes={"tether.action": code(action, ACTIONS)}
+        ):
+            try:
+                async with asyncio.timeout(self.limits.hook_timeout_seconds):
+                    isolated = AuthzRequest.model_validate(
+                        request.model_dump(mode="python") | {"actor": copy_actor(self.actor)}
+                    )
+                    decision = await self.policy.authorize(isolated)
+                decision = Decision.model_validate(decision)
+            except Exception:
+                decision = Decision(allowed=False, reason="policy_unavailable")
+            allowed = decision.allowed and self.actor.id == self.log.session.owner
+            reason = (
+                (
+                    decision.reason
+                    if decision.reason in self.policy_reasons
+                    else "policy_reason_invalid"
                 )
-                decision = await self.policy.authorize(isolated)
-            decision = Decision.model_validate(decision)
-        except Exception:
-            decision = Decision(allowed=False, reason="policy_unavailable")
-        allowed = decision.allowed and self.actor.id == self.log.session.owner
-        reason = (
-            (decision.reason if decision.reason in self.policy_reasons else "policy_reason_invalid")
-            if self.actor.id == self.log.session.owner
-            else "denied"
-        )
-        return NewEntry(
-            kind="authorization",
-            turn_id=self.turn_id,
-            facts={
-                "action": action,
-                "resource": resource,
-                "allowed": allowed,
-                "reason": reason,
-                "actor_id": self.actor.id,
-            },
-        )
+                if self.actor.id == self.log.session.owner
+                else "denied"
+            )
+            entry = NewEntry(
+                kind="authorization",
+                turn_id=self.turn_id,
+                facts={
+                    "action": action,
+                    "resource": resource,
+                    "allowed": allowed,
+                    "reason": reason,
+                    "actor_id": self.actor.id,
+                    **({"purpose": request.purpose} if request.purpose is not None else {}),
+                },
+            )
+
+            self.observers.remember(entry)
+            return entry
 
     async def authorize(
         self,

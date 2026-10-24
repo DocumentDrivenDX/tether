@@ -41,12 +41,15 @@ class JournalAttemptRecorder:
             self.gov.actor.principal or self.gov.actor.id
         ):
             raise ModelAttemptDenied("invalid_attempt_identity")
+        trace = self.gov.observers.tracer.current_ids()
         identity = AttemptIdentity(
             session_id=self.tags.session_id,
             turn_id=self.tags.turn_id,
             model_call_id=self.tags.model_call_id,
             attempt_id=str(uuid4()),
             purpose=self.tags.purpose,
+            trace_id=trace.trace_id if trace is not None else None,
+            span_id=trace.span_id if trace is not None else None,
         )
         self.reserved[identity.attempt_id] = identity
         return identity
