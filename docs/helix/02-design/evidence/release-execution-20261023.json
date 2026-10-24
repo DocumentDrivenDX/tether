@@ -249,7 +249,7 @@
       ],
       "review": "Independent read-only review reproduced the disclosure/kind gaps and re-inspected fixes and provider isolation; no residual finding. No independent reexecution claim.",
       "limits": "ArchiveTransfer remains a selected local reference-closure helper; complete ArchiveSource/Sink and external/eventual profile composition remain later qualification.",
-      "installed_artifacts": "Fresh wheel/sdist built from the source hashes below: version0.0.0.post15.dev0+8f4c5a5 is precommit working-source metadata, not an exact8f checkout. Clean base installed journey passed; optional OpenAI-extra check running."
+      "installed_artifacts": "Pass: fresh reviewed-source wheel/sdist, clean base (foundation SDK count0) and optional OpenAI extra (count1), offline Agent/replay/gates, durable restart and public Client journeys. Artifact version0.0.0.post15.dev0+8f4c5a5 is precommit working-source metadata, not an exact8f checkout; source hashes below identify the built source."
     },
     "suite_orchestration": {
       "status": "Reviewed; complete shared make check passed all356 cases in12 groups and unchanged aggregate85 floor (92.26%). Static and negative-control gates passed. Focused runner/recipe cases also pass.",
