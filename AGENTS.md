@@ -164,3 +164,13 @@ positions and owner sequences. Every accepted batch, including existing-key retr
 byte limits; stored envelopes must remain canonical. SQL projection/ledger/usage/feed changes share
 the fact transaction. Pending insertion order and exact restore identity match reconstruction. These
 internal primitives do not qualify public session-store leases, takeover or deployment RLS.
+
+
+Internal SQL metadata, snapshot, entry/group, effect and persisted-feed reads now use bounded indexes.
+Keep canonical summary/projection/entry checks and aware timestamps/nonnegative positions. Compare
+redundant cached columns in SQL without transferring them. Pending metadata requires original
+requested state, position, invocation, binding owner/session and source-reference scope. Preserve
+opaque provider/codec metadata until later history hydration. Owner-head shared locks hold the
+snapshot watermark through pending lookup. Feed filtering advances across unrelated owner changes;
+retention/sequence gaps and oversized first events fail explicitly. No public SQL lease or complete
+SessionStore capability follows from those read primitives.

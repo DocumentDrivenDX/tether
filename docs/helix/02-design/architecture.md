@@ -276,3 +276,14 @@ equal keys preserve the original entry and sequence. Exact archive retries compa
 identity and journal facts. Bounded pending reads use indexes without transcript hydration. These
 primitives confer no public PostgresSessionStore or cross-process lease guarantee. Complete-port
 reads, server-time generations, stale-writer refusal and real-process recovery are the next gate.
+
+
+The internal SQL read spine shares the pure metadata cursor codec with local stores. Owner-head
+shared locks serialize snapshots and paged reads against semantic writes; summaries, entry groups,
+unknown effects and retained changes come from indexes, without history hydration. Canonical
+summary/projection/entry bytes and pending source identity are checked before return. Untrusted
+cached status/ref/title/tags stay in SQL boolean comparisons; lease and pending invocation bytes
+share the envelope transfer bound. Metadata validation uses finite parameter groups. Polling reads
+owner-sequence prefixes independently of session filtering, detects retention/sequence gaps, and
+stops at a byte boundary without advancing past an oversized event. Public lease/fencing and
+maintenance composition remain a separate qualification gate.

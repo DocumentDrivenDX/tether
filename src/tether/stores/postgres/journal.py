@@ -27,6 +27,7 @@ from tether.types.storage import (
     UnknownSession,
 )
 
+from .row_codec import entry as decode_entry
 from .rows import Connection, Frame, Rows
 
 
@@ -80,15 +81,8 @@ class Journal(Rows):
             return None
         if not isinstance(row[0], bytes):
             raise StoreError("entry_read_bytes")
-        try:
-            entry = Entry.model_validate_json(row[0])
-        except ValueError:
-            raise IntegrityError("entry_integrity") from None
-        if (
-            entry.key != key
-            or entry.index != row[1]
-            or canonical(entry.model_dump(mode="json")) != row[0]
-        ):
+        entry = decode_entry(row[0], row[1])
+        if entry.key != key:
             raise IntegrityError("entry_integrity")
         return entry
 
