@@ -15,7 +15,7 @@ from tether.history.messages import MessageHistoryAdapter
 from tether.models.testing import ScriptedModel
 from tether.stores.jsonl import JsonlRoot, JsonlSessionStore
 from tether.stores.memory import MemoryFiles
-from tether.types.execution import Actor, AgentSpec, ExecutionLimits
+from tether.types.execution import Actor, AgentSpec, ExecutionLimits, WorkerOutstanding
 from tether.types.storage import RootBusy, SessionInit, StoreError, Unsupported
 
 pytestmark = pytest.mark.anyio
@@ -112,6 +112,7 @@ async def test_close_keeps_root_owned_until_actual_tool_exit(
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
+        await assert_worker_refusals(app.client(actor), session.id)
         assert await app.aclose() is False
         with pytest.raises(RootBusy):
             await JsonlRoot.open(tmp_path)
@@ -125,6 +126,13 @@ async def test_close_keeps_root_owned_until_actual_tool_exit(
         assert await root.aclose()
     assert app.drained
     await assert_rebuilt_unknown(tmp_path, session.id, actor.id)
+
+
+async def assert_worker_refusals(client, session_id):
+    with pytest.raises(WorkerOutstanding):
+        await client.close(session_id)
+    with pytest.raises(WorkerOutstanding):
+        await client.send(session_id, "Replacement", spec="demo")
 
 
 async def assert_rebuilt_unknown(path, session_id, owner):

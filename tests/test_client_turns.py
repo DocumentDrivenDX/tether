@@ -154,7 +154,8 @@ async def test_explicit_cancel_cancels_owned_task_and_pending_cancel_returns_fal
         await handle.result()
     assert not await h.client.cancel(h.sid)
     assert not h.engine._running
-    assert (await h.client.get(h.sid)).summary.status == "interrupted"
+    assert (await h.client.get(h.sid)).summary.status == "idle"
+    assert not (await h.client.get(h.sid)).summary.resumable
     entries = await h.store.lookup(h.sid, h.actor.id, kind="turn", value=handle.turn_id)
     assert any(
         e.kind == "turn_ended" and e.facts.get("stop_reason") == "cancelled" for e in entries
@@ -527,14 +528,19 @@ async def test_request_retry_after_real_root_and_composition_restart(
     assert second.drained
 
 
-async def test_new_input_clears_interrupted_resumable_projection(turns):
+async def test_new_input_clears_interrupted_resumable_projection(turns, monkeypatch):
     h = turns
-    first = await h.client.send(h.sid, "Canceled fabricated input")
-    await entered(h.model)
-    await first.cancel()
-    with pytest.raises(asyncio.CancelledError):
+    original = h.engine._create
+
+    def fail_setup(*args):
+        raise RuntimeError("fabricated_setup_failure")
+
+    monkeypatch.setattr(h.engine, "_create", fail_setup)
+    first = await h.client.send(h.sid, "Interrupted fabricated input")
+    with pytest.raises(RuntimeError, match="fabricated_setup_failure"):
         await first.result()
     assert (await h.client.get(h.sid)).summary.resumable
+    monkeypatch.setattr(h.engine, "_create", original)
     h.model.entered.clear()
     second = await h.client.send(h.sid, "New fabricated input")
     await entered(h.model)

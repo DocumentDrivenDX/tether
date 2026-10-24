@@ -348,7 +348,11 @@ immutable history outside executable inputs, audit text and automatic model inpu
 reference-idempotent creation, store-owned lease serialization and current read authorization.
 Title omission preserves the value; explicit None clears it. Public settings cannot replace
 binder-managed held context; governed binding remains a separate extension seam.
-Resume/close/resolve and remaining command race qualification stay in this slice; provisional text/reset/coalescing remain slice 9a. The Agent remains the only
+Client close now seals incomplete/pending groups and commits closure atomically after content
+preparation and current policy checks. It refuses active turns, actual live workers and unresolved
+effects, with repeat-close idempotency and closed-session read access. Cancellation projects as
+idle/nonresumable, distinct from interruption (ADR-010). Resume/resolve and remaining command
+race qualification stay in this slice; provisional text/reset/coalescing remain slice 9a. The Agent remains the only
 model/tool iterator. Full qualification status is in the execution record.
 
 ### Consumer boundary review and implementation plan

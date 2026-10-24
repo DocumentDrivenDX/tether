@@ -317,6 +317,14 @@ class ExecutionDenied(Exception):
         super().__init__(reason)
 
 
+class WorkerOutstanding(ExecutionDenied):
+    pass
+
+
+class EffectsUnresolved(ExecutionDenied):
+    pass
+
+
 class CommitUnknown(Exception):
     """Caller must not infer whether the append was accepted."""
 

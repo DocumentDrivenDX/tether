@@ -8,7 +8,7 @@ reference CLI/terminal clients are planned in later build slices.
 **Status: gated execution, local durability and partial Client commands (slices 2–4 subset).** Pydantic AI Agent now runs tools through
 Tether's policy, validation, approval and commit gates. Model doubles and shared codecs remain
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
-Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Resume/close/resolve commands, provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Resume/resolve commands, provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
 
 ## Development
 
@@ -114,6 +114,12 @@ return `None`; concurrent answers have one winner. Continuation uses the current
 principal and credential, with the original logical turn id. Existing successful send handles
 wait for an accepted continuation before returning its latest outcome. Optional answer notes
 are bounded informational history, outside executable arguments and automatic model input.
+
+`client.close(session_id)` seals pending calls with non-success results and closes the session
+in one journal commit. It refuses active turns, live workers and unresolved effects; closed
+sessions remain readable and repeat close is idempotent. Failed result-content preparation
+cannot publish closure. Explicit cancellation returns the session to idle without advertising
+resume; an actual interruption is distinct and may be resumable.
 
 Tether bounds its owned jobs by `ClientLimits.max_active_turns`. Lease loss stops the Agent;
 shutdown cancels owned turns and retains storage until actual workers and in-flight heartbeats
