@@ -9,6 +9,8 @@ ddx:
   authoring:
     home: repo
   links:
+    - id: CONTRACT-005
+      kind: informs
     - id: ADR-004
       kind: informed_by
     - id: ADR-005
@@ -25,44 +27,46 @@ ddx:
       kind: informs
 ---
 
-# ADR-019: Session Storage Is Two Ports, a Live Store and an Archive
+# ADR-019: Session Persistence Separates Execution, History, and Optional Archiving
 
 ## Problem
 
-Session storage has two different jobs. The live job is hot and transactional: atomic per-step appends, leases with fencing, summaries kept current, a change feed, pending approvals, and recovery. The archive job is cold and read-mostly: a record of sessions that are finished, kept long and cheaply, read occasionally. One port that serves both makes the live path carry the archive's concerns and the archive carry the live path's cost. A platform adds a third consideration. Where a model gateway logs every request and response, as the Databricks AI Gateway does in inference tables, much of a session's content and usage can be read back from that log instead of being stored twice; the first downstream platform keeps only keys and facts, and reads the payloads on demand, bounded and as the calling user. The operator's direction (Erik LaBianca, 2026-10-22) is pluggable session storage with more than one interface: an archive and a live store.
+The live execution record needs atomic ordering, summaries, approvals, leases and a change feed. Authoritative history needs immutable content and actual model exchange retrieval, possibly from a service Tether does not control. Archiving is a separate retention job. Treating a gateway log only as a cold derived archive prevents it from owning model exchange content while the session is live.
 
 ## Decision
 
-We will define session storage as two ports: a live store, which is authoritative for in-flight and recent sessions, and an archive, which is an optional, separate record of finished sessions. Tether ships default implementations of each (ADR-020).
+We will compose a live execution store, an authoritative HistoryProvider, and an optional archive. CONTRACT-003 governs execution/archiving; CONTRACT-005 governs history and correlation. This replaces the earlier assumption that every live store must contain all message bytes.
 
-- **The live store** (CONTRACT-003 section 3) is the port the engine writes through and the client API reads. A turn depends on it and on nothing else.
-- **The archive** (CONTRACT-003 section 4) has two optional halves. An `ArchiveSink` takes a closed or idle session out of the live store; an `ArchiveSource` lists, gets, and pages entries for sessions that are not live, and, where it can, returns the request and response of a model call by the provider's request id.
-- **Two kinds of archive, told apart by declared capability.** An *authoritative* archive is written by tether, is lossless, and may be *restorable* to the live store. A *derived* archive reconstructs what it can from an external log (a gateway's inference tables), is read-only, and is *partial*: it has content and usage, and it has no tool executions, approvals, or intents, which only tether records.
-- **A turn never waits on or fails because of the archive.** The sink runs after a commit and its failures are audited, never raised into a turn.
-- **Archive reads are bounded and made as the caller.** They are asynchronous, time-limited, and use the calling actor's credential (ADR-011), as the first downstream platform's per-user log reader does. A read that is pending or denied is reported as pending or denied, never as empty.
-- **The client API names the tier.** A summary carries `tier` (`live` or `archive`); `list`, `get`, and `entries` take an `include` choice; cursors belong to a tier; no merged ordering is promised. An archived session is read-only, and `restore` is offered only by a restorable archive.
-- **Lifecycle is an application setting.** When a session is archived and when it is evicted from the live store are policy choices with no default proposed; the owner supplies any numbers.
-- **Open design, deferred to the Databricks profile's slice.** Whether a live store may hold a model call's content by reference only (resolved from a derived archive when read), so that the gateway's log is the only copy. Version 1 live stores hold content.
+- **Execution.** A live store transaction commits journal facts and history refs, materialized metadata, and change records together. Leases fence these writes and never imply control of external effects.
+- **History.** JSONL is the default. GatewayHistory uses inference tables for model exchanges plus an explicitly configured writable supplement for application-only content. Reads are bounded, as the current caller, and preserve pending/partial/denied/missing/ambiguous states.
+- **Content before reference.** A writable history record reaches its declared durability before the journal references it. Failed journal commits may leave invisible orphan content; they do not create an accepted message. Externally recorded exchanges instead use prepared attempts and explicit pending bindings, without claiming an atomic commit with a gateway.
+- **Working context.** Current observed data can support the running turn. Future context/argument reconstruction can depend on authoritative history under a deadline; unavailable content stops that dependent step explicitly. The execution journal still reports unknown effects and pending interaction without payloads.
+- **Archive.** An authoritative archive exports journal entries and declares whether it also preserves referenced content. A complete/restorable claim requires verified reference closure; metadata-only exports and historical gateway imports remain partial. Archive export is never in the turn path.
+- **Retention.** The application selects archive, mirror/cache and eviction settings. No source or referenced content is silently evicted as part of compaction. An eventual source does not imply indefinite retention or recoverability.
+- **Client.** Lists, snapshots, refs, effect state and journal pages stay fast without history reads. Separate position-paged history resolves content and readiness; known model-call detail resolves through the same history interface. Source timestamps do not decide transcript order.
 
 ## Why We Chose This
 
-### Over one store port
-It is simpler to state, and it forces every live store to implement the archive's job and every archive to meet the live path's transaction and latency rules.
+### Over a combined session store
 
-### Over a live store with an export tool
-It handles authoritative archiving and nothing else; a derived, read-only archive that tether never wrote does not fit an export.
+It makes every provider implement transactional execution, content persistence and retention. The interfaces have different durability and ownership constraints, especially for a read-only gateway.
 
-### Over deriving everything from the gateway's log
-A gateway log lacks what only tether knows (tool executions, approvals, intents, leases), cannot be written to, and is purged on the gateway's schedule. It is a source for content and usage, not a replacement for the live record.
+### Over gateway logs as a derived archive only
+
+That duplicates live model payloads and postpones the owner's intended source replacement. First-class history refs let external content be authoritative while local execution remains correct.
+
+### Over deriving all recovery from inference tables
+
+An external table has no atomic intent/approval/resolution record and can omit a model exchange. Correlation identifies observations; it does not prove tool completion or grant access.
 
 ## Consequences
 
-**Good**: A deployment that logs payloads in its gateway does not store them twice. Cheap long-term retention is possible without touching the live path. The live store stays small and fast. A derived archive and an authoritative one satisfy the same port.
+**Good**: Replaceable original content, metadata-only execution storage, explicit external holes and independent archiving.
 
-**Trade-offs**: Two ports and two conformance suites. A list across tiers is two calls. A derived archive is partial, and the documents must say so wherever it is shown. Restoring from a derived archive is not possible.
+**Trade-offs**: Cross-backend atomicity is limited to the journal; source durability/availability qualifies recovery. Complete offline archival requires an explicit content export, not merely saving references.
 
-**Drift signals to watch**: A turn that waits on the archive. An archive failure raised into a turn. A derived archive presented as complete. A live-store feature that exists only to serve an archive. A merged-ordering promise across tiers.
+**Drift signals to watch**: An archive required to run a turn; an external source declared complete without coverage; a content read that silently changes identity; a reference treated as proof of persistence; JSONL required to implement a multi-host database lease.
 
 ## Concern Impact
 
-- **No concern impact**: This applies the `hexagonal-architecture` concern (a port per role).
+- **No concern override**: A port per responsibility, with explicit capabilities and conformance.

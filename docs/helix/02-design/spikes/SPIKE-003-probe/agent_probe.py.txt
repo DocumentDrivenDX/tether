@@ -1,0 +1,124 @@
+"""SPIKE-003: fabricated, offline agent tests; no provider credentials or network."""
+import asyncio
+import importlib.abc
+import importlib.metadata
+import json
+import sys
+
+BANNED = {"openai", "anthropic", "claude_agent_sdk", "google", "vertexai", "mistralai", "cohere", "groq"}
+blocked = []
+
+
+class BlockProviderSDKs(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split(".")[0] in BANNED:
+            blocked.append(fullname)
+            raise ImportError("Provider SDK disabled by spike")
+
+
+sys.meta_path.insert(0, BlockProviderSDKs())
+
+from pydantic import BaseModel
+from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults, ModelMessagesTypeAdapter, RunContext
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.models import Model
+
+
+class LocalModel(Model):
+    """Minimal custom backend: proves the Model seam, not an HTTP implementation."""
+    @property
+    def model_name(self):
+        return "fabricated-local"
+
+    @property
+    def system(self):
+        return "fabricated"
+
+    async def request(self, messages, model_settings, model_request_parameters):
+        self.prepare_request(model_settings, model_request_parameters)
+        results = [p for m in messages for p in m.parts if isinstance(p, ToolReturnPart)]
+        if results:
+            return ModelResponse(parts=[TextPart("done")], model_name=self.model_name)
+        return ModelResponse(parts=[ToolCallPart("double", {"value": 3}, tool_call_id="call-fabricated")], model_name=self.model_name)
+
+
+class TypedResult(BaseModel):
+    answer: int
+
+
+class TypedModel(LocalModel):
+    async def request(self, messages, model_settings, model_request_parameters):
+        _, parameters = self.prepare_request(model_settings, model_request_parameters)
+        output_tool = parameters.output_tools[0]
+        return ModelResponse(parts=[ToolCallPart(output_tool.name, {"answer": 6})], model_name=self.model_name)
+
+
+async def main():
+    checks = {}
+    effects = []
+    agent = Agent(LocalModel(), retries=0)
+
+    @agent.tool_plain
+    async def double(value: int) -> int:
+        effects.append(value)
+        return value * 2
+
+    result = await agent.run("fabricated request")
+    assert result.output == "done" and effects == [3]
+    checks["custom_model_and_typed_tool"] = "pass"
+
+    typed = await Agent(TypedModel(), output_type=TypedResult, retries=0).run("fabricated typed output")
+    assert isinstance(typed.output, TypedResult) and typed.output.answer == 6
+    checks["pydantic_output"] = "pass"
+
+    deferred = Agent(LocalModel(), output_type=[str, DeferredToolRequests], deps_type=bool, retries=0)
+    calls = []
+
+    @deferred.tool(requires_approval=True)
+    async def double(ctx: RunContext[bool], value: int) -> int:
+        if not ctx.deps:
+            raise PermissionError("fabricated policy denial")
+        calls.append(value)
+        return value * 2
+
+    pending = await deferred.run("fabricated approval", deps=True)
+    assert isinstance(pending.output, DeferredToolRequests) and not calls
+    call_id = pending.output.approvals[0].tool_call_id
+    history = ModelMessagesTypeAdapter.validate_json(pending.all_messages_json())
+    resumed = await deferred.run(deps=True, message_history=history, deferred_tool_results=DeferredToolResults(approvals={call_id: True}))
+    assert resumed.output == "done" and calls == [3]
+    checks["approval_pause_serialized_history_resume"] = "pass"
+
+    await deferred.run(deps=True, message_history=history, deferred_tool_results=DeferredToolResults(approvals={call_id: True}))
+    assert calls == [3, 3]
+    checks["reusing_same_approved_history_reexecutes_tool"] = "observed; application must enforce single use"
+
+    try:
+        await deferred.run(deps=False, message_history=history, deferred_tool_results=DeferredToolResults(approvals={call_id: True}))
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("Policy denial did not stop approved call")
+    assert calls == [3, 3]
+    checks["application_gate_can_deny_previously_approved_call"] = "pass; tool wrapper checks fresh run deps"
+
+    assert not [name for name in sys.modules if name.split(".")[0] in BANNED]
+    checks["agent_runs_without_loaded_provider_sdk"] = "pass"
+    try:
+        from pydantic_ai.models.openai import OpenAIChatModel
+    except ImportError:
+        checks["builtin_openai_adapter_requires_sdk"] = "confirmed"
+    else:
+        raise AssertionError("OpenAI adapter unexpectedly imported")
+
+    print(json.dumps({
+        "python": sys.version.split()[0],
+        "versions": {p: importlib.metadata.version(p) for p in ["pydantic-ai-slim", "pydantic", "pydantic-graph"]},
+        "scope": "offline custom nonstreaming Model; installed SDK imports blocked, not an SDK-free dependency closure",
+        "checks": checks,
+        "blocked_imports": sorted(set(blocked)),
+    }, indent=2))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -17,6 +17,8 @@ ddx:
 
 ## Agent harness design review — 2026-10-22
 
+The owner's pre-release direction now includes [CONTRACT-004](../02-design/contracts/CONTRACT-004-context-projection-and-compaction.md), model bounds/terminal outcomes, an unsafe-effect barrier/manual resolution, actual worker-lifetime limits, and atomic reconnect snapshots. [TP-001](../03-test/test-plan.md) defines qualification; no runtime evidence is claimed.
+
 The finalized implementation path is recorded in [ADR-003](../02-design/adr/ADR-003-tether-is-a-library-of-ports-and-providers-and-builds-its-own-loop.md): retain Python and the owned harness, keep the existing application server on Databricks Apps, and do not introduce AgentKit or a compatibility wrapper. The linked review includes the Python/TypeScript trade-offs and the versioned AgentKit contract comparison.
 
 The [agent harness framework and design review](agent-harness-framework-review.md)
@@ -25,8 +27,7 @@ and additional alternatives against Tether's contracts, with primary web sources
 a framework-free counterfactual, design findings, and proposed verification.
 It recommends retaining the owned harness. Its current disposition reconciles the
 initial findings against ADR-014–020 and the revised contracts: approval/resume
-signatures and lifecycle are specified; fresh-call handling of unknown effects
-and replacement work after synchronous cancellation still need design closure.
+signatures and lifecycle are specified; fresh-call handling of unknown effects, actual worker lifetime, reconnect and context projection are now specified in CONTRACT-001 to CONTRACT-004.
 Concrete acceptance scenarios are allocated in SD-001; none has run.
 
 Related discovery: [Hermes design and reuse profile](component-profile-hermes-agent.md)

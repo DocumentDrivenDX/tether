@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "PostToolUse": [{"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "uv run --locked python scripts/claude_hook.py post-edit", "timeout": 120}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "uv run --locked python scripts/claude_hook.py stop", "timeout": 600}]}]
+  }
+}

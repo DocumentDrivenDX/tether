@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: proposed
   owner: Erik LaBianca
-  updated: 2026-10-22
+  updated: 2026-10-23
   authoring:
     home: repo
   links:
@@ -32,7 +32,7 @@ A platform serving many users calls models and downstream services as the user w
 We will carry identity as an explicit `Credential` on the `Actor` for each call, supplied by the application when it starts or resumes a turn, never stored, and read by adapters and tools from the actor. There is no ambient identity.
 
 - **The actor holds the credential.** `Actor` has an optional `credential` field, excluded from serialization and from its representation. A `Credential` is an object with an asynchronous `authorization()` method, so a token that expires can refresh.
-- **The model adapter uses it per call.** The default adapter sets the call's `Authorization` header from `actor.credential`, and SPIKE-001 and SPIKE-002 show this holds under concurrent calls with distinct users; the optional Pydantic AI adapter does the same through per-call settings, which SPIKE-001 shows override the client's default.
+- **The model adapter uses it per call.** The selected Pydantic AI model integration supplies current identity at each physical request through per-call configuration, without mutating shared client defaults. SPIKE-001/004 provide scoped mock evidence; the selected native/compatible production adapter must qualify caller/application/anonymous modes, refresh, cancellation and every SDK retry/continuation under ADR-002/003.
 - **Tools read it from the context.** `ToolContext.actor` gives a tool the credential to call a downstream service as the user, through the engine's gated reads where applicable.
 - **Clients bind an actor.** `Tether.client(actor)` returns a client whose commands that start model calls (`send`, `confirm`, `resume`) use that actor. A follower needs no credential.
 - **It is never persisted.** The credential is not written to the log, a summary, a cassette, a span, or an audit entry; the recorder strips the actor's identity as well as its credential.

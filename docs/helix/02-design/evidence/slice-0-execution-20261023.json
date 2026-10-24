@@ -1,0 +1,108 @@
+{
+  "date": "2026-10-23",
+  "scope": "SD-001 slice 0: Agent-aligned guidance, typed package scaffold, dependency and boundary gates",
+  "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
+  "plan_sha256": "448a4e70896744e344b265fbf0477c40acade0ba643673ec14d9ceb125456505",
+  "git_baseline": "a430d96",
+  "authority": "Explicit owner instruction to implement slice 0; ADR-002/003/012 select Pydantic AI Agent",
+  "status": "Requested scaffold complete; production Q0 remains partially qualified",
+  "completed": [
+    "AGENTS.md and README align with Agent, slim base, optional native adapters and Tether invariant ownership",
+    "src layout with py.typed, public types/ports owners and reserved internal Agent integration owner; no execution APIs",
+    "uv lock, hatchling/uv-dynamic-versioning, pinned build closure, dual-license wheel/sdist metadata",
+    "Shared Ruff/Pyright/shape/import/dependency/pytest recipe, local pre-commit hook and Claude Code hooks",
+    "CI workflow for Linux/macOS x Python 3.11/3.13; workflow syntax checked locally",
+    "Negative controls reject forbidden/deferred/dynamic/type-only imports, SDK public annotations, root re-exports, private graph imports, native models in generic runtime and cycles",
+    "Negative controls reject missing/version-incompatible or provider-contaminated dependency graphs, raised/removed ceilings and broad/blanket suppressions"
+  ],
+  "versions": {
+    "python": "3.11.17",
+    "uv": "0.13.3",
+    "pydantic-ai-slim": "2.59.0",
+    "pydantic": "2.14.1",
+    "anyio": "4.15.1",
+    "ruff": "0.17.2",
+    "pyright": "1.1.414",
+    "pytest": "9.1.1"
+  },
+  "checks": {
+    "uv sync --locked": "passed in Tether",
+    "make check": "passed: lint, format, typing, line caps, ceiling baseline, import graph, base dependency audit, tests",
+    "typing": "0 errors, 0 warnings",
+    "pytest": {
+      "passed": 76,
+      "branch_inclusive_coverage_percent": 91.44,
+      "minimum_percent": 85,
+      "scope": "scaffold and repository tooling, not future production behavior"
+    },
+    "base_dependency_audit": {
+      "reachable_distributions_including_tether": 18,
+      "provider_sdks": 0
+    },
+    "uv build": "passed: wheel and source archive",
+    "installed_wheel": "passed in a fresh environment from hashed lock export, with socket connections blocked before importing tether and Agent",
+    "distribution_metadata": "py.typed, MIT/Apache license texts, NOTICE and SPDX expression verified",
+    "final_rebuild": "final source archive inspected; wheel SHA-256 identical to clean-install-tested wheel",
+    "hook_configuration": "shell syntax, workflow YAML and Claude JSON parse; hook orchestration failure/recursion tests pass",
+    "git diff --check": "passed"
+  },
+  "artifacts": {
+    "dist/tether-0.0.0.post6.dev0+a430d96-py3-none-any.whl": "73f06e27e73063d087763d638116f15d4e6737addc5bbddc0ba32eaaa3df1678",
+    "dist/tether-0.0.0.post6.dev0+a430d96.tar.gz": "9fc65619efc3ee63a4bbaaaa22f8d88fe9ee692b7caaf11d73097ab7b3f317ba"
+  },
+  "qualification_limits": [
+    "Only local macOS/Python 3.11.17 execution is observed; configured remote CI and Python 3.13 jobs have not run",
+    "No native provider extra is advertised or qualified; selected native adapters and their dependency closures remain future work",
+    "Offline base imports pass; the scripted model, installed offline demo and CLI/TUI journeys require later slices",
+    "Agent tool/policy/history/recovery production qualification Q1-Q9 is not established by scaffold checks",
+    "Import analysis is an architectural guard over declared static/literal imports and annotations, not a sandbox or proof of runner semantics"
+  ],
+  "review": {
+    "material_findings_remaining": 0,
+    "corrections": [
+      "Annotation literals are distinguished from SDK forward references",
+      "Broad and blanket shape suppressions rejected",
+      "Every lowercase native model module excluded from generic runtime",
+      "Package root cannot re-export internal runtime owner"
+    ]
+  },
+  "next_action": "Slice 1: implement the Agent/model bridge, shared codecs and scripted/recording/replay doubles under CONTRACT-001/002/005; qualify the model adapter without an owned loop",
+  "blockers": [],
+  "source_control": "No commit, branch, push or hook-path installation performed",
+  "usage_metering": "Per-turn token totals unavailable; no enforced token cap claimed",
+  "saved_sha256": {
+    "AGENTS.md": "c568c6253069fa71ea34cb1a3b579a21e7abba2fa0b0872a43ef409559e238f7",
+    "README.md": "0d51e423980eb63e4e8354b16f5f824bb006d6b57eed6d10835eae22265dc30e",
+    "pyproject.toml": "92d28c600ffb469b59901b4f217bd479fa352d904dd386aa277dbbd6a35e81cd",
+    "uv.lock": "f5023a232b1ae902a9bc56aec085b1d96b84f235cad7879886dddb7e4706a0da",
+    "Makefile": "6490da9ec6792525bb062394cb0f221b12254b265764ad7daac2364bf908232c",
+    ".github/workflows/checks.yml": "c478ffdd90771ab2302e99de087f002bc15fe78a3cee83d1cc431c60de9178f0",
+    ".githooks/pre-commit": "383bfbb366673c7a4f80fb5f35ec68195228cd3c730c72e56566750efc44cb62",
+    ".claude/settings.json": "e7e4b130132ca9cfd05dee2a818acafcdbc02ba7ecf64337490e5de71631e016",
+    "src/tether/__init__.py": "c8fe91a30b202f96e4b65f4855641d276fefc378653f9fb909870fb3134a6a0f",
+    "src/tether/ports.py": "54d63fc7780c1f4cd507ade0fa53397d63fcf114243ebf241455e7b2fd7046bc",
+    "src/tether/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/tether/runtime/__init__.py": "9b2611336422d818117e1ad931a9a34430bd9a84ca01d812f08764c09ca33634",
+    "src/tether/runtime/pydantic_ai/__init__.py": "b53caf547ebd0fd7fafb160f137c09aa7e03423810d57b3ef2b5d1011818b93a",
+    "src/tether/types.py": "c078cbc0ee2f1c0f30a9c1f607dcc157a938d21682fa5bf0f6bf680750a12977",
+    "scripts/__init__.py": "16195c466e50527338158918c1ddf182c142a560538fabf2de6fe6cd8a3b09ad",
+    "scripts/boundaries/__init__.py": "adb8f3047fb180656691d416293800213684fa93ef8df519275de05696a9d3f2",
+    "scripts/boundaries/checker.py": "267da1da6f362a312696142f1c9a497c0ee693d7453bd1dcf0eb65866221b132",
+    "scripts/boundaries/imports.py": "d497bae195029c724946be589f949716d9b27272421567859584d11d377b506d",
+    "scripts/boundaries/policy.py": "5cbdb2ffe8107297f5931c19f1dd914c3150bf33419c327b2421f94f331fbf39",
+    "scripts/check_ceilings.py": "694c2e4fce8d83e5e4fb2cc14b5d8e0ba4aa2b94aa739d8cc975c28f5fe018f0",
+    "scripts/check_dependencies.py": "7bdd4b3f075c3029a41da79e366bece344171a328fd00d98a20663acabdc03f8",
+    "scripts/check_distribution.py": "3bd8bb1a941099b517ddef3552806251a27bab5cd0275874126003a020ee6928",
+    "scripts/check_file_size.py": "74a9adce9804bbe920cf9a596408b524f39859faceb95f914f8b0d1afaf7cf43",
+    "scripts/check_layers.py": "33fd3c9902d9c6ba606a162d049751522b12db6bde231e0a844a45061abca9be",
+    "scripts/claude_hook.py": "b2ac0d16b8b90be29523113f365c4e86ee679e87c11d5e2d30aa5744e8358079",
+    "scripts/dependency_policy.py": "9a24b911985f9ae7ab05acd784036ab9369583f002e9317f922ef53cb79ab8b9",
+    "scripts/process.py": "247462c963ef4ac678f9c2ad05b7f973df80e38a1dc7853703fa4a06e4ec34e5",
+    "scripts/quality.py": "316107d14db4782999533e6d526458b97444aa41983841f6d9c814ec73143d03",
+    "tests/test_commands.py": "d23090e0c261f84615695891ab160f06e405d488bf580cad44de25307f1c8dcb",
+    "tests/test_dependencies.py": "03453c7bb2fa68f45ae554f4ee30d82b836c541aa90b1887eec7c6889c0c7df1",
+    "tests/test_distribution.py": "5a138428dd712db579ad9b3ace881ea286ccf2f091eda5a1884d3c27b9d0f7b1",
+    "tests/test_layers.py": "2c8762507d2f345bf012b34662421fbce43d8b8a953664a7c04c0ea6e0da8c2d",
+    "tests/test_tooling.py": "f02db19425ae8b81fdaaa19df0730d2f12a5646c571a585a47e19f6603bea186"
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "python": "3.11.17",
+  "versions": {
+    "pydantic-ai-slim": "2.59.0",
+    "pydantic-graph": "2.59.0",
+    "pydantic": "2.14.1",
+    "httpx2": "2.16.0"
+  },
+  "tests_run": 28,
+  "failures": 0,
+  "errors": 0,
+  "elapsed_seconds": 43.737,
+  "test_ids": [
+    "test_argument_tool_and_spec_tampering",
+    "test_authorization_denies_before_validation_approval_effect",
+    "test_cancel_and_exception_after_effect_unknown",
+    "test_changed_permission_after_approval",
+    "test_concurrent_actors_no_credential_crosstalk",
+    "test_correction_new_logical_call_and_shared_budget",
+    "test_denied_pending_missing_source_has_no_cached_fallback",
+    "test_governed_summary_tags_and_no_tools",
+    "test_intent_rejection_and_uncertain_ack_zero_effect",
+    "test_invented_derived_success_or_final_text_refused",
+    "test_local_attempt_failures_prevent_transport",
+    "test_mutation_after_gate_rejected_at_business_boundary",
+    "test_normalized_approval_and_single_use",
+    "test_original_history_survives_sdk_compaction",
+    "test_owner_scope_and_writer_lock",
+    "test_policy_exception_fails_closed",
+    "test_pre_pending_derivative_proposal_mismatch_refused",
+    "test_provider_refusal_precedes_approval",
+    "test_read_policy_denial_initial_grant_resume_and_error",
+    "test_read_policy_mid_run_revocation_before_context_and_arguments",
+    "test_real_process_kill_and_recovery",
+    "test_result_commit_failure_stops_sibling_and_next_model",
+    "test_retry_identity_header_receipt_and_fresh_credentials",
+    "test_retry_policy_reevaluated_per_attempt",
+    "test_runner_checkpoint_corruption_refuses_recovery",
+    "test_sdk_boolean_is_not_authority",
+    "test_stale_lease_prevents_egress_and_effect",
+    "test_terminal_failures_never_dispatch"
+  ],
+  "scope": "actual Agent/public hooks; fabricated nonstreaming HTTPX MockTransport; fixture JSONL; real process exits",
+  "excluded": [
+    "native provider SDK/live Gateway",
+    "streaming",
+    "production store conformance",
+    "OS-crash durability",
+    "untrusted capabilities"
+  ],
+  "source_sha256": {
+    "fixture_store.py": "f24be2466e2c210b77ea0524d8db66395cb3e32f572be5e2b50f8a3b80f8181f",
+    "integration.py": "5983b7650ce0bc12f23f80ea41c1d141410c053d410b802e0e4729995f7c6f3c",
+    "test_integration.py": "e5cb4ee1892641f50b875600bc88fef2a0d5e829aa2b279ef53142eab636a938",
+    "integration_review_probe.py": "079bb331bbea30bc40f390e79fe8a689e3cdf764ffdc1397eea905c507c31faf"
+  },
+  "process_exit_scenarios": 5,
+  "payloads": "fabricated; no network or provider calls; no retained credentials"
+}

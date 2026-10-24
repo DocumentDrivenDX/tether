@@ -3,12 +3,14 @@ ddx:
   id: ADR-002
   type: adr
   activity: design
-  status: proposed
+  status: accepted
   owner: Erik LaBianca
-  updated: 2026-10-22
+  updated: 2026-10-23
   authoring:
     home: repo
   links:
+    - id: SPIKE-003
+      kind: informed_by
     - id: ADR-012
       kind: informed_by
     - id: SPIKE-001
@@ -21,47 +23,48 @@ ddx:
       kind: informed_by
     - id: CONTRACT-001
       kind: informs
+    - id: SPIKE-004
+      kind: informed_by
 ---
 
-# ADR-002: The Default Model Adapter Speaks the OpenAI-Compatible Protocol Over `httpx`, and Pydantic AI Is Optional
+# ADR-002: Reuse Pydantic AI Model Integrations Behind Tether's Model Boundary
 
 ## Problem
 
-The loop must call models without depending on any of them, carry each caller's credential and the session's tags to the server, stream text, assemble tool calls, and report outages without leaking content. ADR-012 forbids depending on a foundation-model provider's SDK and makes local and sovereign servers first-class. The first choice for the adapter was Pydantic AI, which SPIKE-001 showed can carry every requirement. SPIKE-002 then showed that Pydantic AI's OpenAI-compatible model cannot be imported without the `openai` package, so using it as the default would put a hyperscale provider's SDK in every installation.
+Tether needs compatible local/self-hosted models, optional native providers, explicit current identity, bounded streaming and retries, complete attempt correlation and scrubbed errors. Maintaining another protocol stack is not itself a product goal. SPIKE-001/002 established client feasibility; SPIKE-003 established backend substitution and core Agent capabilities. SPIKE-004 exercised the stricter Tether model and execution boundaries with a custom model and fabricated transport.
 
 ## Decision
 
-We will make the default model adapter tether's own client, written over `httpx`, that speaks the OpenAI-compatible chat-completions protocol, and we will offer Pydantic AI as an optional adapter for providers outside that protocol.
+Use Pydantic AI's model APIs and provider integrations as the default implementation path for the Agent runner selected in ADR-003. Keep the Tether ModelPort contract and provider-neutral public types. Do not build an owned HTTPX protocol client as the default.
 
-- **The default adapter** is `tether.adapters.openai_compat`, in the `models` extra, whose only third-party dependency is `httpx`. It implements the model port's one method, `stream` (CONTRACT-001). The module name denotes the wire protocol, not the SDK or the service.
-- **It carries the requirements the spikes tested.** The caller's credential from the request's `credential`, set as the call's `Authorization` header (SPIKE-001 finding 7, SPIKE-002); the session tags and trace context as headers; server-specific parameters from the request's `extra` merged into the body; token usage when the server sends it; the server's request id; an outage whose reason is a status or an error class and nothing from the body; detection of a truncated stream; cancellation that closes the connection (SPIKE-002 findings 2 to 5).
-- **It is a port, not a rewrite.** The adapter ports the first downstream platform's tested client of this protocol (about 460 lines and about 800 lines of tests), read and scrubbed first. It keeps that client's request and reply mapping (including reply content returned as a list of parts, with the model's reasoning parts dropped, and a usage block checked before it is trusted), its stream assembly (tool calls in indexed fragments, an error chunk in mid-stream treated as an outage, the body's id standing in when no header carries a request id, a usage chunk that has no choice), and its error diagnostics (an allow-listed error code and a scrubbed message, never the body). It converts the blocking `urllib` calls to asynchronous `httpx`, and it leaves behind the platform-specific transport, tier mapping, and environment configuration. Its tests port with it, and the first commit that adds it names it by description.
-- **Retries live in one layer.** The adapter does not retry; the caller owns the policy (CONTRACT-001).
-- **A conformance matrix finds server quirks.** The adapter is tested against recorded cassettes of local and self-hosted servers on fabricated prompts, and live on demand when a server is available; a quirk table in the adapter absorbs differences in tool-call streaming, finish reasons, usage, and reasoning fields.
-- **Pydantic AI is an optional adapter.** `tether.adapters.pydantic_ai`, in the `pydantic-ai` extra, implements the same port for providers whose protocols the default adapter does not speak. It MUST NOT import `openai` or any banned SDK itself; it builds its models through Pydantic AI's own provider classes. Installing its extra is the user's decision. It is never a default, and the core never imports it. SPIKE-001 is its evidence.
+- **Reuse adapter implementations.** The compatible-server profile uses the qualified Pydantic AI compatible-provider model; optional native profiles may use native models such as AnthropicModel. The runner is selected; individual provider/server subsets still require qualification. A built-in provider adapter is not accepted solely because it exists.
+- **Mediate every request.** The runtime bridge and shared model translation layer implement CONTRACT-001/004/005: source authorization, full-payload budgets, terminal/structure limits, current credentials, reserve/render/authorize+journal before each physical attempt, receipt capture and scrubbed errors. Reject incomplete or unknown terminal responses before Agent can dispatch tools or claim final output.
+- **Own retries deliberately.** Reuse Agent's bounded model-correction loop. One configured transport layer owns physical retry/backoff; disable SDK retries, fallbacks or continuations that cannot expose every egress to the attempt recorder. Count corrections, summaries and physical attempts against shared policy/deadlines without conflating their identities.
+- **Keep dependencies isolated.** The provider-neutral pydantic-ai-slim runtime is a base dependency (ADR-003). Foundation-model provider SDKs belong only to explicitly installed adapter extras (ADR-012); no hosted account is required for the base/demo/custom-model path. Model/client configuration is explicit and per-call identity is not implemented by mutating shared client defaults.
+- **Use a custom Model for a demonstrated gap.** An SDK-independent custom model remains a supported integration seam. If a built-in adapter cannot meet wire, identity or attempt requirements, adapt that seam and document its supported subset. Reopening an owned protocol client or replacing Agent requires a concrete failure/complexity case, not an optional SDK dependency or an internal type mismatch.
 
 ## Why We Chose This
 
-### Over Pydantic AI as the default adapter (the earlier choice)
-It carried every requirement (SPIKE-001) and would have supplied a provider-neutral message model and test models. It lost because its OpenAI-compatible path requires the OpenAI SDK (SPIKE-002 finding 1), which ADR-012 excludes, and because the protocol is small enough to own (SPIKE-002 finding 2). It remains available as an optional adapter, and it is the fallback if the cost of server quirks outgrows the owned adapter.
+### Over an owned compatible-protocol client by default
 
-### Over the `openai` SDK used as a protocol client
-It works with local servers, but it is the SDK of a hyperscale provider in the dependency tree of every install, which ADR-012 rules out unless the protocol cannot do the job, and it can.
+Working provider mapping, response assembly, usage extraction and stream handling can be reused. The smaller SPIKE-002 client proves feasibility, not lower ongoing maintenance. Optional OpenAI SDK use does not imply a hosted OpenAI dependency.
 
-### Over a bespoke adapter per provider SDK
-It would bind tether to each provider's data model and release cycle, and to a feature set that local models may lack.
+### Over treating all native adapters as qualified
 
-### Over an aggregation library
-It fronts the hyperscale providers' SDKs and its abstractions would define tether's.
+SPIKE-004 used a nonstreaming custom Model with MockTransport, not a native SDK or live server. The production adapter must prove the same behavior, particularly every physical request and strict terminal handling. SD-001 records those release gates.
+
+### Over adopting a provider's client as Tether's public contract
+
+Provider SDK types, ambient identity and provider-specific defaults cannot become requirements of Tether's policy/storage/client interfaces. One translation owner adapts them; another public protocol stack would duplicate that ownership.
 
 ## Consequences
 
-**Good**: No provider SDK anywhere in the default install; the dependency is `httpx`. A model path small enough to read in full and to test with cassettes. Exact control of errors, parameters, and cancellation. A local server works by configuration alone.
+**Good**: Agent and native/compatible model integration share an established model abstraction. Tether spends implementation effort on its guarantees and selected backend qualification.
 
-**Trade-offs**: Tether owns the protocol client, which starts from tested code and so inherits the quirks it already handles; it still discovers each local server's own. Message and tool mapping, retries policy, and content types beyond text (images, audio) are the project's to build, or to leave to the optional adapter. Pydantic AI's test models and provider breadth are not the default.
+**Trade-offs**: Adapter extras, serialization and SDK upgrades need dependency and behavior checks. Model translation, strict terminal rules and transport-level attempt mediation remain Tether work. Native streaming and live Gateway correspondence are not established by the spike.
 
-**Drift signals to watch**: An import of a banned SDK anywhere in the package, including the optional adapter. The optional adapter becoming a default or a dependency of the core or the clients. Quirk handling spreading outside the adapter's quirk table. Error text from a model call in a log, an audit reason, or an API response.
+**Drift signals to watch**: A parallel owned HTTPX client in the default build; invisible SDK retries; shared mutable caller credentials; provider types escaping public boundaries; a new hosted requirement; two independent wire/history conversion authorities.
 
 ## Concern Impact
 
-- **No concern impact beyond ADR-012**: `python-uv` covers the stack; `httpx` is the one dependency the default adapter adds, and this ADR is the coverage AGENTS.md requires for it.
+`model-provider-independence` retains a base free of foundation-model provider SDKs and explicit optional provider closures under ADR-012. This decision selects reuse rather than another protocol implementation. ADR-003 selects Agent; SD-001 and TP-001 own remaining qualification. SPIKE-003/004 establish bounded feasibility, not complete provider support.

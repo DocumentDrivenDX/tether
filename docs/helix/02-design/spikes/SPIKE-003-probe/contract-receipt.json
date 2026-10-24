@@ -1,0 +1,22 @@
+{
+  "python": "3.11.17",
+  "versions": {
+    "pydantic-ai-slim": "2.59.0",
+    "pydantic": "2.14.1",
+    "pydantic-graph": "2.59.0"
+  },
+  "scope": "offline core behavior; no Tether integration, durability or real model transport",
+  "checks": {
+    "text_finish_length": "Agent returns output; Tether terminal gate required",
+    "text_finish_None": "Agent returns output; Tether terminal gate required",
+    "valid_tool_call_finish_length": "executed by bare Agent; enforce Tether finish contract before dispatch",
+    "normalized_hook_view": "pass: string converted to int, default supplied, both hooks see executable values",
+    "raw_result_hook": "pass: after_tool_execute sees dict before message normalization",
+    "missing_usage_lower_bound": "pass: unmeasured_requests distinguishes incomplete aggregate; adapters must populate it"
+  },
+  "probe_sha256": "49e37646e034fd346ed83ae60790ab8e79bad7ea6492b3d822fc756f3e9119d9",
+  "execution": {
+    "command": "PYDANTIC_AI_NO_BANNER=1 python contract_probe.py",
+    "note": "Banner suppressed explicitly at the probe composition root; instrumentation off. No dependency installation."
+  }
+}

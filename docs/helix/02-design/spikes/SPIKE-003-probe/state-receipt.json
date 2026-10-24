@@ -1,0 +1,13 @@
+{
+  "python_packages": {
+    "pydantic-ai-slim": "2.59.0",
+    "pydantic": "2.14.1"
+  },
+  "scope": "offline nonstreaming Agent; no Harness installation or durable store",
+  "checks": {
+    "bounded_output_correction": "pass; one invalid response, one correction request",
+    "conversation_roundtrip_and_cumulative_usage": "pass; requests continue from 2 to 3",
+    "process_history_changes_persisted_run_history": "pass; returned conversation is trimmed, prior result retained, cumulative usage preserved"
+  },
+  "probe_sha256": "c70ec10f036fccbd80d0482e5ac22ebdf5cac76ae0890ca3aba9fa6095c7f466"
+}
