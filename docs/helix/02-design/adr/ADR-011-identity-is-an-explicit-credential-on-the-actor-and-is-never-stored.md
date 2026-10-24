@@ -34,7 +34,7 @@ We will carry identity as an explicit `Credential` on the `Actor` for each call,
 - **The actor holds the credential.** `Actor` has an optional `credential` field, excluded from serialization and from its representation. A `Credential` is an object with an asynchronous `authorization()` method, so a token that expires can refresh.
 - **The model adapter uses it per call.** The selected Pydantic AI model integration supplies current identity at each physical request through per-call configuration, without mutating shared client defaults. SPIKE-001/004 provide scoped mock evidence; the selected native/compatible production adapter must qualify caller/application/anonymous modes, refresh, cancellation and every SDK retry/continuation under ADR-002/003.
 - **Tools read it from the context.** `ToolContext.actor` gives a tool the credential to call a downstream service as the user, through the engine's gated reads where applicable.
-- **Clients bind an actor.** `Tether.client(actor)` returns a client whose commands that start model calls (`send`, `confirm`, `resume`) use that actor. A follower needs no credential.
+- **Clients bind an actor.** `Tether.client(actor)` returns a client whose commands that start model calls (`send`, `confirm`, `resume`) use that actor. A follower needs no model credential.
 - **It is never persisted.** The credential is not written to the log, a summary, a cassette, a span, or an audit entry; the recorder strips the actor's identity as well as its credential.
 - **Nothing runs for an absent user.** Because the credential is not stored, the engine cannot act for a user who is not present; resume is an explicit act by a present caller (ADR-010) unless the application opts in and supplies an identity.
 
@@ -60,3 +60,11 @@ It serves a single-user or service-account deployment only; the target includes 
 ## Concern Impact
 
 - **No concern impact**: The decision applies the `security-owasp` concern (no credential in logs or fixtures) and the `concurrency-model` concern (no ambient state shared across tasks).
+
+
+Current identity also reaches caller-scoped storage acquisition. SessionStore.for_actor captures
+a copied actor for each operation scope, preserving the credential object; no owner-keyed cached
+binding is an authorization grant. Database ownership uses actor.id, while principal remains model
+attribution. Followers do not need a model credential, but their database/history profiles may
+require a present storage credential. Maintenance identity is explicitly selected and never a
+fallback after caller failure. Provider callbacks receive separate actor copies.

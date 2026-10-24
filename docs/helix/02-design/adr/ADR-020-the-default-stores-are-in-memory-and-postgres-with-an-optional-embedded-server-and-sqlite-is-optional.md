@@ -70,3 +70,17 @@ A journal batch, integrity chain, acknowledged fsync boundary, root lock and reb
 ## Concern Impact
 
 - **No new dependency**: File I/O and process locks use the standard library off the event loop; existing optional psycopg/embedded-server dependencies retain their adapter boundaries. The storage slot remains a port, not a global database choice.
+
+
+The Postgres profile selects an injected asynchronous acquisition context, not an implicit DSN,
+role switch or internally opened pool. Applications can choose per-user connections/token refresh,
+RLS setup or explicit service maintenance. Caller storage uses pure non-owning for_actor facades;
+maintenance/migration authority is separate and never a failed-caller fallback. Every connection
+gets the present copied actor; SQL still constrains owner/session. Bound facades share root
+namespace ownership and cannot close its external pool. A stable non-secret database/schema
+identity joins process-local worker ownership across roots; shutdown retains it through actual
+exit. Explicit plain-SQL versioned migrations remain adapter-owned.
+
+The inspected consumer backend supplies reusable bounded acquisition, schema validation, short
+transactions and separate long-lock resource handling. Its service pools/synchronous wrappers do
+not qualify caller-scoped or RLS behavior; those need fresh async implementation and live tests.

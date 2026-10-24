@@ -21,12 +21,12 @@ async def resolve(
         raise ReadLimit("request_bytes")
 
     async def operation() -> SessionSummary:
-        view = await access.store.get(sid, actor.id)
+        view = await access.store_for(actor).get(sid, actor.id)
         if view is None:
             raise UnknownSession("unknown_session")
         if view.summary.status == "closed":
             await access.authorize(actor, value.invocation_id, "resolve_effect")
-            entries = await access.store.lookup(
+            entries = await access.store_for(actor).lookup(
                 sid,
                 actor.id,
                 kind="invocation",
@@ -37,9 +37,11 @@ async def resolve(
             if not prior_resolution(entries, value):
                 raise NotUnresolved("not_unresolved")
             return view.summary
-        async with access.store.turn(sid, actor.id, turn_id="resolve:" + str(uuid4())) as log:
+        async with access.store_for(actor).turn(
+            sid, actor.id, turn_id="resolve:" + str(uuid4())
+        ) as log:
             await engine.resolve(actor, log, value)
-        view = await access.store.get(sid, actor.id)
+        view = await access.store_for(actor).get(sid, actor.id)
         if view is None:
             raise UnknownSession("unknown_session")
         return view.summary

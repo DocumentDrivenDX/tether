@@ -10,10 +10,10 @@ from typing import Generic, Literal, Protocol, TypeVar
 from pydantic import Field, JsonValue
 
 from tether.types import Payload, PositiveInt, PositiveSeconds, TokenUsage
-from tether.types.execution import Entry, PendingConfirmation, SessionState, TurnLog
+from tether.types.execution import Actor, Entry, PendingConfirmation, SessionState, TurnLog
 from tether.types.lifetime import WorkerLifetime
 
-SESSION_CONTRACT_VERSION = 3
+SESSION_CONTRACT_VERSION = 4
 
 
 class StoreError(Exception):
@@ -234,9 +234,14 @@ class WorkerOwner(Protocol):
     def workers(self) -> WorkerLifetime: ...
 
 
-class SessionStore(WorkerOwner, Protocol):
-    capabilities: StoreCapabilities
+class CallerStore(WorkerOwner, Protocol):
+    @property
+    def capabilities(self) -> StoreCapabilities: ...
 
+    def for_actor(self, actor: Actor) -> SessionStore: ...
+
+
+class SessionStore(CallerStore, Protocol):
     async def aclose(self) -> bool: ...
 
     async def create(self, owner: str, init: SessionInit) -> SessionSummary: ...

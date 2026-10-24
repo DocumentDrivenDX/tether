@@ -247,3 +247,13 @@ as address/hash before inclusion. Bundle verification applies the same kind bind
 restore writes. Final READ_SESSION and, when applicable, READ_CALL_PAYLOAD checks occur after
 the final snapshot read and assembled-bundle preparation, with no subsequent asynchronous I/O
 before return. Policy decisions fail closed on malformed values and receive isolated actors.
+
+
+A selected PostgresHistory uses the same explicit caller-aware connection source/root namespace
+as execution storage. Its put/read receive the present actor and pass fresh copies to acquisition;
+no owner-keyed credential cache or fallback to maintenance authority is permitted. Application
+code owns pools, authentication, roles and RLS configuration. Tether retains owner/session/ref
+predicates and original immutable content identity. Pairing adapters does not imply one shared
+transaction: content-before-reference remains required unless a distinct combined-transaction
+profile is implemented and qualified. Current connection/loop/namespace lifetime is never stored
+in a history record.

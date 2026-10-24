@@ -74,6 +74,11 @@ new work and returns `False` if work remains after the configured finite shutdow
 `MemoryTurnLog` and `MemoryHistory` in `tether.testing.execution` implement the slice 2 journal
 and message-history subsets. Their durability is `none`. For local durability, explicitly open
 `JsonlRoot`, `JsonlSessionStore` and `JsonlHistory`, and use `MessageHistoryAdapter` with Engine.
+SessionStore contract4 exposes `store.for_actor(actor)` for caller-aware storage acquisition.
+Client operations bind the present actor explicitly, including followers and retained results.
+These scopes borrow the store lifetime: closing a scope does not close its root, and global
+recovery requires explicit maintenance authority. Applications retain ownership of credential
+refresh, connection pools, database roles and RLS; Postgres itself remains unfinished.
 The POSIX single-writer profile stores checksummed batches and accepted-prefix witnesses,
 fences leased writes, and reconstructs pending approval from journal/source facts with the
 original supplied specs. Unknown writes require reopening; close retains ownership while

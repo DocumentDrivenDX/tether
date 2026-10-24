@@ -64,13 +64,15 @@ class ArchiveTransfer:
     async def export(self, session_id: str, actor: Actor) -> ArchiveBundle:
         actor = copy_actor(actor)
         await self._authorize(actor, session_id)
-        snapshot = await self.store.snapshot(session_id, actor.id)
+        snapshot = await self.store.for_actor(copy_actor(actor)).snapshot(session_id, actor.id)
         if snapshot.view.summary.status not in {"closed", "idle", "waiting", "interrupted"}:
             raise StoreError("archive_session_running")
         entries: list[Entry] = []
         start = 0
         while True:
-            page: EntryPage = await self.store.entries(session_id, actor.id, start=start, limit=100)
+            page: EntryPage = await self.store.for_actor(copy_actor(actor)).entries(
+                session_id, actor.id, start=start, limit=100
+            )
             entries.extend(page.items)
             self._bound(
                 len(entries), sum(len(canonical(e.model_dump(mode="json"))) for e in entries)
@@ -92,7 +94,7 @@ class ArchiveTransfer:
                 sum(len(canonical(e.model_dump(mode="json"))) for e in entries)
                 + sum(len(canonical(record)) for record in records),
             )
-        if await self.store.snapshot(session_id, actor.id) != snapshot:
+        if await self.store.for_actor(copy_actor(actor)).snapshot(session_id, actor.id) != snapshot:
             raise StoreError("archive_session_changed")
         summary, settings = snapshot.view.summary, snapshot.view.settings
         init = SessionInit(
@@ -166,4 +168,6 @@ class ArchiveTransfer:
         ):
             await self._authorize(actor, bundle.session.state.id, "read_call_payload")
         await self._authorize(actor, bundle.session.state.id, "x.tether.restore_session")
-        await self.store.restore(bundle.session, created_at=bundle.created_at)
+        await self.store.for_actor(copy_actor(actor)).restore(
+            bundle.session, created_at=bundle.created_at
+        )

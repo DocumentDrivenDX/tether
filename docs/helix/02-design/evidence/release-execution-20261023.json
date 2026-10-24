@@ -4,7 +4,7 @@
   "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
   "authority": "Explicit owner instruction in integration-lead session; includes source control, merge and Tether-session coordination.",
   "status": "active",
-  "branch": "codex/tether-client-archive",
+  "branch": "codex/tether-postgres",
   "baseline_commit": "d680c4d",
   "completed_slices": [
     0,
@@ -12,7 +12,7 @@
     2,
     3
   ],
-  "current_slice": 4,
+  "current_slice": 5,
   "slice_3": {
     "implemented": [
       "checksummed local journal/history with OS ownership and fsynced accepted-prefix witnesses",
@@ -52,14 +52,14 @@
     "mcp_disposition": "MCP is P2 and outside selected 0.1 slices. Consumer adoption/MCP Apps require separate qualification; do not silently promote advisory scope.",
     "inventory": "Recent app inventory reconfirmed the integration-lead and read-only MCP/durability chats; both have role-specific titles."
   },
-  "next_action": "Merge reviewed/tested archive composition promptly. Then finish complete-profile Client baseline/conformance gaps and start slice5 Postgres transactions/history/pool/migrations/live cross-process qualification, preserving all remaining selected slices.",
+  "next_action": "Merge the reviewed actor-binding bridge promptly, then implement slice5 injected async Postgres acquisition, explicit SQL migrations, shared namespace lifetime, transactions/history/fencing and real database/process qualification. Complete-profile Client conformance/performance and all later selected slices remain.",
   "qualification_limits": [
     "Only local POSIX single-writer JSONL is implemented; Postgres cross-process profile is slice 5.",
     "No OS power-cut guarantee is inferred from process-exit tests.",
     "Full started-invocation replay, complete actual-worker/lease-loss and recovery profile qualification remain slice9. Manual resolution is now implemented in the selected local Client subset.",
     "Live Gateway/profile credentials and real server correspondence are not supplied or qualified."
   ],
-  "source_control": "PRs1\u201312 merged promptly after review/testing; archive composition is independently reviewed and locally qualified for immediate merge. No PR stack.",
+  "source_control": "PRs1\u201313 merged promptly after review/testing. Caller-binding bridge independently reviewed and locally qualified for immediate merge; no PR stack.",
   "metering": "Active goal has no user-specified token/time ceiling; runtime metering is available via get_goal; no invented total-budget claim.",
   "boundary_review": {
     "status": "Sub-agent review complete; sanitized plan recorded and omissions corrected.",
@@ -105,7 +105,7 @@
       "src/tether/adapters/pydantic_ai/transport.py": "dda2d7bdffd3b912de82abb275a90c28e581c7936da2c9b8e8a728bf4595d951",
       "src/tether/adapters/pydantic_ai/wire.py": "9c52f9ed19254f9401cb66044bed577aa25f8393710ff7347ab4122ab81b4e68",
       "src/tether/client/__init__.py": "99f65be3e2ea70684732918f7a8db4c0bf41a957814be45455dd9bab429ebd7a",
-      "src/tether/client/reads.py": "e9249c35d2fd849ea4fc11ea3b87e4f9d6eb44d28e431d55b5fe24e758e28765",
+      "src/tether/client/reads.py": "97b01350fb1287fd37d2d72f95ba77518d92ed97d509102e09eff6611173c607",
       "src/tether/engine/__init__.py": "89352a00677b2cb9c374d9c09a2fa7345d5019d7878c225a40311cc9c16e4592",
       "src/tether/engine/agent.py": "09dd10ff9aa6d03d982d91240a9f864f34f5522df214dc47e02f812ab1ca39ea",
       "src/tether/engine/attempts.py": "54ed20be771f60fe32af288af0e8812b2b7d55f026b6f44649a43068b8e99f07",
@@ -133,7 +133,8 @@
       "src/tether/models/testing/__init__.py": "dc2f135efa50188ac9e6044de15b5b40fd140c21273e278d17e4af8b3e2f7962",
       "src/tether/models/testing/cassettes.py": "fbe9516ecfa9d41997b87ada61e16a2e78abf4cf8f243cc5bf95d61aca94dcef",
       "src/tether/models/testing/scripted.py": "acfde3d92abaeb1079147ff80964642fb96f7087a63311cca3080029eca9ddd0",
-      "src/tether/ports.py": "d1f0dd51beb3d3e70a83ee6a7ba95d9f617c9ad4efde1b93bbd16ec5db8b321f",
+      "src/tether/ports/__init__.py": "d1f0dd51beb3d3e70a83ee6a7ba95d9f617c9ad4efde1b93bbd16ec5db8b321f",
+      "src/tether/ports/bound.py": "835d1dc714921cbbe1ccabc48ab8c0263ee15cfee0fdfdf5f693d8b1e5a359c0",
       "src/tether/runtime/__init__.py": "9b2611336422d818117e1ad931a9a34430bd9a84ca01d812f08764c09ca33634",
       "src/tether/runtime/pydantic_ai/__init__.py": "f3cf2a92212b45f2ac91f8b04a2abfa0a59f6970fdeb995e5865512182974f44",
       "src/tether/runtime/pydantic_ai/bridge.py": "c7834888759fa37a508b6edddfed859ca915e47651ccce5762d7b394f6127250",
@@ -142,19 +143,19 @@
       "src/tether/runtime/pydantic_ai/messages.py": "ddf6f4490ee254df8f5e54d13aa8856318e5cd23b8b32d4149713e86f14d9566",
       "src/tether/runtime/pydantic_ai/validation.py": "296f7124ceefcddf8b4f8a136bdbfb49c50c628ac00936fe5410689329085ea0",
       "src/tether/sessions/__init__.py": "49fe2880d4d0c62b1555b2bb0fb62f5cdd51633f338e33047da728ce8d40f14a",
-      "src/tether/sessions/access.py": "6f2bc2dc1cffee91b49bfc20bd72dea26dc332d35cf06e0a775cc795f27ac5d0",
-      "src/tether/sessions/archive.py": "96fa47dec8a556e72bb670ee084209907e7018ce49847bc4d4057a338b617cd0",
-      "src/tether/sessions/archived.py": "7b0f3b3796a7c25db0da45430676a0852df7b6aaa503b51ab7073dc60b9ea941",
-      "src/tether/sessions/closing.py": "8546bf312f2b633f723d206b568fa6ec3096894cb1c4ac47681cbd6eb078248e",
-      "src/tether/sessions/content.py": "e854934c018abe64bf987395a83abb8f8f308e58a1d5a917787061df7e3632f5",
+      "src/tether/sessions/access.py": "2b52dded9bafa6772f5e77f07b48e519e14ebf2e59854e75697bd09778a27347",
+      "src/tether/sessions/archive.py": "5919e765cef5e1335305adcf6b2c908303f4fb1ac0037823792356db1bbb5608",
+      "src/tether/sessions/archived.py": "a1110ba4d2b229ae3baa4fbdf027870fcb1867753d31e072f2d44acf23291ce9",
+      "src/tether/sessions/closing.py": "1ac35f013293e9768c4bc0198dc47def5d2d7beb485aee75b1da2108400a14b5",
+      "src/tether/sessions/content.py": "b0dd0a076df57b835f6d9f05f2e18b761ade434e12c542236e5e3dc91e98169b",
       "src/tether/sessions/disclosure.py": "08bf4ae4f193be0974d8507fb6ce4c8d5e4803ec39f8b31efc278dd80ec6f9f5",
-      "src/tether/sessions/feed.py": "72de57fc1961df836cfbe94fedc767ff65685f0835a07ee8eb16897de534a728",
-      "src/tether/sessions/metadata.py": "c556f908d13ca95cd4e09d50846b1587a53a2afa9ec561d6413c9e1e4a995c89",
-      "src/tether/sessions/outcomes.py": "5239592c0fb785b7626d8d741d1a545355e90019ce8d5d8491e536ea82a65d28",
-      "src/tether/sessions/resolution.py": "0c473749e8070d826f4f9dfde5a4e2633ab16b47ce76f399deb42d1d29034de6",
+      "src/tether/sessions/feed.py": "f5ec36dfd613e65e7cd4b28b5a38035f0305347a2e3b63440d120ce9e6d68619",
+      "src/tether/sessions/metadata.py": "9bf2619e96632c64b7126dd94d9450d32630d1b8dffc9f867496d7b478c650ab",
+      "src/tether/sessions/outcomes.py": "c919c6651b76b4a627ca2b9b9f1762052a8fed23e0fc7952f731c67190602e28",
+      "src/tether/sessions/resolution.py": "a588ab6f8e89ddd87ddbb96c8c97e59cbf47771ac023c0fabe8b844602cbd5ae",
       "src/tether/sessions/service.py": "80a170d04f30fa6b38b97544b7d72b2de57e48ae676a8f7cb4317de2d4261cb9",
       "src/tether/sessions/supervision.py": "b0aea368f3d0d6635588a9127b9af5c55489c6c9ddcbd5a0c793c3bd9d3eecb9",
-      "src/tether/sessions/turns.py": "14c3e9e6a5be13b45f0a179b59ee6961085b11baf7140b190375885ca795fc8d",
+      "src/tether/sessions/turns.py": "a5d897bbd75b6bb8c2e78a168b3d7a78d51017239c65e88a1c10cba28c75e479",
       "src/tether/stores/__init__.py": "cf4260a2846fcdb5a97e6e421684e82781bd6b53d5df40c519e1574bcb9c9eaf",
       "src/tether/stores/archive.py": "1797eee30ddf5010808152b7b5ec4bc5fdd55f2a1293ba40c7fab1a2a5789df5",
       "src/tether/stores/jsonl/__init__.py": "d6fbd524a6cbde19ebb6f5015810cb964f15b0b016a24c8429be9aa679a461d4",
@@ -163,7 +164,7 @@
       "src/tether/stores/jsonl/queries.py": "e4aafa2c2c801648664107537c44494c6b692e69c42f0ecbd9433d4331d2892c",
       "src/tether/stores/jsonl/reads.py": "cb0736e1ec4b349444954317d1deb224734de8944f9fe45b76a88cea31e1eb70",
       "src/tether/stores/jsonl/root.py": "3e3c83f7a4e9dd15a8835bd14671e9f6eb73ed2bd3578d59affbb08b60c2529b",
-      "src/tether/stores/jsonl/store.py": "5d19407d2bfff6f87e3fef7600ba8000ecea9f697ae221dd78c4fac80f3a2e63",
+      "src/tether/stores/jsonl/store.py": "6fbe43f23167e58749b8693264deed9f6dd51787014c9ac8d6bbe970c9721993",
       "src/tether/stores/memory.py": "a85fe4458aec1211cda722ac5c930d67a8bc2556b5ae95e4ecb1a1bd674f9a92",
       "src/tether/stores/projections.py": "9251130fc65d2a27cd3208b5b2ff143584f4604cfb4526a4358ee7e608c03b80",
       "src/tether/testing/__init__.py": "50f56407ca46e6fe037b6ca044bcd03cc1d1e7bac7b4b774ae30a675dc349100",
@@ -177,7 +178,7 @@
       "src/tether/types/execution.py": "a9c1a881e3b07ddc6180fd50d3fb108a5be2ec9fb6ba5d3f272a4722c09fe74c",
       "src/tether/types/history.py": "486eb935a8742eca3a78202806e6cdbf955e29f3c3e7a780e39ba9e1bbcd6209",
       "src/tether/types/lifetime.py": "298c24c51f5cc8a427cda22200249874200df02bca3f16abde90fc36d72b2733",
-      "src/tether/types/storage.py": "c407b38b5003dec51ed5bd792ec1b5bb0782e14eedbd62f8941c35098a7ba899",
+      "src/tether/types/storage.py": "e6d9f18a1d9fecc60831ec2e64466b9230f2459539302efec8da98f38bcb6e89",
       "src/tether/types/tooling.py": "43e1d6d00a588ed33388f72e44b36d1a74df90063d7242f17f88579a4e976735",
       "scripts/__init__.py": "16195c466e50527338158918c1ddf182c142a560538fabf2de6fe6cd8a3b09ad",
       "scripts/boundaries/__init__.py": "adb8f3047fb180656691d416293800213684fa93ef8df519275de05696a9d3f2",
@@ -196,6 +197,7 @@
       "scripts/quality.py": "8dd854695eb3d0ff757713efaa40033e5d6c5668c9e8dfa4eeda62d2cca16afd",
       "scripts/test_suite.py": "6a5b7eed7030555e7b48d6e03f1ae5022fdf6e3ade6296628af44914be57e7e7",
       "tests/conftest.py": "1bc289fc6a0327939ff34366bd294642abac3dcf32b3e938f65f9ba9c3648e16",
+      "tests/test_actor_store.py": "07b51587300f0719879e4e7ebc484324a99954578be13c32810bc74f4ed05779",
       "tests/test_adapter_limits.py": "a88b3f1e0c2b6a5390a2c6e0d04bc0f5809eaa9e95a6c2f519b836c4de831a92",
       "tests/test_agent_bridge.py": "e79ab508288325be3750eabffe734dfa9cafa2e86568f6eabb8cfce11acd0cf0",
       "tests/test_approval_notes.py": "123ef7b76cb39fbd30db9c78965330e5ac0c32a82339fbc4863da61252dbd32c",
@@ -450,7 +452,7 @@
       ],
       "review": "Independent review recommended explicit status/bundle/history/cursor/retention boundaries, then reproduced final-policy payload disclosure, mutable restore actors and conflicting restore identity. Exact regressions pass. Final changed paths align with those boundaries; reviewer did not independently rerun full suite.",
       "tests": "58 new asynchronous memory/JSONL cases plus existing suite: authoritative round trips in final/waiting/unknown/closed states, reference closure/owner scope, derived marking, statuses/timeouts, byte caps before hydration, cursor scope before adapter, stale snapshots, per-boundary actor isolation, final payload revocation, content-orphan/refusal/retry, unknown acknowledgment/reopen, off-turn sink failure and fresh approval gates.",
-      "installed_artifacts": "Fresh final working-source wheel/sdist0.0.0.post33.dev0+2f72052 passed clean base SDK count0 and OpenAI extra count1. Journeys include earlier Agent/Client/resolve/resume/reopen plus actual explicit archive\u2192tier/history browsing\u2192new independent root\u2192Client.restore and idempotent retry with no model/tool reexecution. Version denotes precommit base; source hashes below identify built source.",
+      "installed_artifacts": "Fresh final working-source wheel/sdist0.0.0.post33.dev0+2f72052 passed clean base SDK count0 and OpenAI extra count1. Journeys include earlier Agent/Client/resolve/resume/reopen plus actual explicit archive\u2192tier/history browsing\u2192new independent root\u2192Client.restore and idempotent retry with no model/tool reexecution. Version denotes precommit base; PR13 committed receipt source hashes identify built source.",
       "installed_journey_driver_sha256": "366037e480b9cebf61249376bec639bdf8161debef9f4670857f75215addff86",
       "installed_artifact_sha256": {
         "tether-0.0.0.post33.dev0+2f72052-py3-none-any.whl": "dd6f76031d9b00819f25b81f385f3e56465755fa8c50f910a0ef413411dbb359",
@@ -557,6 +559,30 @@
       "merge_commit": "2f720522954907dff9e0fbb7b3d30710c3df3a6f",
       "status": "merged",
       "qualification": "Full local macOS/Python3.11 gate590/92.03%; fresh reviewed-source base/extra actual interrupted-safe-effect\u2192root-reopen\u2192Client.resume journeys passed. Independent review fixed shared worker, invocation lineage and pre-submit loop gaps. Hosted jobs running/queued at merge; no hosted pass claim."
+    },
+    {
+      "number": 13,
+      "url": "https://github.com/DocumentDrivenDX/tether/pull/13",
+      "head": "b46ec7c7aabc668b2f2ceebc11b34dabba93fc57",
+      "merge_commit": "69f973c5485fa5c21132417f8082ddc7f7837878",
+      "status": "merged",
+      "qualification": "Full local macOS/Python3.11 gate648/91.79%; fresh reviewed-source base/extra archive/restore journeys passed. Independent review fixed actor isolation, aggregate disclosure and restore identity. Hosted checks running/queued at merge; no hosted matrix pass claim."
     }
-  ]
+  ],
+  "slice_5": {
+    "status": "in progress: caller-bound storage prerequisite qualified; SQL implementation not yet added",
+    "actor_binding": {
+      "contract_version": 4,
+      "checks": "make check passed: 690 tests, 91.88% branch-inclusive coverage; strict Pyright0, Ruff/format, unchanged shape/size/layer/dependency gates and negative controls; macOS/Python3.11.17.",
+      "review": "Independent bounded review found no remaining defect after exact foreign-loop factory/get/close regressions. Reviewer independently reproduced safe wrong-loop refusal; did not rerun full suite.",
+      "tests": "42 new memory/JSONL cases cover owner mismatch on every facade method, non-owning close, explicit maintenance refusal, distinct same-owner credentials, actor-copy isolation, revocation, acquisition refusal without fallback and foreign-loop refusal before mutation. Existing Client/turn/follower/outcome/archive journeys exercise propagated bindings.",
+      "installed_artifacts": "Fresh working-source wheel/sdist0.0.0.post35.dev0+69f973c passed clean base SDKcount0 and OpenAI-extra SDKcount1 with public Agent/Client/resolve/resume/reopen/archive/restore journeys. Version denotes precommit base; current source hashes identify runtime source. README/AGENTS/receipt prose updated after artifact build.",
+      "installed_artifact_sha256": {
+        "tether-0.0.0.post35.dev0+69f973c-py3-none-any.whl": "ce40661d6c28931e66d1d840c6dc2a44d842d4887a8bd4cf62756592be263b2b",
+        "tether-0.0.0.post35.dev0+69f973c.tar.gz": "a78c742495392ea9cbf645fcb434beb58ccf8f6eec590f976f4fa932e44ebc4b",
+        ".gitignore": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1"
+      },
+      "remaining": "No Postgres/RLS/credential-refresh/namespace-sharing SQL proof inferred from local facades. Qualify injected caller acquisition, maintenance authority, same-database root sharing and physical cleanup with real PostgreSQL18."
+    }
+  }
 }
