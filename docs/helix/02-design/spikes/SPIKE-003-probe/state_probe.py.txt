@@ -1,0 +1,77 @@
+"""Offline SPIKE-003 state/retry follow-up; fabricated values only."""
+import asyncio
+import importlib.metadata
+import json
+
+from pydantic import BaseModel
+from pydantic_ai import Agent, ConversationTypeAdapter
+from pydantic_ai.capabilities import ProcessHistory
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, RetryPromptPart
+from pydantic_ai.models import Model
+
+
+class Answer(BaseModel):
+    value: int
+
+
+class RetryModel(Model):
+    def __init__(self):
+        super().__init__()
+        self.calls = 0
+        self.saw_retry = False
+
+    @property
+    def model_name(self):
+        return 'fabricated-retry'
+
+    @property
+    def system(self):
+        return 'fabricated'
+
+    async def request(self, messages, model_settings, model_request_parameters):
+        _, params = self.prepare_request(model_settings, model_request_parameters)
+        self.calls += 1
+        self.saw_retry |= any(isinstance(p, RetryPromptPart) for m in messages for p in m.parts)
+        value = 'invalid' if self.calls == 1 else 7
+        return ModelResponse(parts=[ToolCallPart(params.output_tools[0].name, {'value': value})], model_name=self.model_name)
+
+
+class TextModel(RetryModel):
+    async def request(self, messages, model_settings, model_request_parameters):
+        self.calls += 1
+        self.received = len(messages)
+        return ModelResponse(parts=[TextPart('fabricated reply')], model_name=self.model_name)
+
+
+async def main():
+    checks = {}
+    model = RetryModel()
+    agent = Agent(model, output_type=Answer, retries={'output': 1, 'tools': 0})
+    first = await agent.run('fabricated invalid output then correction')
+    assert first.output.value == 7 and model.calls == 2 and model.saw_retry
+    checks['bounded_output_correction'] = 'pass; one invalid response, one correction request'
+    stored = ConversationTypeAdapter.dump_json(first.conversation)
+    conversation = ConversationTypeAdapter.validate_json(stored)
+    assert conversation.usage.requests == 2
+    assert conversation.conversation_id == first.conversation.conversation_id
+    second = await agent.run('fabricated follow-up', conversation=conversation)
+    assert second.conversation.usage.requests == 3
+    assert second.conversation.conversation_id == first.conversation.conversation_id
+    checks['conversation_roundtrip_and_cumulative_usage'] = 'pass; requests continue from 2 to 3'
+
+    original_history_size = len(second.conversation.messages)
+    async def latest_request(messages):
+        return messages[-1:]
+    text_model = TextModel()
+    compact = Agent(text_model, capabilities=[ProcessHistory(latest_request)])
+    shortened = await compact.run('fabricated trimmed context', conversation=second.conversation)
+    assert text_model.received == 1
+    assert len(shortened.conversation.messages) < original_history_size
+    assert len(second.conversation.messages) == original_history_size
+    assert shortened.conversation.usage.requests == 4
+    checks['process_history_changes_persisted_run_history'] = 'pass; returned conversation is trimmed, prior result retained, cumulative usage preserved'
+    print(json.dumps({'python_packages': {p: importlib.metadata.version(p) for p in ['pydantic-ai-slim', 'pydantic']}, 'scope': 'offline nonstreaming Agent; no Harness installation or durable store', 'checks': checks}, indent=2))
+
+
+if __name__ == '__main__':
+    asyncio.run(main())

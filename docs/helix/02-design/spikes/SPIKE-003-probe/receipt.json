@@ -1,0 +1,22 @@
+{
+  "python": "3.11.17",
+  "versions": {
+    "pydantic-ai-slim": "2.59.0",
+    "pydantic": "2.14.1",
+    "pydantic-graph": "2.59.0"
+  },
+  "scope": "offline custom nonstreaming Model; installed SDK imports blocked, not an SDK-free dependency closure",
+  "checks": {
+    "custom_model_and_typed_tool": "pass",
+    "pydantic_output": "pass",
+    "approval_pause_serialized_history_resume": "pass",
+    "reusing_same_approved_history_reexecutes_tool": "observed; application must enforce single use",
+    "application_gate_can_deny_previously_approved_call": "pass; tool wrapper checks fresh run deps",
+    "agent_runs_without_loaded_provider_sdk": "pass",
+    "builtin_openai_adapter_requires_sdk": "confirmed"
+  },
+  "blocked_imports": [
+    "openai"
+  ],
+  "probe_sha256": "9ad38077dfd1682691ce13a16cf76b8b28ce88d30cf7137878309e77a2d9b748"
+}

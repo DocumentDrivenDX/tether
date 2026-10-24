@@ -1,0 +1,162 @@
+{
+  "date": "2026-10-23",
+  "scope": "SD-001 slice 2: gated tool execution through Pydantic AI Agent",
+  "status": "Requested gated execution foundation implemented and verified; production qualification remains bounded",
+  "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
+  "plan_sha256": "59a85ed2866be194aa3304ca489d8f8947fcb830b598cb92910e664d1092c8d9",
+  "git_baseline": "a430d96",
+  "source_state": "Uncommitted working tree; source hashes below identify this qualification",
+  "authority": "Explicit owner instruction to implement slice 2; ADR-003/014/015/016 and CONTRACT-002/003/005",
+  "completed": [
+    "Tether-owned Engine facade with Agent-owned iteration, public Tool.from_schema, fixed serial execution and public deferred approval continuation",
+    "Pinned tool registry and canonical definition digests; immutable source-position invocation ids and raw proposal manifests",
+    "One-pass executable argument normalization per gate entry, including defaults/coercions and nested typed JSON; unsupported leaves and lossy serializers refused",
+    "Current owner/READ_SESSION/CALL_MODEL/CALL_TOOL/APPROVE/RETRIEVE policy mediation with metadata reason allowlist and fail-closed exceptions",
+    "Ordered provider hooks, structural request narrowing, visibility, capabilities, isolated normalized arguments, result shape checks and re-guarding changed content",
+    "Approval binding to session/invocation/executable arguments/tool/spec/actor; approve/decline/expiry/supersession and one-winner same-process answers",
+    "Complete assistant content-before-reference commit and acknowledged intent-before-effect; result content-before-reference/final-fact atomic append",
+    "Rejected, failed or uncertain source/intent commits prevent dispatch; failed result commit prevents dependent model continuation",
+    "Effectful exceptions/timeouts/cancellation retain unknown outcome; session-wide barrier blocks different new effectful invocations while read-only tools remain eligible",
+    "Incomplete accepted call groups receive non-success closure before a new turn; duplicate accepted results never authorize another effect",
+    "Bounded plain-function offload with context propagation, queued cancellation, actual-worker capacity/session-busy tracking and finite shutdown reporting",
+    "Volatile MemoryTurnLog and MemoryHistory with atomic batches, idempotency conflict checks, immutable copies, owner/session and hash checks",
+    "Port subset conformance and actual Agent characterization; installed wheel gated approval smoke with network connections blocked",
+    "AGENTS.md, README and SD-001 qualification status updated without changing the selected runner or weakening checks"
+  ],
+  "checks": {
+    "uv sync --locked": "pass; no dependency additions",
+    "make check": {
+      "result": "pass",
+      "tests": 217,
+      "added_since_slice_1": 69,
+      "branch_inclusive_coverage_percent": 93.35,
+      "minimum_unchanged": 85,
+      "strict_pyright": "0 errors, 0 warnings",
+      "ruff_lint_and_format": "pass",
+      "file_and_shape_ceilings": "pass; unchanged",
+      "architecture_layers_and_negative_controls": "pass",
+      "base_foundation_provider_sdk_count": 0
+    },
+    "uv build": "pass; wheel and source distribution",
+    "installed_base": "pass; socket connections blocked, real Agent/model/record/replay plus gated approval execution, 0 foundation-model SDKs",
+    "installed_openai_extra": "pass; same offline Agent/gated checks and optional adapter import; exactly the OpenAI foundation SDK present",
+    "git diff --check": "pass",
+    "local_matrix": "macOS / Python 3.11.17 only; configured remote matrix not executed here"
+  },
+  "versions": {
+    "pydantic-ai-slim": "2.59.0",
+    "pydantic-graph": "2.59.0",
+    "pydantic": "2.14.1",
+    "anyio": "4.15.1",
+    "openai": "3.37.0",
+    "ruff": "0.17.2",
+    "pyright": "1.1.414",
+    "pytest": "9.1.1"
+  },
+  "integration_review": {
+    "result": "Blocking findings in the implemented subset resolved and affected paths retested",
+    "resolved_findings": [
+      "Pause later batch calls when one invocation requires approval; resume through fresh gates",
+      "Pass identical normalized values to before/after hooks, asks_first, approval presentation and the validated executable object",
+      "Reject custom serialization that changes approval meaning; preserve raw source independently",
+      "Reject incomplete narrowed call groups before model egress",
+      "Require exact accepted journal acknowledgments before dependent actions",
+      "Retain real worker capacity after cancellation and cancel queued functions before entry",
+      "Keep live credential objects by identity while copying mutable actor data and excluding credentials from snapshots",
+      "Normalize undeclared policy reasons without changing the allowed boolean"
+    ],
+    "runner_decision": "No remaining observed integration failure justifies an owned loop. Agent owns iteration/deferred continuation; remaining work belongs to Tether state/ports, adapters and qualification."
+  },
+  "remaining_qualification": [
+    {
+      "gate": "Q1/Q3/Q4",
+      "slices": "3/5/7/9b",
+      "work": "Complete the TurnLog/HistoryProvider surfaces: durable JSONL/Postgres, fenced leases, summary/feed indexes, full history readiness/exchanges and physical-attempt journal binding. Current ports are explicitly slice 2 subsets."
+    },
+    {
+      "gate": "Q1/Q4",
+      "slices": "3/5/9",
+      "work": "Reconstruct approval/runner state without process-local caches; qualify safe same-invocation recovery, original intent reuse, manual effect resolution, lost checkpoints, storage faults and multiprocess races."
+    },
+    {
+      "gate": "Q5",
+      "slices": "9",
+      "work": "Extend actual-worker evidence to lease loss, stale writes/completion and process/runtime shutdown faults. Current capacity and one-winner proofs are process-local; no cross-process execution guarantee."
+    },
+    {
+      "gate": "Q1/Q3/Q7",
+      "slices": "6/7",
+      "work": "ScopeBinder/SpecResolver integration, full context budgets/compaction, audit/tracer ports and receiver proof. Current facts are metadata-only, not complete telemetry conformance."
+    },
+    {
+      "gate": "Q1/Q2/Q8",
+      "slices": "9a/9b",
+      "work": "Qualify further terminal/correction/structured-output, attachment/media/reasoning and stream codecs. Current text/function subset explicitly refuses unsupported content; live compatible servers and other native providers remain unqualified."
+    },
+    {
+      "gate": "Q0/Q6/Q8/Q9",
+      "slices": "4/8/10/11",
+      "work": "Run remote Python/OS matrix, durable installed client journeys, upgrade regression and separately selected live Gateway/native-provider profiles."
+    }
+  ],
+  "qualification_limits": [
+    "Memory doubles declare durability none and no leases/fencing; pending Agent state is process-local",
+    "No durable recovery/manual resolve API or production attempt recorder was delivered in this slice",
+    "AllowAll is intentionally permissive; application policy supplies scope/budget meaning",
+    "Trusted in-process extensions are not sandboxed; validators must be pure/bounded/deterministic and tool versioning remains an author obligation",
+    "No live network/provider account, production store, OTel receiver or full release support matrix exercised",
+    "Full cross-backend atomicity or exactly-once external effects is not claimed"
+  ],
+  "next_action": "Slice 3: durable journal/history and session ownership, fencing and restart reconstruction; preserve the gated Agent path and current source/approval/effect invariants.",
+  "blockers": [],
+  "source_control": "No commit, branch, push or hook-path installation; earlier design/scaffold changes preserved",
+  "usage_metering": "Per-turn token totals unavailable; no enforced token ceiling claimed",
+  "saved_sha256": {
+    "AGENTS.md": "880faaac193fa621f4a65da24ed59e40c5936dc48fac585948da7ff668cd85a1",
+    "README.md": "85645a98583058e3794e1082cdf5857fdca1b699a3830fa3b6a31fb286c74584",
+    "pyproject.toml": "91b0ef936330d6432c20bb5f2b6bf2310b2175457469500bbb56f3416606dc54",
+    "uv.lock": "4b18c27b26bdb4c2daccd53a744714559c6d0f6df06def269f882a32d6dcec28",
+    "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md": "59a85ed2866be194aa3304ca489d8f8947fcb830b598cb92910e664d1092c8d9",
+    "src/tether/__init__.py": "89bb0d1ee797ab535fe148f7e8382ae7b0de9e2d9ba85458b010b84edd1c9592",
+    "src/tether/adapters/__init__.py": "0184c3382a18050fb990b51ade8d63b6e6a09604110fc301896cb0ba521d350a",
+    "src/tether/adapters/openai_compat/__init__.py": "4ffef8e08ce164055cb01858228f98a2a727e9af90a3363627bc08a7ed99226a",
+    "src/tether/adapters/pydantic_ai/__init__.py": "d348b8d1d15ce90141ac022b3562a3bb8427ffbdfe47ef1d6f882fb9898e41bd",
+    "src/tether/adapters/pydantic_ai/compatible.py": "93f32199be4e1202c7d4c5296daff5dc8fe3bec54f4d8a918f0fd88a115c4c47",
+    "src/tether/adapters/pydantic_ai/transport.py": "dda2d7bdffd3b912de82abb275a90c28e581c7936da2c9b8e8a728bf4595d951",
+    "src/tether/adapters/pydantic_ai/wire.py": "9c52f9ed19254f9401cb66044bed577aa25f8393710ff7347ab4122ab81b4e68",
+    "src/tether/engine/__init__.py": "1183b25c405d18ddd5000e54431da6c561552093767396994431aaa46c156837",
+    "src/tether/engine/agent.py": "090c48372ff8f07d4fd4265a9f411f9bb8cb4cf1db3a33b0e86da7cdf5802755",
+    "src/tether/engine/governance.py": "fe9770fba851e6ed76b2e3d2c74ebc620ae08a55e5ab0800a905fdd32aaf3a34",
+    "src/tether/engine/providers.py": "90634017ec07c522af922b403c45562ecc5402f6e6c240924a8bd9e138003dab",
+    "src/tether/engine/tools.py": "d5cccbc2cfa52efa960d7f3cd88c56bd7d39368051865916c882b2944ac620a4",
+    "src/tether/engine/workers.py": "1e8b4d5c5fb8fca7f8fd0f7f924188372e27af69f978cdd1ad776104ab0cc362",
+    "src/tether/models/__init__.py": "cd3791958fa21568ef71d08f33977de6be56820259ea179757391962960540e7",
+    "src/tether/models/attempts.py": "07559362555e8af1cc278644ca278875474faf2da1604bd90cdd6dc51201e82d",
+    "src/tether/models/canonical.py": "5b3463286d7abf160273e78f5209f208296f42ad29994c9d05a5aa72cbf3d37a",
+    "src/tether/models/testing/__init__.py": "dc2f135efa50188ac9e6044de15b5b40fd140c21273e278d17e4af8b3e2f7962",
+    "src/tether/models/testing/cassettes.py": "fbe9516ecfa9d41997b87ada61e16a2e78abf4cf8f243cc5bf95d61aca94dcef",
+    "src/tether/models/testing/scripted.py": "acfde3d92abaeb1079147ff80964642fb96f7087a63311cca3080029eca9ddd0",
+    "src/tether/ports.py": "e30a36c1e7150c7fb95770cd3e903dffad534d7107b2ad40216a2d86deb666c1",
+    "src/tether/runtime/__init__.py": "9b2611336422d818117e1ad931a9a34430bd9a84ca01d812f08764c09ca33634",
+    "src/tether/runtime/pydantic_ai/__init__.py": "f3cf2a92212b45f2ac91f8b04a2abfa0a59f6970fdeb995e5865512182974f44",
+    "src/tether/runtime/pydantic_ai/bridge.py": "ebe9a4803d232b6a4eb6dda80ca64a3611d029dcf3bf7397c33f0e8585d18cae",
+    "src/tether/runtime/pydantic_ai/checkpoints.py": "0f55de3daaf6b5f616dd7a38abed5b707bde957d1bced7ef4b03ae3434907ece",
+    "src/tether/runtime/pydantic_ai/gated.py": "fd0def3e89922a5aef9f1d124c3bc00c770d58f9c36494792d6c1964bb75620a",
+    "src/tether/runtime/pydantic_ai/messages.py": "ddf6f4490ee254df8f5e54d13aa8856318e5cd23b8b32d4149713e86f14d9566",
+    "src/tether/runtime/pydantic_ai/validation.py": "296f7124ceefcddf8b4f8a136bdbfb49c50c628ac00936fe5410689329085ea0",
+    "src/tether/testing/__init__.py": "50f56407ca46e6fe037b6ca044bcd03cc1d1e7bac7b4b774ae30a675dc349100",
+    "src/tether/testing/execution.py": "c52f1fd02cdd4c08dbf348489c37381badabf3fa89f9f2f47ad0502138897738",
+    "src/tether/types/__init__.py": "56cbb9baa19db76bf8831a79fd7fea68d7cdc558bfae1f92ddfc18de4ad57c4a",
+    "src/tether/types/canonical.py": "b6fc0999bb80038619b33e077b2fb720c101410b3443ae640f2ffe1767bcc033",
+    "src/tether/types/execution.py": "878afe0edb0f7c22f15e21fdbb482da849d83c2c918caf5aacfb3359ba604ff2",
+    "src/tether/types/tooling.py": "43e1d6d00a588ed33388f72e44b36d1a74df90063d7242f17f88579a4e976735",
+    "scripts/check_distribution.py": "5f465bf72d6230602e22e759e75fe56c9d3a3ccce5c1c0efc4707ac835705cd5",
+    "tests/test_gated_execution.py": "19166e072a25bcf73df7328075e75e5aa645448d54d99b0ddc0a262af7eb99af",
+    "tests/test_execution_ports.py": "2dd40ba1023dec4daca9019206573c6699577ff894a23608a7f51de7a98b03e5",
+    "tests/test_execution_review.py": "fad937ca0bbd88f5cfdfc9e773a28b970079c0ab8eccf39a9b70f6abdf037cac"
+  },
+  "artifacts": {
+    "dist/tether-0.0.0.post6.dev0+a430d96-py3-none-any.whl": "365de8e1be81da57def5de50e28bf882ef294544db443de44df63f18d78de247",
+    "dist/tether-0.0.0.post6.dev0+a430d96.tar.gz": "3599c711c428e70003c7520fdaf3ee60e9d745d555887a0c057ad974f661cbad"
+  }
+}

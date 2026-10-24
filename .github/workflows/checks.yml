@@ -1,0 +1,35 @@
+name: Checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.11", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.3"
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Shared quality gate
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+        run: |
+          if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA=HEAD
+          fi
+          make check CHECK_BASE="$BASE_SHA"
+      - run: uv build
+      - name: Installed base and wheel smoke
+        run: uv run --locked python scripts/check_distribution.py dist
+      - name: Installed optional compatible-provider closure
+        run: uv run --locked python scripts/check_distribution.py dist openai

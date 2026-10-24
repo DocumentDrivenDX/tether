@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: proposed
   owner: Erik LaBianca
-  updated: 2026-10-21
+  updated: 2026-10-22
   authoring:
     home: repo
   links:
@@ -29,12 +29,13 @@ A user interface needs three things from a harness: a list of sessions, the cont
 
 ## Decision
 
-We will expose the session list and session data to a UI through one in-process, asynchronous Python API, the client API, built from three reads and a set of commands. The library contains no HTTP, WebSocket, or server-sent-events surface; a server is an adapter written over this API.
+We will expose the session list and session data to a UI through one in-process, asynchronous Python API, the client API, built from summary/page reads, an atomic reconnect snapshot, a feed, and commands. The library contains no HTTP, WebSocket, or server-sent-events surface; a server is an adapter written over this API.
 
 - **List.** Sessions for an owner, from summaries the store keeps current as part of each write, filtered and ordered, in pages addressed by an opaque keyset cursor. A list never reads a transcript and does not compute a total by default.
 - **Read.** One session's view (its summary, settings, tools, pending confirmation, and turn index) and its entries in pages addressed by position, forward or backward.
-- **Follow.** A change feed for an owner or one session: session updates, turn events, reply text deltas, and pending confirmations, each carrying a monotonically increasing sequence number. A follower resumes from the last sequence it saw. A position older than the retained window yields a resync signal, and the follower lists again. Adjacent text deltas are coalesced, each subscriber has a bounded queue, and a slow subscriber receives a lagged marker instead of slowing the loop.
-- **Commands.** Create, send (returning a handle to the running turn), confirm, cancel, close, and settings, through the same API, so an interface needs one object.
+- **Follow.** A change feed for an owner or one session: session updates, turn events, reply text deltas, and pending confirmations, with authoritative persisted changes carrying an increasing per-owner commit sequence. Text deltas and resets are live-only and carry attempt ids/offsets, not durable sequence numbers. A follower resumes from the last sequence it saw. A position older than the retained window yields a resync signal, and the follower lists again. Adjacent text deltas are coalesced, each subscriber has a bounded queue, and a slow subscriber receives a lagged marker instead of slowing the loop.
+- **Reconnect.** An atomic snapshot returns the current view, pending approval arguments, entry head and per-owner sequence. The client reads through that head and follows after the watermark, de-duplicating entries by position. Retention loss restarts the bootstrap. Provisional reply text belongs to an attempt and resets on failure, lag or reconnect; committed terminal status is authoritative. Snapshot and pending reads use bounded materialized projections, not transcript scans.
+- **Commands.** Create, send (returning a handle to the running turn), confirm, resume, resolve an uncertain effect, cancel, close, and settings, through the same API, so an interface needs one object.
 - **Performance is designed in and measured.** Summaries are projections maintained in the same commit as each entry (ADR-005); lists and pages use keyset cursors, never offset scans; the feed carries deltas, not snapshots; models are validated when written, and the read path constructs them without re-validating store output; all I/O is asynchronous or offloaded (ADR-001). A benchmark suite with ratchets protects latency and memory. The numeric budgets are set by the owner after a baseline exists.
 
 ## Why We Chose This

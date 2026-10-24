@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-23",
+  "scope": "Independent rerun and focused review of SPIKE-004 Agent integration slice",
+  "versions": {
+    "python": "3.11.17",
+    "pydantic-ai-slim": "2.59.0",
+    "pydantic-graph": "2.59.0",
+    "pydantic": "2.14.1",
+    "httpx2": "2.16.0"
+  },
+  "integration_source_sha256": {
+    "fixture_store.py": "f24be2466e2c210b77ea0524d8db66395cb3e32f572be5e2b50f8a3b80f8181f",
+    "integration.py": "5983b7650ce0bc12f23f80ea41c1d141410c053d410b802e0e4729995f7c6f3c",
+    "test_integration.py": "e5cb4ee1892641f50b875600bc88fef2a0d5e829aa2b279ef53142eab636a938"
+  },
+  "independent_probe_sha256": "079bb331bbea30bc40f390e79fe8a689e3cdf764ffdc1397eea905c507c31faf",
+  "checks": {
+    "final-suite": {
+      "tests": 28,
+      "failures": 0,
+      "errors": 0,
+      "elapsed_seconds": 47.69,
+      "stderr_sha256": "c4cb8be60f229b1dea63fbe1b930e2447ced8946596750a3ce41fd8022a56d1b"
+    },
+    "final-independent": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "elapsed_seconds": 1.437,
+      "stderr_sha256": "4e17bf046a4a639f36de551d8036548ace2f337ac866fa77df50faadbf1367f4"
+    }
+  },
+  "corrected_findings": [
+    "Uncommitted derivative tool results/final text refused via source checks and journal-bound SDK checkpoints",
+    "Raw tool proposals verified against original source before normalized approval binding",
+    "READ_SESSION enforced before history, model projection, tool argument, pending-approval and resume reads, including fail-closed error and mid-run revocation"
+  ],
+  "review": {
+    "remaining_blocking_findings_in_tested_slice": 0,
+    "owned_loop_justified": false,
+    "recommendation": "Use Agent as the runner with Tether policy/journal/history/client integration; no demonstrated need for a general-purpose owned loop."
+  },
+  "limits": [
+    "Fabricated nonstreaming custom Model and HTTPX2 MockTransport",
+    "Fixture single-root JSONL, not production store conformance or OS-crash durability",
+    "No native SDK/live Gateway transport/retry qualification",
+    "No complete context coverage/order, Client feed, actual sync-worker or pre-checkpoint recovery qualification",
+    "No measured maintenance-cost or performance advantage"
+  ],
+  "commands": [
+    "python -B -m unittest discover -s <SPIKE-004-probe-dir> -p test_integration.py",
+    "python -B integration_review_probe.py <SPIKE-004-probe-dir>"
+  ]
+}

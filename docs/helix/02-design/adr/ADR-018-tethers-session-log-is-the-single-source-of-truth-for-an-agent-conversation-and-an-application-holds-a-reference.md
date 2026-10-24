@@ -9,6 +9,8 @@ ddx:
   authoring:
     home: repo
   links:
+    - id: CONTRACT-005
+      kind: informs
     - id: ADR-003
       kind: informed_by
     - id: ADR-005
@@ -23,45 +25,52 @@ ddx:
       kind: informs
 ---
 
-# ADR-018: Tether's Session Log Is the Single Source of Truth for an Agent Conversation, and an Application Holds a Reference
+# ADR-018: Execution Order, Authoritative History, and Model Context Have Separate Owners
 
 ## Problem
 
-An application that already has users, records, and sessions of its own embeds an agent runtime. If the application and the runtime each keep the conversation, they disagree, and a crash or a retry makes them disagree in ways that are hard to repair. The first designs said an application "subclasses the session type and stores it in its own tables", which makes two owners, and the session type carried an application-defined `flags` field with no owner. Four kinds of state are in play, and each needs one owner.
+A desktop-style session UI needs the original conversation, while a model needs only a bounded projection. A platform gateway can already retain actual model exchanges; copying those payloads into the execution store creates another content authority. Conversely, inference tables never receive every user message, tool result, approval or recovery fact. They cannot by themselves establish the full conversation or whether an effect happened.
 
 ## Decision
 
-We will make tether's session log the only record of an agent conversation, and have an application hold a reference to it, never a copy. Application state stays the application's and reaches tools through capabilities and the policy.
+We will make authoritative history a replaceable interface, defaulting to local JSONL, with a Gateway-backed provider for externally recorded model exchanges. Tether retains a separate execution journal and derives model context from referenced history under CONTRACT-004/005. An application keeps its session reference and its own business records.
 
-| State | Owner | Where it lives | Contract |
-|-------|-------|----------------|----------|
-| Loop state (the stream in progress, the step counter, task handles) | The engine, in memory | The process only; rebuilt from the log | CONTRACT-002 section 8 |
-| Durable execution state (the lease, intents, approvals, the resume chain) | Tether and its store | The log and the lease record | CONTRACT-003 |
-| Conversation history | Tether | The log; the application reads it through the client API | CONTRACT-003 |
-| Application state (users, documents, entitlements, artifacts, business records) | The application | Its own storage | Reaches tools as capabilities and the policy; never in a session type |
+| State | Authority | Surface |
+|-------|-----------|---------|
+| Session identity, ordering, settings, intents, approvals, leases, resolutions, accepted-message refs | Tether execution journal | CONTRACT-003 |
+| Original human/tool content, summaries and actual model request/response content | Selected HistoryProvider; JSONL by default, Gateway-backed composition when selected | CONTRACT-005 |
+| Model context, SDK Conversation/ProcessHistory view, caches and compacted projection | Derived, versioned view; never another transcript authority | CONTRACT-004 |
+| Business users, entitlements, artifacts and other application records | Application | Capabilities/policy; outside core session types |
 
-- **The reference.** `create(ref=...)` takes an application-supplied reference, unique per owner and idempotent: creating twice with the same reference returns the same session. `find(ref)` looks one up. The application stores the tether session id or the reference, and it never copies history back.
-- **Idempotent sends.** `send(request_id=...)` is idempotent: the same id with the same text returns the existing turn; the same id with different text is a conflict.
-- **No application data in session types.** The `flags` field is removed. Per-turn application data travels in `Actor.attributes` or a capability.
-- **Tether never reads the application's tables.**
-- **Deferred.** An application-owned history port (the engine reads history from the application) is not in v1: it reintroduces two owners, and the log is what recovery, the follow feed, and the summaries are built on. Importing existing history into a new session (`seed`) is optional and not recommended before a consumer needs it.
+- Journal message entries retain source refs, digests and call manifests, not a mandatory full duplicate of content. The journal decides which content was accepted and in what order; the selected binding decides its bytes.
+- Gateway exchange history is authoritative for the exact request and response it logged. That request is a model projection, not the original human conversation. Locally denied/unsent content and omitted tool outputs use the provider's explicit writable supplement.
+- Current responses may be used in a bounded in-process working set. Pending external history remains pending after restart; it does not authorize another effect or get reconstructed from a later prompt. A policy requiring independent retention selects an explicit mirror.
+- JSONL is the default content provider; a paired single-writer JSONL journal supports local reference-client restart without a database server. Postgres remains the multiprocess journal option (ADR-020).
+- `create(ref=...)` is idempotent per owner. `send(request_id=...)` compares the canonical accepted input including text, attachments and requested spec, not text alone. The application does not copy the canonical transcript into its own tables.
+- Source codecs, provider bindings and correlation are versioned. A history migration appends new verified bindings and preserves the original source identity. Unknown content remains an explicit hole, not an empty message.
 
 ## Why We Chose This
 
-### Over an application-owned history port
-It fits an application that must keep its own message table, and it makes the application's table and the engine's recovery two sources of truth.
+### Over requiring all conversation content in the runtime journal
 
-### Over subclassing the session type
-It puts application fields in the engine's types and makes the application's store the place the engine's state must also live.
+It couples content retention to execution storage and duplicates a platform's actual exchange log. Separate ports permit JSONL locally and external authority in a platform while retaining precise recovery facts.
+
+### Over treating gateway rows as the entire session
+
+Gateway requests repeat old context and may contain summaries/redactions. External logging has delayed, missing and duplicate records, and never sees local-only interaction. Ordered refs and a writable supplement preserve these meanings.
+
+### Over framework-owned message persistence
+
+A selected reusable runner may supply transient conversation state, usage and deferred-input metadata. Its history conversion cannot become a second canonical transcript or replace Tether's effect/approval record.
 
 ## Consequences
 
-**Good**: One owner per kind of state. An application can embed tether beside its own sessions and rebuild nothing after a crash. The follow feed and recovery see the whole conversation.
+**Good**: One authority per fact, local file-backed history, replaceable gateway content, and independently inspectable session state/model context.
 
-**Trade-offs**: An application that must keep its own copy of messages (for a compliance reason, say) reads them from the client API and keeps its copy as a derived record. The first consumer must be able to hold a reference; its adoption is the test.
+**Trade-offs**: Two persistence boundaries need explicit content-before-ref ordering; external history cannot guarantee offline availability. The supplement stores events a gateway never saw. A UI must handle partial history while keeping metadata usable.
 
-**Drift signals to watch**: An application field added to a session type. A document that tells an application to subclass the session. A code path that writes history from the application into the log other than through the engine.
+**Drift signals to watch**: Full shadow copies stored by default; a compacted prompt presented as the original conversation; a new model call inferred from missing history; pending/denied content rendered as empty; a framework persisting another transcript.
 
 ## Concern Impact
 
-- **No concern impact**: This applies the `hexagonal-architecture` concern (state behind one owner per port).
+- **No concern override**: Applies existing hexagonal architecture, resilience, privacy and explicit identity. New history interfaces carry their own dummies and conformance suites.

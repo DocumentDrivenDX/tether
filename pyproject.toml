@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling>=1.27,<2", "uv-dynamic-versioning>=0.7,<1"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tether"
+dynamic = ["version"]
+description = "An embedded Python agent harness built on Pydantic AI Agent"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE", "NOTICE"]
+authors = [{name = "FocusedDiversity LLC"}]
+dependencies = [
+  "anyio>=4.15.1,<5",
+  "pydantic==2.14.1",
+  "pydantic-ai-slim==2.59.0",
+]
+
+[project.optional-dependencies]
+openai = ["pydantic-ai-slim[openai]==2.59.0", "openai==3.37.0"]
+
+[dependency-groups]
+dev = [
+  "pydantic-ai-slim[openai]==2.59.0", "openai==3.37.0",
+  "hypothesis>=6,<7", "packaging>=25", "pyright>=1.1,<2",
+  "pytest>=8,<10", "pytest-cov>=6,<8", "pytest-mock>=3,<4", "ruff>=0.12,<1",
+]
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+fallback-version = "0.0.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tether"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "scripts", "tests", "pyproject.toml", "uv.lock", "README.md", "LICENSE-*", "NOTICE"]
+
+[tool.uv]
+build-constraint-dependencies = ["dunamai==1.26.3", "hatchling==1.32.4", "jinja2==3.1.6", "markupsafe==3.0.4", "packaging==26.3", "pathspec==1.1.1", "pluggy==1.7.0", "tomlkit==0.15.2", "trove-classifiers==2026.9.21.13", "uv-dynamic-versioning==0.14.1"]
+cache-keys = [{file = "pyproject.toml"}, {git = {commit = true, tags = true}}]
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src"]
+include = ["src/**/*.py", "scripts/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "PT", "C901", "PLR", "ASYNC", "TID251"]
+preview = true
+explicit-preview-rules = true
+extend-select = ["PLR0904"]
+ignore = ["PLR2004", "PLR0913", "PLR0917"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.getenv" = {msg = "Pass explicit configuration; core code must not read the environment."}
+"os.environ" = {msg = "Pass explicit configuration; core code must not read the environment."}
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-returns = 6
+max-branches = 12
+max-statements = 40
+max-public-methods = 15
+
+[tool.pyright]
+pythonVersion = "3.11"
+include = ["src", "scripts", "tests"]
+typeCheckingMode = "standard"
+strict = ["src"]
+extraPaths = ["src", "scripts"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+addopts = "--strict-markers --strict-config --cov=src/tether --cov=scripts --cov-branch"
+markers = ["fast: deterministic local checks", "contract: boundary conformance", "acceptance: installed-package checks", "slow: process or packaging checks"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/tether", "scripts"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+
+[tool.tether.ceilings]
+source_lines = 500
+test_lines = 800

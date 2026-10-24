@@ -5,7 +5,7 @@ ddx:
   activity: discover
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-22
+  updated: 2026-10-23
   authoring:
     home: repo
   links:
@@ -41,21 +41,63 @@ ddx:
 
 ## Finding and scope
 
-**Recommendation: retain Tether's own harness and model port, with no agent-framework or foundation-model-provider SDK dependency.** The design is defensible for the scoped product: one asynchronous Python loop, application-owned policy and identity, durable sessions, and an in-process client API. The hard work is execution semantics around that loop. Owning those semantics is justified only if Tether implements and verifies them explicitly.
+**Recommendation: retain the embedded Python/library boundaries and reopen the implementation choice for model access, loop, context and session machinery.** The owner has challenged the policy-only Pydantic AI rejection. Optional OpenAI SDK use does not establish lock-in to the hosted ecosystem. ADR-002/003 and [SPIKE-003](../02-design/spikes/SPIKE-003-pydantic-ai-agent-sdk-reuse.md) make Agent and selected Harness components active adoption candidates. The scoped product still requires application-controlled policy and identity, durable sessions and an in-process client API; existing framework machinery may implement those behaviors.
 
 This is discover-phase research and a design review, requested on 2026-10-22. Recommendations below do not amend requirements, accept ADRs, or claim implementation. “Framework-free” means no agent-framework dependency; the selected stack already includes Pydantic, AnyIO, and HTTPX. Literal zero third-party dependencies would be a separate stack decision.
 
 A **harness** runs the model/tool loop and manages its context, state, controls, and diagnostics. A **checkpoint** records execution state. **Recovery** reconciles interrupted work; **resume** continues it. **Idempotency** means repeating an operation has the same effect as executing it once. **Compaction** reduces model input while retaining useful context. **MCP** is the Model Context Protocol for connecting tools and data sources. **OTel** is OpenTelemetry. A software development kit (**SDK**) can support several models while still being maintained by a model provider and depending on its packages.
 
+## Consolidated reuse recommendation, 2026-10-23
+
+**Prefer Pydantic AI Agent for the first execution integration, reuse its model layer independently where useful, and harvest Hermes designs and regression cases.** This is a recommendation for the implementation choice under reopened ADR-002/003, coordinated with the Pydantic AI evaluation. It accepts no production runtime or new dependency. The requirements and contracts govern behavior; internal class names and storage decomposition may be adapted when that removes machinery without weakening the behavior.
+
+| Area | Recommendation | Evidence and practical boundary |
+|------|----------------|---------------------------------|
+| Pydantic types | Reuse | Already selected for validation and public types; independent of Agent adoption |
+| Pydantic AI Agent | Preferred execution reuse candidate | SPIKE-003 at 2.59.0 passes custom-model typed dispatch/output, deferred approval/resume, fresh application denial, bounded output correction and conversation round-trip. Use controlled iteration/hooks/tool mediation to preserve commit and gate boundaries; node iteration alone does not prove per-tool fencing |
+| Built-in provider models | Reuse behind ModelPort when qualified | Native Anthropic and OpenAI-compatible adapters can remove provider mapping, stream assembly and usage parsing. Install disclosed optional extras and configure clients/identity explicitly; a provider SDK is eligible under ADR-012. Native Claude is documentation/source evidence, not a tested live integration |
+| Custom Pydantic model | Retain as a targeted integration option | The exercised SDK-blocked path works. It is useful for an owned Gateway/protocol transport or exact attempt hooks; it retains protocol and streaming maintenance |
+| Conversation serialization | Reuse as versioned runner state | Preserve identity, cumulative usage and deferred metadata alongside derived model messages. Original content, approvals and effect truth remain in the selected history/execution authorities; ProcessHistory can change returned SDK history |
+| Output correction and retry controls | Reuse with one budget owner per layer | One invalid-output/correction case passes. Count every actual request against turn policy/deadline and authorize before physical egress; disable SDK/transport retries unless the attempt recorder covers every one |
+| Pydantic Harness context/persistence | Inspect selected components before writing equivalents | Documentation describes context capabilities, step persistence and effect records. No installed Harness store, crash/fencing test or full Tether integration was exercised. Adopt a component if it deletes planned work and shares the selected recovery authority; avoid an independently authoritative parallel ledger |
+| Hermes context management | Adopt design elements | Separate request context from original history; preserve complete tool groups and unsettled tail; record omission/summary provenance and authorized reload refs. CONTRACT-004/005 define the Tether behavior; source and maker docs support the mechanisms, not Tether conformance |
+| Hermes cache/recovery/reconnect | Adapt designs and failure scenarios | Stable prompt prefixes, explicit cache/model provenance, single writer/owner epochs, uncertain interrupted admissions, replay of open interaction and separate provisional output. Validate invocation-level behavior with Tether tests |
+| Hermes leaf utilities | Extract only when the owning slice benefits | Retry-After/jitter and omission markers are candidates. First inspect exact import closure, retain MIT notices/provenance, inject clock/randomness, enforce bounds and async waits, and adapt regression cases. No code has been copied |
+| Hermes product runtime, registry and transcript repair | Keep outside the selected core | Its documented synchronous entry/configuration model needs substantial adaptation; broad imports pull product state/configuration. In-place argument/name repairs cannot supply executable inputs or silently alter original evidence |
+
+Concrete Harness candidates for a later targeted port are [compaction strategies](https://pydantic.dev/docs/ai/harness/compaction/) (group-aware windows, pinned content and receipts) and [ToolOutputLimits](https://pydantic.dev/docs/ai/harness/tool-output-limits/) (spill/readback and explicit reductions). Their mutable model-history and fallback behavior must be mediated by CONTRACT-004/005; a run handle does not guarantee the original transcript survives. Automatic summarizers need Tether's auxiliary-call policy. Current documentation was checked 2026-10-23; these components were not executed in SPIKE-003.
+
+[StepPersistence](https://pydantic.dev/docs/ai/harness/step-persistence/#core-boundary-for-stronger-interrupted-step-recovery) is a useful implementation/reference candidate for event/effect records, but its documentation explicitly leaves automatic execution recovery unimplemented. Raw tool hooks, normalized result events and settled batch checkpoints expose different boundaries. Installing it therefore cannot substitute for the intent/result, unknown-effect and commit-failure acceptance tests. Reuse its storage machinery only through one selected recovery authority.
+
+### Responsibilities Tether must preserve
+
+The engine mediates current identity and authorization, invocation-bound approvals, ordered gates, stable ids, intent/result commits, unknown effects and recovery. The client exposes owner-scoped list/page/follow/approval/effect operations. These are required outcomes, not a mandate to implement every internal mechanism ourselves.
+
+CONTRACT-005 separates the execution journal (order and control facts), authoritative history (original content and observed exchanges), and derived model context. Reference clients use local JSONL history and a qualified single-writer local journal. GatewayHistory uses external model exchanges plus a writable supplement: a bounded model request cannot reconstruct omitted or unsent original conversation content. Per-session/turn/logical-call/physical-attempt ids, source receipts and exact metadata joins connect those authorities; SDK conversation ids alone cannot do so. Source holes remain explicit.
+
+### First integration and selection criterion
+
+Run one vertical integration of the preferred Agent path against the final behavioral contracts before building a complete owned loop. Use fabricated inputs and a scripted model first; then qualify native Claude and an OpenAI-compatible local/Gateway profile where access exists. This is scoped selection evidence, not permission to begin implementation in this review.
+
+1. Commit accepted input and each model/tool boundary under the selected authority. A failed intent commit prevents dispatch; an uncertain commit stops dependent work. Failed result persistence after a possible effect remains unknown.
+2. Pause and restart for approval; reject duplicate submission, changed arguments/tool definitions, changed permissions and stale leases. Execute mixed tool batches in contractual order; disable framework parallel dispatch until it proves the same gates and partial-batch recovery.
+3. Record and authorize every physical model attempt, including output corrections and summaries. Verify current credentials, tags, header receipts, aggregate deadlines/usage, stream cancellation and no hidden network restart after visible text.
+4. Serialize versioned SDK state while retaining original history independently. Verify compaction groups, omitted content, external-source delay/revocation, restart, pending interaction and the owner change feed.
+5. Inspect exact dependency extras, content-free instrumentation and upgrade serialization. List the protocol/loop/dispatch/context/state components eliminated and the integration still required; no maintenance or speed improvement is measured yet.
+
+Choose Agent when these checks pass and its integration removes more machinery than it adds. If its execution hooks cannot preserve the gates or one recovery frontier, reuse the direct model API and retain Tether's execution driver. Keep an owned transport only for a demonstrated protocol/identity/correlation gap. Do not ship two permanent loop implementations to postpone the decision. Hermes design/test harvesting remains useful in either outcome.
+
+SPIKE-003 receipts establish feasibility at Python 3.11.17, Pydantic AI Slim/Graph 2.59.0 and Pydantic 2.14.1 on an offline nonstreaming custom model. They do not establish clean-install dependency closure, native/provider streaming, cancellation, concurrent credentials, process-kill recovery, Harness durability, file/fsync guarantees, live inference-table joins or performance. Those are named qualification checks, not evidence that the requirements must be weakened.
+
 ### Evidence and limits
 
 Primary project inputs: [vision](product-vision.md), [PRD](../01-frame/prd.md), [concerns](../01-frame/concerns.md), [architecture](../02-design/architecture.md), ADR-002/003/005/010/012, CONTRACT-001/002/003, the existing [competitive analysis](competitive-analysis.md), and the library design/build plan. Project sources are working intent, not proof of delivered behavior.
 
-External evidence is official documentation and selected public source/manifest inspection, accessed 2026-10-22; the linked source register records scope. No framework was installed, benchmarked, or exercised. Documentation establishes advertised mechanisms, not conformance with Tether's contracts. Most pages track current releases rather than a fixed version; no package-version compatibility or transitive-dependency closure is certified. LangGraph's retrieved reference identified v1.2.16; CrewAI's Flows URL resolved to v1.15.28; Pydantic AI Harness describes a 0.x API policy. Recheck exact versions and extras before an adoption spike. Market share, maintenance cost, performance, and engineering duration are unmeasured.
+External evidence is official documentation and selected public source/manifest inspection, accessed 2026-10-22; the linked source register records scope. The original survey did not install, benchmark or exercise frameworks. The subsequent SPIKE-003 executes core Pydantic AI Agent probes at 2.59.0; it does not qualify Harness stores or performance. Documentation establishes advertised mechanisms, not conformance with Tether's contracts. Most pages track current releases rather than a fixed version; no package-version compatibility or transitive-dependency closure is certified. LangGraph's retrieved reference identified v1.2.16; CrewAI's Flows URL resolved to v1.15.28; Pydantic AI Harness describes a 0.x API policy. Recheck exact versions and extras before an adoption spike. Market share, maintenance cost, performance, and engineering duration are unmeasured.
 
 ## Finalized language and runtime decision
 
-[ADR-003](../02-design/adr/ADR-003-tether-is-a-library-of-ports-and-providers-and-builds-its-own-loop.md) records the accepted direction: retain the Python harness, use the consuming application's existing server for its browser interface, and do not adopt or wrap AgentKit. Python embedding and human-facing UI are equally important. Acceptance selects the implementation path; it is not delivery or conformance evidence. The scoped contract comparison below records the reviewed snapshot; concurrent design revisions may address individual findings and must be checked before treating them as current gaps.
+[ADR-003](../02-design/adr/ADR-003-tether-is-a-library-of-ports-and-providers-and-builds-its-own-loop.md) retains the Python/library and existing-server direction and excludes an AgentKit wrapper; the underlying loop implementation is reopened under ADR-002. Python embedding and human-facing UI are equally important. Acceptance selects the implementation path; it is not delivery or conformance evidence. The scoped contract comparison below records the reviewed snapshot; concurrent design revisions may address individual findings and must be checked before treating them as current gaps.
 
 | Choice factor | Python | TypeScript | Decision implication |
 |---|---|---|---|
@@ -71,14 +113,14 @@ The existing Apps deployment removes deployment/scaffolding as a reason to adopt
 
 ## Related coordinated discovery
 
-- [Hermes Agent component profile](component-profile-hermes-agent.md) evaluates whole-runtime fit and targeted design/source reuse against the same Python, identity, SDK and recovery constraints. Its inspected engine conflicts with async/configuration and SDK requirements; context projection, reconnect state, uncertain admissions and small utilities remain learning candidates. No source extraction is authorized or implemented.
+- [Hermes Agent component profile](component-profile-hermes-agent.md) evaluates whole-runtime fit and targeted design/source reuse against the same Python, identity, SDK and recovery constraints. Its inspected whole engine conflicts with async/configuration requirements; optional SDK use alone is eligible under revised ADR-012; context projection, reconnect state, uncertain admissions and small utilities remain learning candidates. No source extraction is authorized or implemented.
 - [Databricks integration assessment](databricks-integration-assessment.md) maps identity, gateway, governed tools, Lakebase, archives/artifacts, telemetry/evaluation and deployment ownership. It preserves ADR-003 and identifies package/SDK/identity/retention/support choices as proposals; it does not expand ADR-013 or certify workspace behavior.
 
 ## Market Landscape
 
 The relevant alternatives span different layers: low-level orchestration (LangGraph), an agent runner (OpenAI Agents SDK), an embedded complete agent runtime (Claude Agent SDK), composable Python harnesses (Pydantic AI Harness and Strands), and durable workflow engines. Treating them as interchangeable obscures the integration cost.
 
-The owner's preference against foundation-model-provider libraries is an architectural constraint in ADR-012. It does not establish that their designs are poor. LangGraph deserves an independent assessment from prior LangChain experience: its orchestration API can be used without adopting the higher-level LangChain agent API, but its current package manifest still includes `langchain-core`. [L1] [L4]
+Revised ADR-012 keeps the public core/base install free of provider SDKs and allows isolated optional adapters. Provider-library use alone is not a rejection criterion. LangGraph deserves an independent assessment from prior LangChain experience: its orchestration API can be used without adopting the higher-level LangChain agent API, but its current package manifest still includes `langchain-core`. [L1] [L4]
 
 ## Competitive Forces
 
@@ -133,7 +175,7 @@ These are screened for architectural fit, not ranked by popularity. Model-neutra
 
 | Alternative | Documented capability relevant to Tether | Assessment and lesson |
 |---|---|---|
-| **Pydantic AI + Pydantic AI Harness** | Typed agent loop plus composable capabilities for context, tools, controls, workspaces, and persistence [P1] | Strongest additional Python adoption counterfactual. It overlaps more of Tether than the earlier survey recognized. Evaluate it seriously if policy changes; do not assume it supplies Tether's exact session API |
+| **Pydantic AI + Pydantic AI Harness** | Typed agent loop plus composable capabilities for context, tools, controls, workspaces, and persistence [P1] | Strongest additional Python adoption counterfactual. It overlaps more of Tether than the earlier survey recognized. Active reuse candidate under reopened ADR-002/003; assess its state design and preserve required session behavior through integration |
 | Pydantic AI Step Persistence | Step events, effect records, continuable snapshots; interrupted snapshots are distinct from settled ones; recovery inspection does not infer replay safety [P2] | Direct reference for execution-frontier and unknown-effect design. Full-history snapshot growth and retention need attention |
 | Pydantic AI durable integrations | Separately distinguishes storage from execution recovery and integrates multiple engines, including Temporal, DBOS, Prefect, and Restate [P3] | A framework can own the loop while a runtime journals work. External infrastructure varies; “all require a separate engine service” is too broad |
 | **Strands Agents / Harness SDK** | Session management persists messages/state and interrupt state; documented model is one live writer per conversation [S1] | Close Python harness comparison. Borrow explicit concurrency constraints; verify any desired multiprocess fencing independently. No zero-provider-SDK claim established |
@@ -164,7 +206,7 @@ AutoGen and Semantic Kernel are covered through their official successor. This i
 | Recovery at arbitrary failure points | Planned, ADR-010 | Checkpointer/mode plus replay design | Not established by session/approval docs | Not established by session continuation | Snapshot continuation or separate durable engine; effect safety remains explicit |
 | Owner-scoped summary paging + persisted reconnectable feed | Planned | Custom Tether contract; runtime streaming exists | Custom Tether contract | Custom Tether contract; session APIs exist | Custom Tether contract; UI/event integrations exist |
 | Tool replay safety | Planned safe/unsafe | Application effect discipline | Application effect discipline | Not established | Effect records/recovery inspection; application policy |
-| No framework/provider SDK dependency | Planned framework-free stack | LangChain-family dependencies; provider SDK closure unverified | Conflicts with policy | Conflicts with policy | Default compatible-provider path conflicts per SPIKE-002; other exact extras unverified |
+| Public core/base SDK isolation and optional dependency closure | Required; underlying runtime open | LangChain-family dependencies; selected closure unverified | Optional integration eligible; closure unverified | Runtime/binary footprint needs qualification | Custom Model Agent path exercised with SDK imports blocked; native models use optional extras; clean-install closure unverified |
 | Metadata-only telemetry | Planned default | Custom configuration/adapter | Must change default capture/export | Verify/configure integration | Verify/configure integration |
 
 The matrix does not compare speed: no comparable workload was measured. Run streams, durable feeds for reconnecting readers, session catalogs, and provider request streams are different capabilities.
@@ -199,19 +241,23 @@ Severity applies to design readiness. The H1–H3/M1–M4 observations below des
 
 ### Current disposition after coordinated design reconciliation
 
-The newer ADR-014–020 and revised CONTRACT-002/003 address much of the initial review. Accepted ADR-003 settles Python, the owned harness, the existing Apps server, and no AgentKit wrapper. This review closes the research comparison; it does not turn design intent into delivered guarantees. [SD-001](../02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md#framework-review-verification) owns the remaining failure-boundary verification and unresolved design details.
+The newer ADR-014–020 and revised CONTRACT-002/003 address much of the initial review. Accepted ADR-003 settles Python, the owned harness, the existing Apps server, and no AgentKit wrapper. This review closes the research comparison; it does not turn design intent into delivered guarantees. [SD-001](../02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md#framework-review-verification) owns the remaining failure-boundary implementation verification. CONTRACT-004 and TP-001 specify the expanded first-release surface.
 
 | Finding | Current disposition | Evidence and remaining work |
 |---|---|---|
-| H1, unknown external effects | **INCOMPLETE** | ADR-014 and CONTRACT-002 sections 8–10 define stable invocation IDs, pre-effect intents, explicit unknowns, and P1 reconcile/resolve. They do not prevent a fresh model call from repeating the same business action; error/timeout rows still say the model may retry. Define that boundary before slice 9 acceptance; no exactly-once effect claim is justified |
-| H2, synchronous cancellation and stale runners | **UNDERSPECIFIED** | ADR-014 explicitly acknowledges thread abandonment; ADR-001 now states the same limit. CONTRACT-003 fences log writes, not external services. Bounded outstanding worker capacity and replacement-work behavior remain to specify and qualify |
+| H1, unknown external effects | **ALIGNED in design; NOT RUN** | ADR-014 and CONTRACT-002 define intent, abnormal unsafe outcomes, a session-wide unsafe barrier and P0 authorized manual resolution. Different ids/arguments/tools and approval cannot bypass it. Cross-session deduplication and target fencing remain application obligations; TP-001 requires effect/kill tests |
+| H2, synchronous cancellation and stale runners | **ALIGNED in design; NOT RUN** | ADR-001/014 and CONTRACT-002 retain worker permits/local session-busy markers until actual exit; queued work and shutdown are bounded. Fencing does not stop a remote effect. TP-001 requires real-worker and stale-writer proof |
 | H3, approvals and resume | **ALIGNED in design** | ADR-015 binds an approval to invocation, arguments, tool definition and actor, with lifecycle/races/rechecks; CONTRACT-002 now carries actor credentials plus APPROVE/RESUME and Engine.resume; CONTRACT-003 uses client(actor), confirm(invocation_id), and resume. Version/migration and executed race/crash tests remain qualification work |
-| M1, execution limits | **PARTIAL; application-owned thresholds selected** | CONTRACT-002 supplies tool timeouts, hook limits, UsageSoFar and policy budget denials; the core enforces max_steps. Output/request capacity and missing-usage policy remain application/adapter design work. This review does not promote universal token or cost limits into core requirements |
-| M2, context bounds | **DEFERRED by current scope** | PRD FR-35 keeps compaction P1; CONTRACT-002 exposes a narrowing before_request hook and reserves a compaction entry. Arbitrary summary/retrieval replacement needs an explicit P1 context contract rather than silently widening that hook. A minimal context-bound/overflow proposal remains advisory until selected; long-session support must stay qualified to the configured model/input policy |
+| M1, execution limits | **ALIGNED in design; NOT RUN** | CONTRACT-001/004 require explicit full-payload/output/byte/deadline/attempt bounds and missing-usage labels; cost thresholds remain application policy. Approximate estimation and actual model acceptance require profile qualification |
+| M2, context bounds | **ALIGNED in design; NOT RUN** | P0 FR-35/45, ADR-021 and CONTRACT-004 define source-addressed context, explicit omissions, protected groups, governed summaries and durable provenance. Provider narrowing is unchanged. TP-001 qualifies fidelity, bounds and restart |
 | M3, failure-boundary evidence | **ALLOCATED; NOT RUN** | SD-001 now names dispatch/effect/commit crash points, approval races, uncertain-effect repeats, synchronous cancellation, and replay-versus-task-eval checks. Log-prefix tests alone are insufficient |
-| M4, stale competitive/dependency claims | **ALIGNED for this research** | Current comparisons distinguish persistence, recovery and external effects; HTTPX is the default in SD-001; ADR-003 rejects inevitable dual ownership as a framework property. Optional Pydantic adapters are P2 and need a separately compliant dependency closure; none is certified by this review |
+| M4, stale competitive/dependency claims | **ALIGNED for this research** | Current comparisons distinguish persistence, recovery and external effects; model/client selection is open under ADR-002/003; optional provider dependencies are eligible under ADR-012. Candidate integrations need qualified dependency closure; none is certified by this research |
 
-The current storage direction is in-memory plus Postgres, with optional embedded Postgres and optional SQLite (ADR-019/020). Store declarations qualify durability/fencing; older references to SQLite as the primary durable store describe earlier intent. Reconciliation/manual recovery remain P1 under FR-44. The review does not silently promote them or certify automatic repeat prevention for an unresolved effect.
+The current storage direction is in-memory plus Postgres, with optional embedded Postgres and optional SQLite (ADR-019/020). Store declarations qualify durability/fencing; older references to SQLite as the primary durable store describe earlier intent. Manual recovery is now P0 under FR-44; target-specific reconcilers remain optional P1. CONTRACT-002 specifies a session-wide unsafe barrier until recorded resolution; this is a design requirement, not runtime evidence.
+
+### Pre-release contract completion
+
+The owner requested the complete design now. ADR-021 and CONTRACT-004 define bounded source-addressed context and engine-mediated summaries; revised CONTRACT-001/002/003 define explicit output/terminal limits, the session-wide effectful-call barrier and P0 manual resolution, real worker-lifetime capacity, and atomic reconnect snapshots. H1/H2 are closed at design level; their fault cases remain unexecuted. Compaction is P0. [TP-001](../03-test/test-plan.md) and SD-001 allocate qualification. No framework or provider-SDK dependency was added.
 
 ### Initial review observations
 
@@ -268,9 +314,9 @@ The current storage direction is in-memory plus Postgres, with optional embedded
 
 **Location:** existing competitive analysis; ADR-002 optional adapter wording; architecture adapter table; solution/build plan slices 1 and 9. Current Pydantic documentation includes Step Persistence, effect records, UI integrations, and its Harness. The claim that Pydantic AI only stores history in application code or always needs a separate service for persistence is incomplete. [P1] [P2] [P3] LangGraph exposes checkpoint listing and several streaming forms; custom checkpoint enumeration is not automatically an owner-authorized session catalog. [L2] [L5]
 
-The optional adapter wording about not directly importing a banned SDK does not prove that a selected Pydantic provider's transitive dependencies comply with ADR-012. SPIKE-002 already identifies the compatible path's `openai` dependency. The build plan still centers its first model slice on Pydantic AI despite ADR-002's new HTTPX default.
+The earlier blanket SDK rejection and HTTPX-default allocation are superseded by revised ADR-002/003/012 and SPIKE-003. A selected optional provider extra still needs a disclosed dependency closure and behavioral qualification. The first model/runner allocation follows the integration result; neither an SDK import nor a prior owned-client prototype selects it.
 
-**Proposal:** use this dated review to qualify the old survey, audit exact extras before claiming optional-adapter compliance, and reconcile the build plan against current model/recovery ADRs before implementation. The framework-free recommendation stands on fit and control, not an unsupported claim that no competitor has durable sessions or UI APIs.
+**Proposal:** use this dated review to qualify the old survey, audit exact extras before claiming optional-adapter compliance, and reconcile the build plan against current model/recovery ADRs before implementation. The current recommendation keeps Python/library boundaries and prefers the Agent reuse hypothesis for qualification; the earlier blanket framework-free selection is superseded. Competitors supply substantial session and UI machinery.
 
 ## AgentKit contract comparison
 
@@ -319,7 +365,7 @@ Tether's intended recovery is: mark the old turn interrupted, accept a new authe
 
 That adapter still needs lifecycle design. A stale `ACTIVE` AgentKit invocation can hold up later invocations in the same runtime session; simply turning off automatic recovery can leave that obstacle. The implementation must demonstrate that interruption is terminalized appropriately and fresh resume cannot remain queued behind dead work. Sessionless outer invocations with Tether owning session exclusion are one candidate to investigate, not a validated recommendation. Persistent queued first attempts are scanned even when stale-active recovery is disabled; an absent recovery handler is not a blanket guarantee against post-restart scheduling. [AK1]
 
-The H1/H2 findings apply to both systems. Runtime request deduplication, log entry deduplication, and preventing duplicate business effects are different guarantees. An unsafe call with an unknown outcome must stay unresolved until reconciliation or renewed approval; a newly generated equivalent call must not silently repeat it. Source inspection also shows the heartbeat loop stops itself after ownership loss; it does not directly stop the invocation handler. Attempt fencing therefore cannot be treated as cancellation or fencing of external effects. [AK1]
+The H1/H2 findings apply to both systems. Runtime request deduplication, log entry deduplication, and preventing duplicate business effects are different guarantees. An unsafe call with an unknown outcome must stay unresolved until an authorized resolution records its outcome; a newly generated equivalent call must not silently repeat it. Source inspection also shows the heartbeat loop stops itself after ownership loss; it does not directly stop the invocation handler. Attempt fencing therefore cannot be treated as cancellation or fencing of external effects. [AK1]
 
 ### Portability and dependency policy
 
@@ -327,7 +373,7 @@ Adopting AgentKit only in the application composition root or an optional server
 
 The supported managed durability path provisions its own Lakebase Runtime Store. Local `agentbricks dev` uses in-memory state, so matching HTTP behavior locally does not prove restart durability. Source exposes an injectable `runtime_store` and runtime store protocols, but a portable SQLite/Postgres implementation would be additional integration and verification work; no vendor support or compatibility commitment for that extension is established here. Managed session and memory services remain Databricks services even though REST clients can call them from any language. [AK1] [AK2] [AK3]
 
-The base distribution includes FastAPI/Uvicorn, SQLAlchemy, psycopg, Databricks SDK, MLflow Skinny and `databricks-ai-bridge[memory]`, plus CLI dependencies. `langgraph` and `openai` framework extras are optional. Its explicit `openai` extra conflicts with ADR-012. It is inaccurate to say the base package directly requires that extra or a foundation-model SDK: the inspected manifest does not list one directly. Public metadata for the minimum declared bridge `0.22.0` also includes pandas, tokenization and search packages. This is a partial dependency review, not an installed/resolved dependency-closure certificate. Pin and audit the actual environment before claiming compliance, including optional integrations. [AK1] [AK6]
+The base distribution includes FastAPI/Uvicorn, SQLAlchemy, psycopg, Databricks SDK, MLflow Skinny and `databricks-ai-bridge[memory]`, plus CLI dependencies. `langgraph` and `openai` framework extras are optional. Its explicit `openai` extra is eligible only inside a selected optional integration under revised ADR-012; it is not a rejection by itself. It is inaccurate to say the base package directly requires that extra or a foundation-model SDK: the inspected manifest does not list one directly. Public metadata for the minimum declared bridge `0.22.0` also includes pandas, tokenization and search packages. This is a partial dependency review, not an installed/resolved dependency-closure certificate. Pin and audit the actual environment before claiming compliance, including optional integrations. [AK1] [AK6]
 
 ### Adoption options and remaining work
 
@@ -341,9 +387,9 @@ For the optional-server option, Tether's session log is authoritative for turns,
 
 Publishing an AgentKit event after a Tether commit is a second write, not the atomic CONTRACT-003 change record. A crash between the two must be repairable from the authoritative Tether log/outbox. Never make that notification the only way to discover a committed result. Passing every `ReplyText` to `context.emit` would also persist content that CONTRACT-003 declares live-only. Custom feed routes may preserve the intended behavior, at the cost of reducing the amount of AgentKit streaming machinery reused. [AK1]
 
-**Replacement criterion:** first inspect the deployed server and identify a concrete block of invocation supervision that AgentKit would wholly replace. Only if that deletion materially simplifies the application should a replacement experiment exercise two actors, approval, an external effect, process death before result commit, changed policy, fresh-identity resume, browser reconnect and cancellation of a still-running synchronous tool. Check uncertain effects, safe logs, dependency closure and the portable path. Do not add a permanent AgentKit wrapper to hedge the decision. Unknown effects and synchronous-tool cancellation require the remaining H1/H2 design and verification work in either choice; they are not evidence of Tether superiority.
+**Replacement criterion:** first inspect the deployed server and identify a concrete block of invocation supervision that AgentKit would wholly replace. Only if that deletion materially simplifies the application should a replacement experiment exercise two actors, approval, an external effect, process death before result commit, changed policy, fresh-identity resume, browser reconnect and cancellation of a still-running synchronous tool. Check uncertain effects, safe logs, dependency closure and the portable path. Do not add a permanent AgentKit wrapper to hedge the decision. Unknown effects and synchronous-tool cancellation require the specified H1/H2 verification work in either choice; they are not evidence of Tether superiority.
 
-The initial comparison found missing credential/resume signatures. Those details are now reconciled in CONTRACT-002/003: Actor carries an excluded credential, core actions include RESUME, and the client binds an actor and exposes resume. H3 is closed at design level; this does not certify runtime behavior. H1/H2 remain the substantive effect/cancellation qualification risks.
+The initial comparison found missing credential/resume signatures. Those details are now reconciled in CONTRACT-002/003: Actor carries an excluded credential, core actions include RESUME, and the client binds an actor and exposes resume. H3 is closed at design level; this does not certify runtime behavior. H1/H2 semantics are now specified in CONTRACT-002 and ADR-001/014; their effect/cancellation qualification remains required.
 
 ## Differentiation Strategy
 
@@ -353,7 +399,7 @@ Durability here should mean preserving committed history and making uncertainty 
 
 ## Strategic Implications
 
-- **Build:** the owned transition model, gate pipeline, log/store projections, client API, recovery planner, and provider-neutral protocol adapter already selected by the project.
+- **Evaluate reuse before building:** Agent iteration, model adapters, retries, context processing, conversation state and Harness persistence. Retain the required gate, recovery and client behavior; implement only the integration and behavior the selected components do not supply.
 - **Defend:** small public surface, replaceable ports, metadata-only diagnostics, one state authority, and tests that prove the semantics users rely on.
 - **Borrow as designs:** LangGraph's durable boundaries; OpenAI's versioned pending-run lifecycle; Claude's context and permission experience; Pydantic's settled/unfinished effect distinction; Pi Durable's replay declarations and store contracts.
 - **Avoid:** a generic graph engine, a provider aggregation catalog, a bundled coding agent, or reimplementing every surveyed framework capability. Use MCP, sandbox, and other integrations behind appropriate optional boundaries when a real requirement selects them.
@@ -361,19 +407,19 @@ Durability here should mean preserving committed history and making uncertainty 
 
 ### Proposed next evidence
 
-Use the current disposition above and the failure-boundary allocation in SD-001. Close the remaining H1/H2 semantics before claiming acceptance, then run one fabricated scenario through the owned harness: tool lookup, approval, unsafe effect, forced crash, changed policy, explicit resume, and client reconnect. Include two concurrent actors and a small-context model profile. Measure completion correctness, duplicated effects, recovery/approval behavior, leaked content, imported dependencies, and client API behavior.
+Use the current disposition above and the failure-boundary allocation in SD-001. Qualify the specified H1/H2 boundaries before claiming acceptance, then run one fabricated scenario through the owned harness: tool lookup, approval, unsafe effect, forced crash, changed policy, explicit resume, and client reconnect. Include two concurrent actors and a small-context model profile. Measure completion correctness, duplicated effects, recovery/approval behavior, leaked content, imported dependencies, and client API behavior.
 
-No framework bake-off is scheduled or required. Only if ADR-003's concrete replacement/deletion criterion is met and a later experiment is authorized, implement the same scenario with the selected alternative in isolation. Provider SDKs may be needed by those experiments; that requires an explicit scope/policy decision before installation. A benchmark should count custom integration code, persistence/version migration, deployment components, and unresolved guarantees as well as latency and tokens. No effort or speed estimate is credible from this documentation-only review.
+The owner has now authorized the focused Pydantic AI reuse evaluation in SPIKE-003. Assess its state design and run the relevant scenario through Agent and selected reusable components before committing to the owned implementation. Optional provider SDK dependencies are eligible for that comparison and must be disclosed. No production framework or dependency selection follows solely from the evaluation. A benchmark should count custom integration code, persistence/version migration, deployment components, and unresolved guarantees as well as latency and tokens. No effort or speed estimate is credible from this documentation-only review.
 
 ## Open Questions
 
 | Question | Current disposition | Owner |
 |---|---|---|
-| Does “dependency free” mean literally stdlib-only? | Settled by accepted ADR-003 and current concerns: framework-free within the selected Python stack | Erik LaBianca |
-| What should the application do with an unresolved unsafe effect? | ADR-014 selects explicit unknowns; FR-44 reserves reconcile/resolve for P1. Preventing a fresh automatic equivalent action remains the H1 boundary in SD-001 | Erik LaBianca |
-| What is the cancellation contract for already-running synchronous tools? | Thread abandonment and unknown outcomes are explicit. Outstanding worker capacity and replacement-work rules remain H2 work in SD-001 | Erik LaBianca |
-| Is a minimal context cap P0 while semantic compaction stays P1? | Recommended; exact default/model metadata contract remains open | Erik LaBianca |
-| Which optional Pydantic integrations satisfy the dependency policy? | Unknown until exact extras and dependency closure are audited | Erik LaBianca |
+| Does “dependency free” mean literally stdlib-only? | Settled by revised ADR-002/003/012: selected Python dependencies, SDK-free public core/base, isolated optional provider extras; Agent/runtime reuse remains open | Erik LaBianca |
+| What should the application do with an unresolved unsafe effect? | Design resolved: CONTRACT-002 applies the session-wide effectful-call barrier and P0 authorized manual resolution; optional target reconcilers remain P1. TP-001 requires execution evidence | Engine/store implementer |
+| What is the cancellation contract for already-running synchronous tools? | Design resolved: permits/local session-busy markers last until actual exit; queued cancellation and shutdown are bounded. TP-001 requires a real-worker test | Executor implementer |
+| How is context bounded? | Design resolved: FR-35/45 and CONTRACT-004 make full/recent/summary strategies, explicit profiles/estimation and auxiliary authorization P0. Workload fidelity and cost remain unmeasured | Context/model implementer |
+| Which Pydantic components should Tether adopt? | Active assessment in SPIKE-003: judge state design, contract adaptation, total complexity and disclosed optional dependencies; optional SDK use alone is not a rejection | Erik LaBianca |
 | Do published mechanisms meet Tether's performance and isolation requirements? | Unmeasured; needs the same workload and explicit runtime evidence | Erik LaBianca |
 
 ## Source register

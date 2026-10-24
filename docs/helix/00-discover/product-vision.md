@@ -5,7 +5,7 @@ ddx:
   activity: discover
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-21
+  updated: 2026-10-23
   authoring:
     home: repo
   links:
@@ -29,7 +29,7 @@ Tether combines an application-controlled execution and recovery model with owne
 
 ## Vision
 
-A developer embeds tether in a Python service, writes tools as plain functions, and points a terminal UI, a web UI, or a notebook at one API. Sessions list instantly however many exist. A conversation is followed live and resumed after a disconnect without a re-read of the whole transcript. A turn that dies with its process is detected and resumed from its last committed step, never silently half-recorded. Traces show what happened without recording what was said. A recorded model conversation replays through the loop in a test and reproduces the same record. The platform team that serves many users puts its own policy at the ports and knows the extension code cannot widen it.
+A developer embeds tether in a Python service, writes tools as plain functions, and points a terminal UI, a web UI, or a notebook at one API. Sessions list instantly however many exist. A conversation is followed live and resumed after a disconnect without a re-read of the whole transcript. On a qualified durable profile, an interrupted turn resumes from accepted journal facts with explicit unknown effects and unavailable history; a volatile profile makes no restart guarantee. Traces show what happened without recording what was said. A recorded model conversation replays through the loop in a test and reproduces the same record. The platform team that serves many users puts its own policy at the ports and knows the extension code cannot widen it.
 
 **North Star**: A developer goes from an empty project to a durable, observable agent with a live interface in one sitting, and replaces any part (model, store, policy, interface) without touching the others.
 
@@ -37,7 +37,7 @@ A developer embeds tether in a Python service, writes tools as plain functions, 
 
 Maya builds an internal assistant for her company. She hears about tether, clones the repository, and runs one command. Within seconds a terminal UI opens on a demo session: she sends a message, watches the reply stream in, sees a tool run, and approves a call the demo marked ask-first. No configuration, no network, no key. Convinced, she writes two tools of her own as ordinary functions and runs the same terminal client against a scripted model with an empty session list. She creates a session and sends a message. The reply streams in as the model produces it; a tool that she marked "ask first" stops the turn, the client shows the pending call, and she approves it. She kills the process in the middle of a second turn. On restart the client lists the session as interrupted; the library resumes the turn from its last committed step, and the transcript shows each completed step exactly once.
 
-She then replaces the scripted model with a real provider through one line of configuration, replaces the in-memory store with the SQLite store, and writes a small web server whose only calls into tether are the client API: list sessions, read a page of a transcript, follow the change feed from the last position the browser saw. In her tests she replays a recorded conversation through the loop and compares its audit record to a saved one.
+She then replaces the scripted model with a real provider through one line of configuration, uses the local JSONL history/journal pair for durable sessions, and writes a small web server whose only calls into tether are the client API: list sessions, read a page of a transcript, follow the change feed from the last position the browser saw. In her tests she replays a recorded conversation through the loop and compares its audit record to a saved one.
 
 ## Target Market
 
@@ -60,7 +60,7 @@ All rows are assumptions to validate in `frame`; the survey ([competitive analys
 | Record and replay of model conversations | Regressions in the loop, the gates, and the audit record are caught by deterministic tests |
 | Fail-closed policy, scope, and result-guard ports; providers that narrow and never widen | A platform serving many users controls what extensions can do |
 | Telemetry without content | Traces and audit entries are safe to ship to a shared collector |
-| Provider neutrality: no provider SDK, any OpenAI-compatible server (local, self-hosted, sovereign, or hosted) | It runs wherever a model server runs, including air-gapped and sovereign deployments, and no provider's release cycle or terms sit in the dependency tree |
+| Provider neutrality: replaceable local, self-hosted, sovereign or hosted backends; isolated optional SDK adapters | It runs wherever a model server runs, including air-gapped and sovereign deployments, with no required hosted-provider account; optional adapters disclose their dependency/version obligations |
 
 ## Non-Goals
 
@@ -68,7 +68,7 @@ All rows are assumptions to validate in `frame`; the survey ([competitive analys
 - Not a server. Tether has no HTTP, WebSocket, or server-sent-events surface in the library; a server is an adapter written over the client API.
 - Not an agent orchestration framework: no graphs, no multi-agent handoffs, in the first releases.
 - Not a coding agent and not a replacement for one.
-- Not a model provider SDK, and not tied to any provider. Model calls speak the open OpenAI-compatible protocol, and tether imports no foundation-model provider's SDK unless an ADR shows the protocol cannot do the job (ADR-012).
+- Not a model provider SDK, and not tied to any provider. Model calls speak the open OpenAI-compatible protocol, and provider SDKs stay out of base packaging/public core types while explicitly selected optional adapters may reuse them (ADR-012). SDK wrapping alone does not settle runtime selection.
 - Not synchronous. There is no synchronous interface.
 - Not a workflow, prompt, or plug-in manifest system. An application defines its own declarations and compiles them to what the loop reads.
 - Not a retrieval or vector-store toolkit.
@@ -80,14 +80,14 @@ All rows are assumptions to validate in `frame`; the survey ([competitive analys
 | Every port has a dummy implementation that passes its conformance suite | 100% of ports, checked by the suite run in CI |
 | Foundation-model provider SDKs in the default install's dependency tree | 0, checked by a dependency-tree test in CI |
 | A recorded conversation replays through the loop and reproduces the saved audit record | Passes in CI for each shipped scenario |
-| A turn killed at any step resumes, and each completed step appears once | Passes in CI (a prefix test over every shipped scenario and a real-process kill test) |
+| A qualified durable profile preserves accepted steps and resumes with explicit blocked/unknown outcomes | Passes in CI (a prefix test over every shipped scenario and a real-process kill test) |
 | Session list, transcript page, append, and change-feed latency and memory | The proposed budgets in the PRD (NFR-7), replaced by measured budgets after the first benchmark baseline; measured by the benchmark suite in CI, with no regression |
 | Time from a fresh clone to a running terminal UI on the demo model, warm package cache | At most 10 s (proposed 2026-10-22; validated by the first measurement); measured by the quickstart test in CI |
 | The first downstream platform runs on a tether release in place of its in-house loop | Binary, owned by Erik LaBianca |
 
 ## Why Now
 
-Harness libraries have just become a distinct category. Pi 1.0 shipped on 2026-10-01, and Pi Durable shows demand for a small, durable, embeddable harness, but only in TypeScript. The OpenAI-compatible chat-completions protocol is now an open convention that local and self-hosted model servers implement, so a harness can be provider-neutral by speaking it directly, and a small client over `httpx` carries streaming, tool calls, per-call identity, and cancellation (SPIKE-002). The Python frameworks surveyed own the control flow and the paused state, which is the part many applications already own. Waiting means each team keeps building its own loop and its own session store.
+Harness libraries have just become a distinct category. Pi 1.0 shipped on 2026-10-01, and Pi Durable shows demand for a small, durable, embeddable harness, but only in TypeScript. The OpenAI-compatible chat-completions protocol is now an open convention that local and self-hosted model servers implement, so a harness can be provider-neutral by speaking it directly, and a small client over `httpx` carries streaming, tool calls, per-call identity, and cancellation (SPIKE-002). Tether builds on Pydantic AI Agent for iteration and typed execution while preserving application-owned policy, authoritative journal/history and the Client API (ADR-003). Teams can reuse that foundation without maintaining another general-purpose loop.
 
 ## Assumptions to Validate in Frame
 

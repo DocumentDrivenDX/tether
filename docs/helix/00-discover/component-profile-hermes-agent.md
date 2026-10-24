@@ -5,7 +5,7 @@ ddx:
   activity: discover
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-22
+  updated: 2026-10-23
   authoring:
     home: repo
   links:
@@ -31,13 +31,17 @@ ddx:
 
 # Component Profile: Hermes Agent
 
+## Current Tether design disposition
+
+The owner directed pre-release contract changes on 2026-10-22. [ADR-021](../02-design/adr/ADR-021-model-context-is-a-bounded-projection-of-the-immutable-log.md), [CONTRACT-004](../02-design/contracts/CONTRACT-004-context-projection-and-compaction.md), revised CONTRACT-001/002/003, and [TP-001](../03-test/test-plan.md) now define context projection, governed summaries, model/request bounds, effect resolution/barriers, worker lifetime and reconnect snapshots. CONTRACT-005 now separates the execution journal from authoritative original content/model exchanges and derived context. JSONL is the default history provider; Gateway exchanges require correlation and supplemental content. The 2026-10-23 coordination also corrects the earlier blanket SDK criterion: optional provider SDK adapters are eligible under revised ADR-012, and runtime reuse is open under ADR-002/003. Hermes remains a source of design elements and regression cases; no Hermes code was imported.
+
 ## Scope
 
 - Component: NousResearch Hermes Agent; selected public source pinned to `92663ae8054ae81f207f46d83512d3f879dc698d`, with current official documentation accessed 2026-10-22. Documentation is not pinned to that source and may describe a different revision.
 - Kind: Product; candidate source of harness mechanisms and small reusable components.
 - Would fill: optional mechanisms behind Tether-owned boundaries; whole-engine adoption is also screened against the same requirements.
 - Feeds: the [framework review](agent-harness-framework-review.md), existing ADR-003, and later context-management design for PRD FR-35. This research changes no accepted decision or implementation scope.
-- Incumbent: the owned Python harness selected by ADR-003. Its specifications are intent, not evidence that the implementation is complete.
+- Incumbent: Tether's specified Python/library boundaries. The underlying runtime selection is open under revised ADR-002/003; its specifications are intent, not evidence that the implementation is complete.
 - Researched: 2026-10-22. No package installation, execution, extraction test, benchmark, or dependency-closure verification was performed.
 - Excluded: a full security audit, exhaustive source inventory, market-share ranking, and adoption of Hermes's coding tools, messaging gateway, or autonomous delegation.
 
@@ -53,16 +57,16 @@ Tether needs reusable mechanisms for a Python harness whose application controls
 
 ## Need
 
-Developers need an asynchronous Python harness they can embed alongside their own tools and user interface, with application-controlled authorization and per-call credentials. The library owns the conversation and execution log, exposes owner-scoped session reads and changes, and imports no foundation-model provider SDK. These goals come from [the vision](product-vision.md), [PRD](../01-frame/prd.md), [concerns](../01-frame/concerns.md), ADR-003, ADR-011, and ADR-012.
+Developers need an asynchronous Python harness they can embed alongside their own tools and user interface, with application-controlled authorization and per-call credentials. The library exposes owner-scoped session reads and changes, separates authoritative original content from the execution journal and model context, and keeps its public core/base install free of provider SDKs while allowing isolated optional adapters. These goals come from [the vision](product-vision.md), [PRD](../01-frame/prd.md), [concerns](../01-frame/concerns.md), ADR-003, ADR-011, and ADR-012.
 
-The selected implementation remains the owned loop. External work is valuable where it removes implementation effort without introducing a second conversation authority or weakening the gates. Long-session compaction is P1 under FR-35; the current contract reserves its entry kind and permits only a narrowing `before_request` hook. Application skills, memory, routing, and sandboxing remain outside the core under ADR-016/017 and CONTRACT-002.
+The runtime selection is open. External work is valuable where it removes implementation effort without introducing competing history or execution authority or weakening the gates. The earlier evaluated snapshot treated long-session compaction as P1; CONTRACT-004/005 now specify source-addressed context projection and governed compaction independently of the runtime implementation. Application skills, memory, routing, and sandboxing remain outside the core under ADR-016/017 and CONTRACT-002.
 
 ## Required Capabilities
 
 | # | Capability | Serves | Comes from | Settled by |
 |---|------------|--------|------------|------------|
 | C1 | Embeddable asynchronous Python execution with explicit configuration | In-process application integration and concurrent sessions | ADR-001/003; concerns | Documented async interfaces and configuration lifecycle without core environment reads |
-| C2 | No foundation-model provider SDK dependency in the reused runtime path | Local and sovereign model independence | ADR-012; CONTRACT-001 | Pinned manifest and imports proving the reused dependency closure excludes those SDKs |
+| C2 | SDK-free public core/base and isolated optional provider dependencies; local/sovereign backends remain replaceable | Model-provider independence | Revised ADR-002/012; CONTRACT-001 | Pinned manifests/imports and packaging boundaries for the selected reusable subset, without a required hosted account |
 | C3 | Fresh per-call identity, engine-owned gates, and invocation-bound approvals | Multi-user authorization and safe continuation | ADR-011/015/016; CONTRACT-001/002 | Documented credential lifetime, gate precedence, digest binding, and restart behavior |
 | C4 | Authoritative session log and explicit uncertain effects after interruption | Durable recovery without duplicate unsafe effects | ADR-005/010/014/018/019/020; CONTRACT-002/003 | Commit, fencing, invocation identity, recovery, and store-capability semantics matching the contracts |
 | C5 | Owner-scoped session inspection and reconnectable observation | User interfaces can list, read, follow, and recover pending interaction | ADR-004/015; CONTRACT-003 | Documented authorization, paging, replay, pending approvals, and slow-subscriber behavior |
@@ -74,7 +78,7 @@ Nice to have: small dependency-free helpers and regression cases portable into e
 
 Hermes Agent is NousResearch's Python agent application and harness, with CLI, gateway, API, and editor-facing entry points driving an `AIAgent` core. Its official architecture describes model routing, tool dispatch, context engines, memory providers, session storage, and optional integrations. [1] [2]
 
-The inspected distribution declares an OpenAI SDK dependency on its newer runtime path; its documented model modes use OpenAI and Anthropic clients. Model interchangeability therefore does not establish compliance with Tether's SDK policy. [2] [3] The source is MIT-licensed. [4]
+The inspected distribution declares an OpenAI SDK dependency on its newer runtime path; its documented model modes use OpenAI and Anthropic clients. These dependencies require explicit optional packaging and isolation under Tether's revised SDK policy; their presence alone no longer rejects reuse. [2] [3] The source is MIT-licensed. [4]
 
 Independent installation counts, comparative distribution rank, a release-support window, and a fixed release cadence were not established by the inspected material. The owner's suggestion that Hermes is the most widely distributed Python harness remains unverified; repository popularity is not an installation census. See Sources for the search scope.
 
@@ -88,13 +92,13 @@ The documented `chat()` and `run_conversation()` entry points are synchronous, t
 
 **Status**: Unmet for direct whole-engine adoption.
 
-### C2. Provider SDK independence
+### C2. Provider dependency isolation
 
-The pinned manifest declares `openai`, and documented API modes use provider SDK clients. Small leaf functions may have a compliant closure, but importing the distribution or model path does not satisfy the selected policy. [2] [3]
+The pinned manifest declares `openai`, and documented API modes use provider SDK clients. Those clients are eligible inside optional adapters under revised ADR-012. The reviewed product distribution does not establish a Tether-compatible SDK-free base and isolated optional runtime closure; small extracted components need their own import review. [2] [3]
 
-**Settled by**: manifest and documented client types in [2] [3]. An extracted component needs its own import and dependency review.
+**Settled by**: manifest and documented client types in [2] [3]; packaging of a selected Tether integration remains unqualified.
 
-**Status**: Unmet for direct whole-engine adoption.
+**Status**: Unknown for direct whole-engine adoption; SDK use alone is not a rejection reason.
 
 ### C3. Identity, gates, and approvals
 
@@ -126,13 +130,13 @@ The TUI gateway documents saved session listing/history, separate active-session
 
 The pinned `ContextEngine.select_context()` explicitly allows request-only replacement while leaving persisted history untouched; lifecycle and usage hooks are separate. The default compressor and documentation describe pruning old results, keeping tool groups together, summaries, and reload markers for pruned skills. [7] [8] [12]
 
-Hermes also documents compaction that soft-archives active rows and inserts a new active generation; micro-compaction can continue after a persistence failure and later recover through batch compaction. This storage design is not an implementation of Tether's immutable-entry FR-35 contract. [5] [9] Tether's current narrowing `before_request` hook cannot introduce an arbitrary summary or retrieved replacement; a later explicit context surface is needed before adopting that behavior.
+Hermes also documents compaction that soft-archives active rows and inserts a new active generation; micro-compaction can continue after a persistence failure and later recover through batch compaction. This storage design is not an implementation of Tether's immutable-entry FR-35 contract. [5] [9] Tether's current narrowing `before_request` hook cannot introduce an arbitrary summary or retrieved replacement; the new CONTRACT-004 now supplies that explicit surface; the evaluated narrowing hook itself remains unchanged.
 
 **Settled by**: request-only selection is documented in [7]; whole-engine immutable-log/compaction-record equivalence is not established by [5] [9].
 
 **Status**: Unknown for exact contract compliance; request-only separation is a supported design reference.
 
-**Verdict**: No fit for direct whole-engine adoption under C1 and C2. Targeted design and leaf-function reuse remain candidates without changing ADR-003 or ADR-012.
+**Verdict**: No fit for direct whole-engine adoption under C1 (asynchronous embedding and explicit configuration). C2 is now Unknown under the revised optional-SDK policy; it no longer supplies a rejection. Targeted design and leaf-function reuse remain candidates under ADR-002/003/012.
 
 ## Technology and Operations
 
@@ -140,7 +144,7 @@ Hermes also documents compaction that soft-archives active rows and inserts a ne
 |--------|-------------------------|--------|
 | Execution | One agent core serves several interfaces; documented thread-based calls need adaptation to Tether's async-only ports | [1] [2] |
 | Configuration | Profile/home configuration and context-local scoping; Tether retains settings passed by its composition root | [5] [10] |
-| Storage | SQLite canonical state, gateway writer ownership, input and worker ledgers; keep Tether's selected Postgres/live/archive design | [5] |
+| Storage | SQLite canonical state, gateway writer ownership, input and worker ledgers; map design lessons to CONTRACT-003/005 execution journal/history/archive authorities; local JSONL is the reference default and Postgres the optional multiprocess profile | [5] |
 | Tools | Registry combines process-global, profile, and session-scoped entries with locks and snapshots; do not transplant the singleton | [10] |
 | Context cost | Stable prompt prefixes support caching; frequent micro-compaction invalidates prefixes and adds auxiliary model calls | [9] [11] |
 | Security qualification | No security or tenant-isolation certification was established; this review did not perform a security audit | Search scope below |
@@ -149,7 +153,7 @@ Hermes also documents compaction that soft-archives active rows and inserts a ne
 
 | Candidate | Disposition | Adaptation or boundary |
 |-----------|-------------|------------------------|
-| Context engine separation | Learn from | Keep source log immutable; design an explicit optional P1 context projection instead of widening `before_request` silently [7] |
+| Context engine separation | Learn from | Keep original history immutable and use CONTRACT-004 projection with CONTRACT-005 refs; never widen `before_request` silently [7] |
 | Old-result recovery stubs and skill reload markers | Learn from | Omitted content must remain retrievable through authorized session reads; missing archived content is explicit [8] [12] |
 | Stable skills index plus change notes | Learn from | Deterministic prompt ordering and deliberate updates; skills remain application/provider features [11] |
 | Admission unknowns and single authority | Learn from | Compare with invocation-level intents and store fencing; distinguish input, tool, and delivery idempotency [5] |
@@ -181,12 +185,12 @@ An extraction keeps upstream provenance and license notices alongside Tether's o
 
 ## Competitive Landscape
 
-The bounded comparison is Hermes versus the owned-harness incumbent. Broader frameworks remain in the existing framework review; no new market ranking is inferred.
+The bounded comparison is Hermes versus Tether's required behavior; the implementation beneath that boundary is open. Broader frameworks remain in the existing framework review; no new market ranking is inferred.
 
 | Candidate | C1 | C2 | C3 | C4 | C5 | C6 | Profile |
 |-----------|----|----|----|----|----|----|---------|
-| Hermes whole engine | Unmet [2] [5] | Unmet [2] [3] | Unknown [6] | Unknown [5] | Unknown [6] | Unknown [7] [9] | This profile |
-| Tether owned harness | Required | Required | Required | Required | Required | P1 requirement | [Architecture](../02-design/architecture.md), CONTRACT-001/002/003; delivery unverified here |
+| Hermes whole engine | Unmet [2] [5] | Unknown [2] [3] | Unknown [6] | Unknown [5] | Unknown [6] | Unknown [7] [9] | This profile |
+| Tether specified behavior | Required | Required | Required | Required | Required | CONTRACT-004/005 | [Architecture](../02-design/architecture.md), CONTRACT-001/002/003; delivery unverified here |
 
 Tether owns the required semantics and pays to implement them. Hermes offers existing mechanisms and a mature set of failure scenarios, but the reviewed runtime does not satisfy the whole-engine adoption constraints. Named alternatives such as Pydantic AI, LangGraph, and Pi Durable are not rescored here; their evidence is in [the framework review](agent-harness-framework-review.md).
 
@@ -199,10 +203,10 @@ Tether owns the required semantics and pays to implement them. Hermes offers exi
 | # | Question | Why it matters | Route |
 |---|----------|----------------|-------|
 | 1 | Which generic helper actually removes more maintenance than an independent small implementation? | Reuse has import, licensing, and update costs | Extraction review with dependency closure and focused tests, only when the owning slice needs it |
-| 2 | How should a context projection introduce summaries and retrieval while preserving the immutable log and gate inputs? | Current `before_request` cannot express arbitrary replacement | P1 FR-35 design and contract change |
+| 2 | How should a context projection introduce summaries and retrieval while preserving the immutable log and gate inputs? | Current `before_request` cannot express arbitrary replacement | CONTRACT-004 and ADR-021 now specify it; TP-001 qualifies implementation |
 | 3 | Which Hermes admission/worker guarantees are per-tool and backed by process-kill tests at the pinned source? | Avoid equating admission recovery with effect safety | Targeted source review if a recovery mechanism is selected |
-| 4 | What are the context fidelity, latency, and cache costs on fabricated Tether workloads? | Neither smaller requests nor continuous summaries establish lower total cost | Future FR-35 spike with Tether's workloads; no deadline or budget invented |
-| 5 | Can any specific optional integration satisfy fresh per-call identity without SDK or environment coupling? | Identity and dependency policy are hard constraints | Adapter-specific source review before proposing reuse |
+| 4 | What are the context fidelity, latency, and cache costs on fabricated Tether workloads? | Neither smaller requests nor continuous summaries establish lower total cost | FR-35 qualification under TP-001 with Tether's workloads; no deadline or budget invented |
+| 5 | Can any specific optional integration satisfy fresh per-call identity with isolated optional dependencies and explicit configuration? | Identity and dependency policy are hard constraints | Adapter-specific source review before proposing reuse |
 
 ## Sources
 

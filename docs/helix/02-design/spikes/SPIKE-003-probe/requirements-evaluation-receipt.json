@@ -1,0 +1,123 @@
+{
+  "date": "2026-10-23",
+  "package_versions": {
+    "pydantic-ai-slim": "2.59.0",
+    "pydantic": "2.14.1",
+    "pydantic-graph": "2.59.0"
+  },
+  "scope": "Corrected-requirements reuse evaluation; no installed Harness, live backend, production integration or cost benchmark",
+  "functional_requirements_mapped": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53
+  ],
+  "governance_sha256": {
+    "01-frame/prd.md": "b39ce7accc17cd1dee57b0cb9e9d9eca5fb91d3a8ffc77d1cb8e564c4a2b1fbb",
+    "02-design/contracts/CONTRACT-001-model-port-and-test-doubles.md": "4ec6b6d8d5b3539315f1cb2b3b9e010795df4c95deb9bbcd1e0d10527250ddab",
+    "02-design/contracts/CONTRACT-002-engine-tools-providers-and-governance-ports.md": "7dffa58eef2658c782ef492a9e038438e25831424019c061e9bc14c05dbad078",
+    "02-design/contracts/CONTRACT-003-sessions-stores-and-the-client-api.md": "2ae9c505dd0a86fecdd52af8cdd0fde19cce8768f8d36c3622d0888a484082a2",
+    "02-design/contracts/CONTRACT-004-context-projection-and-compaction.md": "e9619fe457e7325ccbb082487dbdd60461995fe7ab3c6deabfa52492f03fc437",
+    "02-design/contracts/CONTRACT-005-authoritative-history-and-model-call-correlation.md": "7172aed62a0ee43fd733578d0fea092e7e99efe3077c85d7a6131bc78dce577c",
+    "03-test/test-plan.md": "e718c62c356af2c67c31057f28950c6515941471e36e0ed3e9501d2d040941a7"
+  },
+  "inspected_upstream_source_sha256": {
+    "capabilities/abstract.py": "765ea9064a992a559a396cf8590107b4aa746055b76e4858bcb160f879634a50",
+    "tool_manager.py": "8a7ebb2d5c802fcfc67d6ab41c37d04ab4016dea248b5dedf129cf2c07c372ba",
+    "_agent_graph.py": "ef4ef853e9922c90be4aee740d31ac319367cfddbdb2281603f5d422593a7972",
+    "usage.py": "e3b1086a1744cbe129b827f1bacdbfe1023b161659360bd0e7e469e67cb27dfc",
+    "models/anthropic.py": "56a253b3934fb781ca71d4ea69c6236aac91715ee51394d053facc300b96447b",
+    "providers/anthropic.py": "f538bf56e0dec8b9accfb7174d2e70f2ef8eeefc514dd93c97379c3a96fa3b54"
+  },
+  "rerun_agent_checks": {
+    "custom_model_and_typed_tool": "pass",
+    "pydantic_output": "pass",
+    "approval_pause_serialized_history_resume": "pass",
+    "reusing_same_approved_history_reexecutes_tool": "observed; application must enforce single use",
+    "application_gate_can_deny_previously_approved_call": "pass; tool wrapper checks fresh run deps",
+    "agent_runs_without_loaded_provider_sdk": "pass",
+    "builtin_openai_adapter_requires_sdk": "confirmed"
+  },
+  "rerun_state_checks": {
+    "bounded_output_correction": "pass; one invalid response, one correction request",
+    "conversation_roundtrip_and_cumulative_usage": "pass; requests continue from 2 to 3",
+    "process_history_changes_persisted_run_history": "pass; returned conversation is trimmed, prior result retained, cumulative usage preserved"
+  },
+  "targeted_checks": {
+    "text_finish_length": "Agent returns output; Tether terminal gate required",
+    "text_finish_None": "Agent returns output; Tether terminal gate required",
+    "valid_tool_call_finish_length": "executed by bare Agent; enforce Tether finish contract before dispatch",
+    "normalized_hook_view": "pass: string converted to int, default supplied, both hooks see executable values",
+    "raw_result_hook": "pass: after_tool_execute sees dict before message normalization",
+    "missing_usage_lower_bound": "pass: unmeasured_requests distinguishes incomplete aggregate; adapters must populate it"
+  },
+  "limits": [
+    "No clean-install dependency audit",
+    "No transport retry/stream/native provider qualification",
+    "No Harness execution or store certification",
+    "SPIKE-004 results owned by coordinated integration task and not claimed here"
+  ],
+  "recommendation": "Prefer Agent integration; direct model API fallback; owned general-purpose loop currently unjustified",
+  "review": {
+    "scope": "New corrected-requirements comparison and changed conclusion",
+    "material_findings": 0,
+    "disposition": "Independent focused review found no overclaim of fit, wholesale Harness rejection, or premature justification for an owned loop."
+  },
+  "static_checks": [
+    "Required spike sections",
+    "53 stable functional requirements mapped",
+    "Local Markdown links and artifact IDs resolve",
+    "Frontmatter preserved except updated date and deliberate CONTRACT005 link",
+    "Probe syntax and SHA256",
+    "Diff whitespace"
+  ]
+}

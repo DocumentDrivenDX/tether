@@ -1,0 +1,66 @@
+"""SPIKE-003 requirements evaluation. Fabricated, offline; no store or transport."""
+import asyncio
+import importlib.metadata as md
+import json
+import sys
+from pydantic_ai import Agent
+from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.models import Model
+from pydantic_ai.usage import RequestUsage, RunUsage
+
+class ScriptModel(Model):
+    def __init__(self, responses):
+        super().__init__()
+        self.responses = iter(responses)
+        self.calls = 0
+    @property
+    def model_name(self): return 'fabricated-contract'
+    @property
+    def system(self): return 'fabricated'
+    async def request(self, messages, model_settings, model_request_parameters):
+        self.prepare_request(model_settings, model_request_parameters)
+        self.calls += 1
+        return next(self.responses)
+
+class Observe(AbstractCapability):
+    def __init__(self):
+        super().__init__()
+        self.seen=[]
+    async def after_tool_validate(self,ctx,*,call,tool_def,args):
+        self.seen.append(('validated',dict(args)))
+        return args
+    async def before_tool_execute(self,ctx,*,call,tool_def,args):
+        self.seen.append(('execute',dict(args)))
+        return args
+    async def after_tool_execute(self,ctx,*,call,tool_def,args,result):
+        self.seen.append(('raw_result',type(result).__name__))
+        return result
+
+async def main():
+    observations={}
+    for finish in ['length',None]:
+        m=ScriptModel([ModelResponse(parts=[TextPart('fabricated text')],finish_reason=finish)])
+        r=await Agent(m,retries=0).run('fabricated request')
+        assert r.output=='fabricated text'
+        observations[f'text_finish_{finish}']='Agent returns output; Tether terminal gate required'
+    m=ScriptModel([
+        ModelResponse(parts=[ToolCallPart('calculate',{'value':'3'},tool_call_id='fabricated-call')],finish_reason='length'),
+        ModelResponse(parts=[TextPart('done')],finish_reason='stop')])
+    cap=Observe();effects=[]
+    agent=Agent(m,capabilities=[cap],retries=0)
+    @agent.tool_plain(sequential=True)
+    async def calculate(value:int,count:int=2)->dict:
+        effects.append((value,count));return {'product':value*count}
+    r=await agent.run('fabricated tool request')
+    assert effects==[(3,2)] and r.output=='done'
+    assert cap.seen==[('validated',{'value':3,'count':2}),('execute',{'value':3,'count':2}),('raw_result','dict')]
+    observations['valid_tool_call_finish_length']='executed by bare Agent; enforce Tether finish contract before dispatch'
+    observations['normalized_hook_view']='pass: string converted to int, default supplied, both hooks see executable values'
+    observations['raw_result_hook']='pass: after_tool_execute sees dict before message normalization'
+    usage=RunUsage();usage.incr(RequestUsage(input_tokens=4,output_tokens=2));usage.incr(RequestUsage(unmeasured_requests=1))
+    assert usage.input_tokens==4 and usage.output_tokens==2 and usage.unmeasured_requests==1
+    observations['missing_usage_lower_bound']='pass: unmeasured_requests distinguishes incomplete aggregate; adapters must populate it'
+    print(json.dumps({'python':sys.version.split()[0],'versions':{p:md.version(p) for p in ['pydantic-ai-slim','pydantic','pydantic-graph']},'scope':'offline core behavior; no Tether integration, durability or real model transport','checks':observations},indent=2))
+
+if __name__=='__main__':asyncio.run(main())

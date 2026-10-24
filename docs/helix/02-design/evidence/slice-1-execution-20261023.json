@@ -1,0 +1,187 @@
+{
+  "date": "2026-10-23",
+  "scope": "SD-001 slice 1: Agent/model bridge, shared codecs, model doubles and compatible adapter foundation",
+  "status": "Requested foundation implemented and verified; production Q0-Q3/Q8 remain partially qualified",
+  "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
+  "plan_sha256": "1fb144d81f2a1457645209ee9209a5092d2df5fe0eb72748cebdd7ab5ced439b",
+  "git_baseline": "a430d96",
+  "authority": "Explicit owner instruction to implement slice 1 using Pydantic AI Agent; ADR-002/003/012 and CONTRACT-001/002/004/005",
+  "completed": [
+    "Frozen provider-neutral ModelRequest/ModelResponse/usage/tool/receipt/limit payloads and ModelPort; excluded credential/attempt callbacks",
+    "Stream framing/completion, canonical UTF-8 JSON/digests, defensive request snapshots and shared attempt-scope checks",
+    "ScriptedModel with response/partial-delta/outage scripts, fabricated-only RecordingModel and verified sequence/keyed ReplayModel",
+    "Unavailable cassettes preserve distinct receipt provenance; optional compatible v1 receipt field documented in CONTRACT-001",
+    "Actual public Agent + generic Model bridge with mandatory pre-conversion history authorization and per-call preparation; tools are deferred proposals only",
+    "Shared text/function-tool SDK codecs preserve usage absence, reject unsupported content/outcomes and refuse malformed/ambiguous executable proposals",
+    "SDK/Pydantic/source/version-bound Conversation derivative codec; no transcript or journal authority is inferred from it",
+    "Optional native OpenAI-compatible adapter uses Pydantic AI OpenAIChatModel and OpenAI SDK 3.37.0, not an owned protocol client or execution loop",
+    "Per-attempt reserve/render/start before egress, fresh identity, bounded single-layer retries/deadlines, explicit output field, separate header/body receipts and bounded authorized wire capture",
+    "Default transport disables environment/proxy discovery, SDK retries and redirects; requests identity encoding and rejects compressed bodies before reading",
+    "Updated module ownership, root guidance, development lock and CI artifact checks for separate base and optional provider closures"
+  ],
+  "versions": {
+    "python": "3.11.17",
+    "uv": "0.13.3",
+    "pydantic-ai-slim": "2.59.0",
+    "pydantic-graph": "2.59.0",
+    "pydantic": "2.14.1",
+    "anyio": "4.15.1",
+    "httpx2": "2.16.0",
+    "openai_optional": "3.37.0",
+    "ruff": "0.17.2",
+    "pyright": "1.1.414",
+    "pytest": "9.1.1"
+  },
+  "verification": {
+    "uv sync --locked": "passed with the selected SDK in the dev/optional closure only",
+    "make check": {
+      "result": "passed",
+      "tests_passed": 148,
+      "branch_inclusive_coverage_percent": 91.81,
+      "minimum_percent": 85,
+      "typing": "0 errors, 0 warnings",
+      "lint_format_sizes_ceilings_import_graph": "passed"
+    },
+    "base_dependency_audit": {
+      "reachable_distributions_including_tether": 18,
+      "foundation_provider_sdks": 0
+    },
+    "uv build": "passed: wheel and source archive",
+    "uv run --locked python scripts/check_distribution.py dist": {
+      "result": "passed",
+      "foundation_provider_sdks": 0,
+      "network_connections_blocked": true,
+      "actual_agent_script_record_replay": "passed in isolated installed wheel"
+    },
+    "uv run --locked python scripts/check_distribution.py dist openai": {
+      "result": "passed",
+      "foundation_provider_sdks": [
+        "openai"
+      ],
+      "network_connections_blocked": true,
+      "optional_adapter_import_and_actual_agent_script_record_replay": "passed in isolated installed wheel"
+    },
+    "distribution_metadata": "py.typed, MIT/Apache license texts, NOTICE and SPDX expression verified",
+    "workflow_and_hook_syntax": "workflow YAML and pre-commit shell parse; existing hook regression checks pass",
+    "git diff --check": "passed"
+  },
+  "test_sources": {
+    "tests/test_model_port.py": "common doubles, stream framing/cleanup, request privacy/snapshots, cassette key/version/mismatch, partial outage and receipt replay",
+    "tests/test_agent_bridge.py": "real Agent text/deferred calls, preparation/history refusal, terminal/JSON/tool validation, cancellation, usage/byte caps and version-bound checkpoints",
+    "tests/test_compatible_adapter.py": "actual Pydantic AI/native SDK over fabricated HTTPX2: mapping, attempt ordering, fresh retry identity, receipt provenance, callback commit faults and malformed replies",
+    "tests/test_adapter_limits.py": "decoded body/argument caps, compressed-body zero-read refusal, concurrent identity isolation, scope, retry exhaustion/backoff cancellation, parse failures and private error/content separation",
+    "tests/test_layers.py": "forbidden imports, SDK public types/private graph/native owners, dynamic imports, cycles and root re-export controls"
+  },
+  "review": {
+    "method": "bounded semantic review of public/private ownership, callbacks, codec fidelity, mutable state, attempt ordering and errors, with executable regressions",
+    "material_findings_remaining_in_implemented_subset": 0,
+    "fixed_findings": [
+      "History authorization now precedes conversion into Agent input",
+      "Missing usage/subcounts remain None instead of inheriting SDK zero defaults",
+      "Local denial and failed/unknown recorder commits survive SDK wrapping unchanged and never retry",
+      "SDK parse failures are invalid_response rather than retryable transport failures",
+      "Request snapshots and one scope validator prevent mutable payload/foreign-attempt drift",
+      "Response/argument/delta limits and compressed-body pre-read refusal precede materialization/dispatch",
+      "Malformed/error wire observations use the authorized content path; operational exceptions remain short codes",
+      "Tool-return names/outcomes and SDK output-tool kinds cannot silently become ordinary successful/executable history",
+      "Failure receipt fields survive cassette round trips",
+      "SDK empty-stop rejection becomes typed empty_response without an extra model call",
+      "Transport responsibilities split into egress/capture without raising global shape ceilings"
+    ],
+    "runner_conclusion": "No observed requirement failure justifies an owned loop. Remaining qualification maps to the invariant facade, adapters/codecs and production evidence. This is not a total-maintenance benchmark or blanket production-conformance claim."
+  },
+  "remaining_qualification": [
+    {
+      "gate": "Q1",
+      "owner_slice": "2/7",
+      "work": "Implement production tool registry/schema normalization, policy/provider/approval/guard ordering, invocation bindings, intent/result commits and fixed serial capability composition. Current callbacks are seams, not a production authorizer/journal."
+    },
+    {
+      "gate": "Q1/Q8",
+      "owner_slice": "2/9a",
+      "work": "Qualify SDK validation feedback and structured-output paths. They are explicitly refused by the initial text/function codec; empty stops produce a typed failure."
+    },
+    {
+      "gate": "Q3/Q4",
+      "owner_slice": "3/9a/9b",
+      "work": "Bind SDK derivative state to actual accepted journal/source refs, current reads, readiness and immutable hashes. Context estimation, compaction and governed summary requests remain production work."
+    },
+    {
+      "gate": "Q2",
+      "owner_slice": "9a/9b/10",
+      "work": "Qualify streaming/fragmentation and live compatible server subsets. Current network evidence is fabricated HTTPX2 peers and nonstreaming native SDK calls; compressed bodies, media/reasoning and effort selection are refused."
+    },
+    {
+      "gate": "Q0/Q8",
+      "owner_slice": "8/10",
+      "work": "Run remote Linux/macOS x Python 3.11/3.13 CI, installed durable CLI/TUI journeys and upgrade regression. Only local macOS/Python 3.11.17 is observed here."
+    },
+    {
+      "gate": "Q9/optional profiles",
+      "owner_slice": "11 or separately selected profile",
+      "work": "Live Gateway header/source correspondence and other native providers (including Claude) need their own extras, identity, closure and wire/profile tests."
+    }
+  ],
+  "qualification_limits": [
+    "No public gated Engine/tool executor, durable session store, live Gateway join or real provider account was exercised",
+    "The test AttemptRecorder is volatile and does not implement durable commit or policy authority",
+    "Checkpoint expected hashes/source binding must come from authorized accepted facts; codecs alone do not grant access or execution",
+    "A supplied custom transport is trusted and must not hide retries, redirects or egress; no hostile Python containment claim",
+    "The installed offline Agent/model/replay checks do not establish a durable reference-client demo or OS-crash guarantee"
+  ],
+  "next_action": "Slice 2: connect the production invariant facade to the fixed Agent seams; qualify normalized arguments, fresh gates, invocation/approval bindings, commit failures and serial tool execution before any business effect.",
+  "blockers": [],
+  "source_control": "No commit, branch, push or hook-path installation performed; prior design changes preserved",
+  "usage_metering": "Per-turn token totals unavailable; no enforced token cap claimed",
+  "upstream_sources": [
+    "https://pydantic.dev/docs/ai/api/models/base/",
+    "https://pydantic.dev/docs/ai/api/models/openai/"
+  ],
+  "artifacts": {
+    "dist/tether-0.0.0.post6.dev0+a430d96-py3-none-any.whl": "e2fb1e7b80bef1dfe7a93274a6d07d6ced20d2ec3e0404a1f272fdad184f035d",
+    "dist/tether-0.0.0.post6.dev0+a430d96.tar.gz": "a254d01a4ed0716867cd33eb8bb775e019a42a210f86cbdcc42f01536523922c"
+  },
+  "saved_sha256": {
+    "AGENTS.md": "8636a9b50b1d9fc166594ed14212bf84cc2279c4d4e93c3d6d64d74c91f6d823",
+    "README.md": "2fb254ce91722e2fe381b0f7f60b190b294762053938519da2c185e121eb0723",
+    "pyproject.toml": "91b0ef936330d6432c20bb5f2b6bf2310b2175457469500bbb56f3416606dc54",
+    "uv.lock": "4b18c27b26bdb4c2daccd53a744714559c6d0f6df06def269f882a32d6dcec28",
+    ".github/workflows/checks.yml": "45e6867fb99d6bbdaf575b8c085f9264792223bdfc8130a1b20b6e9d065e8e86",
+    "scripts/boundaries/policy.py": "44a59fc03b7bb0c567d752c7fa97740fda8cc970ebb40ebc0aee190aba2e3512",
+    "scripts/check_distribution.py": "6bc2da6feddb888619201a55206684878f9fc0c7ad12ac5f0ce9695c0ed2e15a",
+    "docs/helix/02-design/architecture.md": "e47182a794f709e014f127d09cd2a6cf61b49828743da3ebf472fd0093f52d5a",
+    "docs/helix/02-design/contracts/CONTRACT-001-model-port-and-test-doubles.md": "31ceccad62a52512243acaa80b5ed89454935be26ee7bea2801f4e70c843b1af",
+    "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md": "1fb144d81f2a1457645209ee9209a5092d2df5fe0eb72748cebdd7ab5ced439b",
+    "src/tether/__init__.py": "0502942bccbb5096c75d83bd90ba8a4433493d55ed54dd68a980fe1ece0c2a08",
+    "src/tether/adapters/__init__.py": "0184c3382a18050fb990b51ade8d63b6e6a09604110fc301896cb0ba521d350a",
+    "src/tether/adapters/openai_compat/__init__.py": "4ffef8e08ce164055cb01858228f98a2a727e9af90a3363627bc08a7ed99226a",
+    "src/tether/adapters/pydantic_ai/__init__.py": "d348b8d1d15ce90141ac022b3562a3bb8427ffbdfe47ef1d6f882fb9898e41bd",
+    "src/tether/adapters/pydantic_ai/compatible.py": "93f32199be4e1202c7d4c5296daff5dc8fe3bec54f4d8a918f0fd88a115c4c47",
+    "src/tether/adapters/pydantic_ai/transport.py": "dda2d7bdffd3b912de82abb275a90c28e581c7936da2c9b8e8a728bf4595d951",
+    "src/tether/adapters/pydantic_ai/wire.py": "9c52f9ed19254f9401cb66044bed577aa25f8393710ff7347ab4122ab81b4e68",
+    "src/tether/models/__init__.py": "cd3791958fa21568ef71d08f33977de6be56820259ea179757391962960540e7",
+    "src/tether/models/attempts.py": "07559362555e8af1cc278644ca278875474faf2da1604bd90cdd6dc51201e82d",
+    "src/tether/models/canonical.py": "6d588779c7c25862e3fa6d44f25f5d3f4e539a56445d6160a467fa81dbcd5bd9",
+    "src/tether/models/testing/__init__.py": "dc2f135efa50188ac9e6044de15b5b40fd140c21273e278d17e4af8b3e2f7962",
+    "src/tether/models/testing/cassettes.py": "fbe9516ecfa9d41997b87ada61e16a2e78abf4cf8f243cc5bf95d61aca94dcef",
+    "src/tether/models/testing/scripted.py": "acfde3d92abaeb1079147ff80964642fb96f7087a63311cca3080029eca9ddd0",
+    "src/tether/ports.py": "d31ea5d430804f506ae087dee8fc41f8527bc004c175163e9d6dda1a2c77e6e8",
+    "src/tether/runtime/__init__.py": "9b2611336422d818117e1ad931a9a34430bd9a84ca01d812f08764c09ca33634",
+    "src/tether/runtime/pydantic_ai/__init__.py": "f3cf2a92212b45f2ac91f8b04a2abfa0a59f6970fdeb995e5865512182974f44",
+    "src/tether/runtime/pydantic_ai/bridge.py": "b146a61c2a52ed2cca3a48a6d5f1337c587c3046bca624c583d651bb30d9e7ba",
+    "src/tether/runtime/pydantic_ai/checkpoints.py": "0f55de3daaf6b5f616dd7a38abed5b707bde957d1bced7ef4b03ae3434907ece",
+    "src/tether/runtime/pydantic_ai/messages.py": "22d983f59d6bdb4fd1ada85d363c2fdca1f98da397351d3f384e8a0b839df5f6",
+    "src/tether/runtime/pydantic_ai/validation.py": "296f7124ceefcddf8b4f8a136bdbfb49c50c628ac00936fe5410689329085ea0",
+    "src/tether/types.py": "56cbb9baa19db76bf8831a79fd7fea68d7cdc558bfae1f92ddfc18de4ad57c4a",
+    "tests/conftest.py": "2a1bb339955026be335332e2219e04105345be16408c09d00f7c7fc8540061d4",
+    "tests/test_adapter_limits.py": "a88b3f1e0c2b6a5390a2c6e0d04bc0f5809eaa9e95a6c2f519b836c4de831a92",
+    "tests/test_agent_bridge.py": "e79ab508288325be3750eabffe734dfa9cafa2e86568f6eabb8cfce11acd0cf0",
+    "tests/test_commands.py": "d23090e0c261f84615695891ab160f06e405d488bf580cad44de25307f1c8dcb",
+    "tests/test_compatible_adapter.py": "a99a865a10f7088691ccf80d1652bbff3164653ecc4b52c8e85aa7affc2fe55f",
+    "tests/test_dependencies.py": "03453c7bb2fa68f45ae554f4ee30d82b836c541aa90b1887eec7c6889c0c7df1",
+    "tests/test_distribution.py": "5a138428dd712db579ad9b3ace881ea286ccf2f091eda5a1884d3c27b9d0f7b1",
+    "tests/test_layers.py": "2c8762507d2f345bf012b34662421fbce43d8b8a953664a7c04c0ea6e0da8c2d",
+    "tests/test_model_port.py": "db83e2d582b26f7cbf008540a11be5b401b922bdd4db67568fe9c41afb98ed98",
+    "tests/test_tooling.py": "f02db19425ae8b81fdaaa19df0730d2f12a5646c571a585a47e19f6603bea186"
+  }
+}

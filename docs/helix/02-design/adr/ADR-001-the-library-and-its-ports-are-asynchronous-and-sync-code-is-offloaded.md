@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: proposed
   owner: Erik LaBianca
-  updated: 2026-10-22
+  updated: 2026-10-23
   authoring:
     home: repo
   links:
@@ -33,11 +33,13 @@ An agent harness spends nearly all of its time waiting: on a streaming model cal
 
 We will make the engine, the session service, the client API, and every port that can wait on I/O asynchronous, and offer no synchronous interface. A synchronous tool or provider method is run by the engine in a worker thread.
 
-- **Which ports are asynchronous.** The model port (`complete` is a coroutine; `complete_stream` returns an asynchronous iterator), the policy, scope, and result-guard ports, the audit sink, the session store, every provider hook, the turn service, the client API, the event sink, and the interaction port. Ports that do no I/O stay synchronous: the tracer, the clock, the identifier source, and the pure checks on a tool.
+- **Which ports are asynchronous.** The model port (`stream` returns an asynchronous iterator; `complete` is a coroutine helper), the policy, scope, and result-guard ports, the audit sink, the session store, every provider hook, the turn service, the client API, the event sink, and the interaction port. Ports that do no I/O stay synchronous: the tracer, the clock, the identifier source, and the pure checks on a tool.
 - **Tool and hook authors may write `def` or `async def`.** The engine runs a plain function in a worker thread through `anyio.to_thread` with the caller's context variables copied and a bounded limiter, so a tool author needs no asynchronous code.
 - **No synchronous interface.** The package exports no `run_sync` helper. A script calls `asyncio.run`. The test kit's tests are asynchronous and run with the `anyio` pytest plugin.
 - **Concurrency.** Different sessions run concurrently on one event loop. A session runs one turn at a time. Within a turn, steps and tool calls run in order so the transcript and the audit record keep their order; running independent tool calls in parallel is a later decision.
 - **Cancellation.** A cancelled turn closes its model stream and requests cancellation of an asynchronous tool. A synchronous tool already running in a worker thread cannot be forcibly stopped; the engine abandons waiting for it, and its external outcome can remain unknown (ADR-014). The steps already committed remain in the session log (ADR-005), and the log ends with a cancelled-turn entry. Cancelling the turn or fencing its log writer does not roll back or fence an external effect. Applications needing stronger isolation run the operation behind an isolated executor and use downstream idempotency or fencing.
+- **Worker lifetime.** Executor permits are released only when the underlying function actually exits. A cancelled await cannot free capacity; queued work is bounded and cancellable before it starts. A live worker holds a process-local session-busy marker, so replacement turns or resolution for that session raise `WorkerOutstanding`. Late results never use a stale writer or silently clear an unknown outcome. Cross-process safety still depends on durable intents, the unresolved-effect barrier and target-system fencing.
+- **Bounded shutdown.** A configured finite deadline bounds waiting for cleanup. Remaining threads are reported as outstanding; closing Tether cannot promise their effects stopped.
 - **The engine never blocks the loop.** The project's lint selects ruff's `ASYNC` rules, which flag a blocking call inside an `async def`.
 
 ## Why We Chose This
@@ -61,4 +63,4 @@ A `run_sync` helper gets called from inside event loops by accident, which nests
 
 ## Concern Impact
 
-- **No concern impact**: `python-uv` covers the stack and `concurrency-model` records the async choice. `anyio` is declared as a direct dependency of the core (the core depends on `pydantic` and `anyio` only); this ADR is the coverage for it.
+- **No concern impact**: `python-uv` covers the stack and `concurrency-model` records the async choice. `anyio` and Pydantic types are the asynchronous/typed baseline. This decision does not freeze the full provider-neutral dependency list; Pydantic AI Agent/model reuse is selected under ADR-002/003; exact release closures and interpreter/profile support remain qualification work, with provider SDK isolation under ADR-012.
