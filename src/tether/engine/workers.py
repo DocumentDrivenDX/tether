@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
+from contextlib import nullcontext
 from contextvars import Context
 from typing import TypeVar, cast
 
 from tether.types.execution import ExecutionDenied
 from tether.types.lifetime import WorkerLifetime
 
+from .observers.worker import Outcome, WorkerObservation
 from .operations import Operation
 
 T = TypeVar("T")
@@ -48,26 +50,52 @@ class Workers:
         return operation
 
     async def call(
-        self, session_id: str, function: Callable[..., T | Awaitable[T]], *args: object
+        self,
+        session_id: str,
+        function: Callable[..., T | Awaitable[T]],
+        *args: object,
+        observe: WorkerObservation | None = None,
     ) -> T:
-        synchronous = not inspect.iscoroutinefunction(function)
-        operation: Operation[T] = self._operation(session_id, function)
-        if not synchronous:
-            operation.start_async(function, args)
-        else:
-            self._submit(operation, function, args)
-        return await operation.wait()
+        with observe.waiting() if observe is not None else nullcontext():
+            try:
+                operation: Operation[T] = self._operation(session_id, function)
+            except BaseException:
+                if observe is not None:
+                    observe.emit("refused")
+                raise
+            if observe is not None:
+                operation.completion.add_done_callback(
+                    lambda future: observed_completion(observe, future), context=Context()
+                )
+            if inspect.iscoroutinefunction(function):
+                if observe is None:
+                    operation.start_async(function, args)
+                else:
+                    operation.start_async(observed_async(function, observe), args)
+            else:
+                self._submit(operation, function, args, observe)
+            try:
+                return await operation.wait()
+            except asyncio.CancelledError:
+                if observe is not None:
+                    observe.abandoned(not operation.completion.done())
+                raise
 
     def _submit(
         self,
         operation: Operation[T],
         function: Callable[..., T | Awaitable[T]],
         args: tuple[object, ...],
+        observe: WorkerObservation | None,
     ) -> None:
         def invoke() -> T | Awaitable[T]:
             if operation.cancelled.is_set():
                 raise ExecutionDenied("worker_cancelled")
-            return function(*args)
+            with observe.body(True) if observe is not None else nullcontext():
+                value = function(*args)
+                if observe is not None:
+                    observe.returned(inspect.isawaitable(value))
+                return value
 
         try:
             task = cast(
@@ -97,3 +125,30 @@ class Workers:
             return True
         _, pending = await asyncio.wait(tuple(self.active), timeout=seconds)
         return not pending
+
+
+def observed_async(
+    function: Callable[..., T | Awaitable[T]],
+    observe: WorkerObservation,
+) -> Callable[..., Awaitable[T]]:
+    async def invoke(*args: object) -> T:
+        with observe.body(False):
+            value = function(*args)
+            # The selected function is async; await its initial body only. Operation
+            # owns any further awaitable returned by that body independently.
+            result = await cast(Awaitable[T], value)
+            observe.returned(inspect.isawaitable(result))
+            return result
+
+    return invoke
+
+
+def observed_completion(observe: WorkerObservation, future: asyncio.Future[T]) -> None:
+    outcome: Outcome = "returned"
+    if future.cancelled():
+        outcome = "cancelled"
+    else:
+        error = future.exception()
+        if error is not None:
+            outcome = "cancelled" if isinstance(error, asyncio.CancelledError) else "raised"
+    observe.emit("completed", outcome)

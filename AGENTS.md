@@ -249,3 +249,12 @@ depth rejection, close abandoned unstarted coroutines and preserve primary cance
 clean-context WorkerLifetime timer retains weak task cycles until actual completion; do not
 remove it merely because the caller and Workers object have become unreachable. No arbitrary
 detached-work discovery or foreign-loop adoption is promised. Worker telemetry remains separate.
+
+Worker observations are non-authoritative: capture scalar source/phase/invocation/attempt identity
+only after required intent acceptance. Safe replay retains its original intent position and gets
+a new dispatch UUID; safe read-only calls have no invented intent. Distinguish logical tool wait,
+actual initial function/body exit and owned operation completion. Enter/exit body spans inside the
+actual thread/Task; queued/pre-entry cancellation has no body entry/exit. Late callbacks use copied
+IDs and closed scalar outcomes only, never Actor/credential/args/result/exception/span-manager
+objects, and never commit tool results. Sealed observer drops do not change actual worker/root
+ownership. Nonjournal Client audit and retrieval/context/OTel qualification remain separate work.

@@ -32,6 +32,7 @@ from tether.types.tooling import Normalized, definition, normalize
 
 from .effects import unresolved_invocations
 from .governance import Governance, reason_code
+from .observers.metadata import Scope
 from .providers import provider_hook
 from .results import prepare_result
 from .workers import Workers
@@ -260,7 +261,7 @@ class ToolExecutor:
             await self._replay(inv, tool, args, existing_intent)
         needs_intent = tool.effect == "effectful" or tool.replay == "unsafe"
         if needs_intent and existing_intent is None:
-            await self.gov.fact(
+            existing_intent = await self.gov.fact(
                 "tool_call",
                 key="intent:" + inv.id,
                 source_turn_id=inv.source.turn_id,
@@ -277,6 +278,21 @@ class ToolExecutor:
                     (e.index for e in self.gov.log.entries if e.key == "approval:" + inv.id), None
                 ),
             )
+        observation = self.gov.observers.worker(
+            scope=Scope(
+                owner=self.gov.log.session.owner,
+                session_id=self.gov.log.session.id,
+                principal=self.gov.actor.principal or self.gov.actor.id,
+                phase_turn_id=self.gov.log.turn_id or self.gov.turn_id,
+                spec_id=self.spec.id,
+                spec_version=self.spec.version,
+            ),
+            source_turn_id=inv.source.turn_id,
+            source_position=inv.source.index,
+            call_position=inv.manifest.position,
+            invocation_id=inv.id,
+            intent_position=existing_intent.index if existing_intent is not None else None,
+        )
         # Nothing may catch or normalize a failed intent append into dispatch permission.
         try:
             async with asyncio.timeout(
@@ -287,6 +303,7 @@ class ToolExecutor:
                     tool.run,
                     self.contexts[inv.id],
                     args.value.model_copy(deep=True),
+                    observe=observation,
                 )
             output = value if isinstance(value, ToolOutput) else ToolOutput(text=value)
         except asyncio.CancelledError:
