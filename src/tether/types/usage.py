@@ -111,6 +111,8 @@ class UsageLedger:
         self.totals: dict[str, TokenUsage] = {}
         self.missing_by_purpose: dict[str, int] = {}
         self.counts: dict[str, int] = {}
+        self.call_totals: dict[str, TokenUsage] = {}
+        self.missing_by_call: dict[str, int] = {}
 
     def apply(self, entry: Entry) -> None:
         if entry.index in self.seen or entry.kind not in USAGE_KINDS:
@@ -131,13 +133,13 @@ class UsageLedger:
             self.bindings[key] = call
             if isinstance(identity, dict):
                 self.identities[key] = dict(identity)
-            self._observe(key, value, purpose)
+            self._observe(key, value, purpose, call)
         if call not in self.calls:
             self.counts[purpose] = self.counts.get(purpose, 0) + 1
         self.calls[call] = purpose
         self.seen.add(entry.index)
 
-    def _observe(self, key: str, value: TokenUsage | None, purpose: str) -> None:
+    def _observe(self, key: str, value: TokenUsage | None, purpose: str, call: str) -> None:
         if self.purposes.get(key, purpose) != purpose:
             raise IntegrityError("usage_purpose_changed")
         change = usage_change(self.values.get(key), value, exists=key in self.values)
@@ -146,8 +148,17 @@ class UsageLedger:
         self.missing += change.missing_delta
         zero = TokenUsage(input_tokens=0, output_tokens=0)
         self.totals[purpose] = add_usage(self.totals.get(purpose, zero), change.added)
+        self.call_totals[call] = add_usage(self.call_totals.get(call, zero), change.added)
+        self.missing_by_call[call] = self.missing_by_call.get(call, 0) + change.missing_delta
         self.missing_by_purpose[purpose] = (
             self.missing_by_purpose.get(purpose, 0) + change.missing_delta
+        )
+
+    def call_usage(self, call: str) -> tuple[TokenUsage | None, bool]:
+        value = self.call_totals.get(call)
+        return (
+            value.model_copy(deep=True) if value is not None else None,
+            call in self.calls and self.missing_by_call.get(call, 0) == 0,
         )
 
     def snapshot(self) -> UsageSoFar:

@@ -173,6 +173,11 @@ class Run:
                     execute=self.executor.execute,
                     deferred_ids=self.deferred_ids,
                     recovery_tools=self.recovery_tools,
+                    observe_model=lambda request: self.gov.observers.model(
+                        request,
+                        owner=self.gov.log.session.owner,
+                        usage=lambda call: self.gov.accounting.call_usage(call),
+                    ),
                 )
             waiting = False if recovered_final else await self._run(continuing)
             visible = tuple(

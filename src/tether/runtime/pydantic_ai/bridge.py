@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 
 from pydantic_ai import Agent, DeferredToolRequests
@@ -44,6 +45,7 @@ class PortModel(Model):
         limits: ModelExecutionLimits,
         prepare: PrepareModel,
         accept_response: Callable[[ModelResponse], Awaitable[None]] | None = None,
+        observe_model: Callable[[ModelRequest], AbstractContextManager[str | None]] | None = None,
     ) -> None:
         super().__init__()
         self._port = port
@@ -51,6 +53,7 @@ class PortModel(Model):
         self._limits = limits
         self._prepare = prepare
         self._accept_response = accept_response
+        self._observe_model = observe_model
         self._calls: set[tuple[str, str, str]] = set()
         self.last_response: ModelResponse | None = None
 
@@ -100,6 +103,17 @@ class PortModel(Model):
         if key in self._calls or prepared.attempts is None:
             raise ModelAttemptDenied("invalid_model_call_binding")
         self._calls.add(key)
+        context = (
+            self._observe_model(prepared)
+            if self._observe_model is not None
+            else nullcontext(prepared.traceparent)
+        )
+        with context as traceparent:
+            return await self._accepted_response(
+                prepared.model_copy(update={"traceparent": traceparent})
+            )
+
+    async def _accepted_response(self, prepared: ModelRequest) -> SDKResponse:
         seconds = min(
             prepared.timeout_seconds or self._limits.request_timeout_seconds,
             self._limits.request_timeout_seconds,

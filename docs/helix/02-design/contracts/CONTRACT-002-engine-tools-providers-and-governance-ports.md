@@ -623,3 +623,47 @@ failed, timed_out, dropped_full, dropped_bytes, dropped_closed and duplicates. O
 counters do not imply journal durability, exporter receipt or successful application effects.
 After bounded or canceled close, surviving delivery MUST retain a strong owner through actual
 coroutine exit even when the caller drops its last reference. Release that owner after drain.
+
+
+Engine accepts optional audit:AuditSink, tracer:Tracer and telemetry_limits:TelemetryLimits.
+Explicit None selects the no-op; falsey supplied ports remain active. audit_stats returns a copied
+DeliveryStats, and observation_failures counts
+metadata-build/context and guarded-tracer failures separately from delivery counters.
+Engine.aclose shares one absolute finite deadline across execution and observer waits. Composition
+may call aclose_execution(deadline=...), wait_closed() for actual execution only, release storage,
+then aclose_observers(deadline=...) and wait_observers_closed(). A False close is incomplete;
+observer drain MUST NOT be a prerequisite for releasing otherwise drained session storage.
+SessionService uses this physical/store/observer ordering with one caller deadline. It seals observer
+admission after physical/store cleanup; late observations after that frontier drop explicitly.
+
+The accepted-entry mapping is a closed registry. Unknown extensions and fields are omitted, and
+known-invalid/unregistered codes map to other. No history hydration is required for telemetry.
+Common detail contains entry_position, source_turn_id and phase_turn_id; the last names the
+accepting lease phase, even when an entry retains an earlier proposal's source turn. Identity fields
+are copied metadata; tool/provider call payloads, receipt identifiers and history refs never pass.
+
+| Accepted source | Audit kind | Additional allowed detail |
+|---|---|---|
+| message with user/assistant role | user_message / assistant_message | None |
+| authorization | authorization | Closed action, strict allowed boolean, closed reason, resource_digest; actual purpose for model gates |
+| model_attempt / model_receipt | x.model.prepared / x.model.observed | Generated call/attempt IDs, actual purpose, prepared status when present, known per-attempt usage and usage_complete |
+| model_call | model_call | Generated call ID, actual purpose, closed status/finish_reason/reason, shared per-call retry usage and usage_complete |
+| tool_call | tool_call | Bounded tool/invocation IDs and binding digests, closed status/effect/replay/reason |
+| confirmation | confirmation | Bounded invocation ID and closed state; no notes/arguments |
+| turn_started / turn_resumed / turn_ended | x.tether.turn_started / turn_resumed / turn_ended | Closed stop_reason/reason for ending |
+| session with closed event | session_closed | None |
+| x.effects.resolved / x.effects.replayed | Same namespaced kind | Bounded invocation/tool/binding identifiers only; no operator text |
+
+Per-call usage uses an incremental index over the shared accepted-fact ledger, including retries,
+known zero, optional subcount enrichment and missingness. A later absent receipt does not erase
+known counts. A compatibility test recorder can provide known logical final counts while physical
+coverage remains incomplete. Model-call spans close after response validation and known response
+acceptance, so they observe that same ledger. The trusted runtime observation callback yields only
+traceparent; it cannot replace model identity, requests, executable results, approvals or dispatch.
+Gate/model audit context is captured at the corresponding operation, not from dispatcher context.
+Bounded source-context caches use max_pending_events and retain copied IDs/weak source refs only.
+
+This Engine accepted-journal checkpoint does not qualify nonjournal Client read/genesis/metadata
+operation auditing, physical executor lifecycle, tool/retrieval/context spans, or real OTel transport.
+Those remain required integration work in the build plan; reads MUST NOT append fictitious facts or
+manufacture journal positions to fill their observation gap.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import Context
 from typing import Literal, Self
 
 from tether.engine import Engine
@@ -76,11 +77,14 @@ class SessionService:
         await self.aclose()
 
     async def _finish_close(self) -> None:
-        await self.engine.aclose()
+        await self.engine.aclose_execution()
         await self.turns.wait_closed()
         await self.followers.close()
         await self.engine.wait_closed()
-        self.drained = await self.store.aclose()
+        physical = await self.store.aclose()
+        await self.engine.aclose_observers()
+        await self.engine.wait_observers_closed()
+        self.drained = physical
 
     @staticmethod
     def _observe_cleanup(task: asyncio.Task[None]) -> None:
@@ -94,17 +98,20 @@ class SessionService:
         self.access.seal()
         self.turns.seal()
         self.closed = True
+        deadline = asyncio.get_running_loop().time() + self.limits.shutdown_timeout_seconds
         try:
-            async with asyncio.timeout(self.limits.shutdown_timeout_seconds):
-                await self.engine.aclose()
+            async with asyncio.timeout_at(deadline):
+                await self.engine.aclose_execution(deadline=deadline)
                 await self.turns.wait_closed()
                 await self.followers.close()
                 await self.engine.wait_closed()
-                self.drained = await self.store.aclose()
+                physical = await self.store.aclose()
+                observed = await self.engine.aclose_observers(deadline=deadline)
+                self.drained = physical and observed
         except TimeoutError:
             self.drained = False
         finally:
             if not self.drained:
-                self._cleanup = asyncio.create_task(self._finish_close())
+                self._cleanup = asyncio.create_task(self._finish_close(), context=Context())
                 self._cleanup.add_done_callback(self._observe_cleanup)
         return self.drained

@@ -762,3 +762,47 @@ installs pass observer and prior logical suites, and all131 package sources matc
 Independent read-only review found no remaining helper blocker after strong ownership was added.
 Engine/Governance/session wiring, operational content/actor/worker qualification and real OTel
 receiver proof remain separate work; no helper result claims those integrations are complete.
+
+
+The Engine accepted-journal checkpoint composes one observer facade per Engine with its qualified
+delivery/tracer helpers. Governance admits copied closed-registry metadata only after exact known
+acceptance and shared accounting. Source gate/model context survives the later acceptance boundary;
+source proposal turns remain distinct from current lease phases and principal refresh. The fixed
+runtime callback scopes an existing model request through bounded validation and response acceptance,
+yielding only traceparent; Pydantic AI Agent still owns iteration. Per-call usage has an incremental
+shared index, avoiding telemetry transcript rescans or another usage counter.
+
+Session cleanup first seals/drains execution, then releases storage, then seals/drains observations.
+Only the caller's finite deadline governs its wait; retained observer cleanup cannot retain a store
+root solely for metadata. Next qualification covers actual Agent source/privacy/stable retries,
+unknown/rejected commits, approval principal refresh, concurrent actors and stalled sink/root reopen.
+Client read/genesis/metadata observations, actual worker/tool/retrieval/context spans and optional
+receiver proof remain separate implementation/qualification checkpoints rather than assumed coverage.
+
+
+Remaining Client semantic audit requires exact mutation receipts rather than inferred snapshots.
+Idempotent create may return an existing session's current summary; its last_seq/timestamps or a
+preceding find cannot prove genesis. Preserve create/update return APIs and plan an optional typed
+actor-bound store companion returning created/existing or accepted-mutation/no-op plus exact
+identity from the same authoritative transaction. Forward current caller and root lifetime; no new
+pool or storage telemetry callback belongs there. Select and specify the companion in CONTRACT-003
+before implementation. Without it, only explicitly named successful-return observations are honest;
+they do not complete session_started/session_settings coverage. Qualify concurrent stable-ref
+creation, intervening updates, no-op patches, exact concurrent receipts and unknown acknowledgments.
+
+Before optional OTel export qualification, extend the neutral telemetry contract to preserve explicit
+optional audit trace_flags alongside paired IDs. Current packets contain IDs only and clean sink
+contexts cannot recover real flags. Define strict uint8, None for unavailable legacy context and no
+ambient/sampling inference; qualify zero/nonzero flags and invalid/partial negatives. This P1
+receiver-readiness work does not block the scoped metadata-only Engine checkpoint.
+
+
+The Engine accepted-journal checkpoint now passes1041 cases in33 bounded groups at92.31% branch
+coverage with strict typing0 and all unchanged gates. Its114 focused checks include actual Agent
+restart/resume, current confirmation principal/phase, accepted/unknown commits, content exclusion,
+concurrent actors and root reopen while the sink remains active. Review corrected early model-span
+finalization and finish-reason fidelity. The first full attempt had an existing native cleanup timeout;
+the isolated unchanged case and complete unchanged rerun pass. Fresh four-profile hash-locked
+installs exercise Agent audit/trace/usage correlation; SQL profiles retain typed usage/public testkit
+proof. All133 package sources match wheel/sdist. This is scoped evidence, not complete Q7,
+worker/Client/retrieval/context instrumentation, OTel receiver, hosted-matrix or release qualification.
