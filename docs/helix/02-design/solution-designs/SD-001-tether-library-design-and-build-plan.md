@@ -583,3 +583,20 @@ claiming PostgresSessionStore. Next implement transactional session entries/proj
 leases and fencing, then qualify true multiprocess takeover/stale writes/uncertain acknowledgments,
 restart and deployment RLS. Embedded-server convenience and broader Client/testkit/performance
 closure remain selected work; pinned development server wheels are test infrastructure only.
+
+
+The next slice5 checkpoint extracts shared pure projection/lookup/pending/usage transitions,
+then adds explicit migration2 while preserving revision1 content and namespace identity. SQL
+uses indexed sessions, immutable entries, entry groups, pending/effects, per-attempt usage,
+transactional owner heads and retained changes. Canonical envelopes remain authoritative;
+indexed metadata is updated in the same transaction. Owner-head/session locks follow one order.
+Lease checks use server time after lock acquisition and monotonically increasing generations.
+Equal-key retries do not increment entries, usage, owner sequences or changes. Reads enforce
+count/byte limits before payload transfer and do not hydrate history. Only a leased TurnLog
+loads a bounded full execution snapshot for its synchronous entries property. Current caller
+acquisition remains explicit; global recovery requires supplied maintenance authority and a
+separate owner-scoped recovery extension can serve deployments without broad startup authority.
+Root close retains physical work; cross-process fencing protects journal writes while committed
+intent/unknown barriers govern effects. Differential tests compare SQL projections to a fresh
+SessionIndex rebuild. Keep incomplete primitives internal until complete-port and real-process
+qualification passes; optional live notifications are separate from bounded persisted polling.

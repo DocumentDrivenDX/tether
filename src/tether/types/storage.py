@@ -225,6 +225,15 @@ class JournalFiles(Protocol):
     async def read_file(self, name: Literal["journal", "history"], offset: int) -> JsonValue: ...
 
 
+class StoredProjection(Payload):
+    """Internal canonical execution projection; journal entries remain authoritative."""
+
+    state: SessionState
+    init: SessionInit
+    specs: dict[str, SpecRef] = Field(default_factory=dict)
+    missing_usage: int = Field(default=0, ge=0)
+
+
 class SessionTurnLog(TurnLog, Protocol):
     async def heartbeat(self) -> None: ...
 

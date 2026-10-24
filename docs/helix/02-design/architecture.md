@@ -266,3 +266,13 @@ payload semantics. Finite waits retain actual I/O; uncertain source release cann
 repeat effect. Namespace registration survives outstanding workers and repeated old-root close.
 The existing JSONL journal can reference PostgresHistory without combining their transactions.
 Postgres execution-store/cross-process claims remain unimplemented until the rest of slice5 passes.
+
+
+Revision2 adds internal transactional session/entry/projection/index/feed primitives and explicit
+managed revision1 upgrades, retaining the history namespace and canonical bytes. A shared pure
+reducer supplies local and SQL metadata, pending/source lookup, effect ledger and physical-attempt
+usage semantics. SQL appends commit facts, metadata, counters and retained changes together;
+equal keys preserve the original entry and sequence. Exact archive retries compare reconstructed
+identity and journal facts. Bounded pending reads use indexes without transcript hydration. These
+primitives confer no public PostgresSessionStore or cross-process lease guarantee. Complete-port
+reads, server-time generations, stale-writer refusal and real-process recovery are the next gate.

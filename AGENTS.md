@@ -155,3 +155,12 @@ post-commit release failures are unknown. Closing a root seals only its admissio
 pool or sibling root. Old repeated close cannot remove a replacement namespace registry entry.
 PostgresSessionStore, cross-process fencing/takeover, deployment RLS and embedded convenience remain
 unimplemented until separately qualified; do not infer those claims from the history adapter.
+
+
+Revision2 now adds internal indexed session/journal/projection/feed primitives and shared pure
+metadata/lookup/ledger/usage reducers. Explicit migrate upgrades verified revision1 while preserving
+namespace/history identity; ordinary opening refuses old revisions. Equal journal keys retain original
+positions and owner sequences. Every accepted batch, including existing-key retries, must obey total
+byte limits; stored envelopes must remain canonical. SQL projection/ledger/usage/feed changes share
+the fact transaction. Pending insertion order and exact restore identity match reconstruction. These
+internal primitives do not qualify public session-store leases, takeover or deployment RLS.
