@@ -8,7 +8,7 @@ from typing import Annotated, Protocol, Self
 
 from pydantic import Field, model_validator
 
-from tether.types import JsonValue, Payload
+from tether.types import Count, JsonValue, Payload, PositiveInt, PositiveSeconds
 
 TELEMETRY_CONTRACT_VERSION = 1
 TraceScalar = str | int | float | bool
@@ -76,3 +76,26 @@ class Tracer(Protocol):
     ) -> AbstractContextManager[Span]: ...
     def current_ids(self) -> TraceIds | None: ...
     def set_current_attribute(self, name: str, value: TraceScalar) -> None: ...
+
+
+class TelemetryLimits(Payload):
+    max_pending_events: PositiveInt = 256
+    max_event_bytes: PositiveInt = 16384
+    dedup_capacity: PositiveInt = 1024
+    delivery_timeout_seconds: PositiveSeconds = 1
+    shutdown_timeout_seconds: PositiveSeconds = 1
+
+
+class DeliveryStats(Payload):
+    pending: Count = 0
+    active: bool = False
+    sealed: bool = False
+    disabled: bool = False
+    enqueued: Count = 0
+    delivered: Count = 0
+    failed: Count = 0
+    timed_out: Count = 0
+    dropped_full: Count = 0
+    dropped_bytes: Count = 0
+    dropped_closed: Count = 0
+    duplicates: Count = 0

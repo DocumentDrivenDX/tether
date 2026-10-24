@@ -583,3 +583,43 @@ max_attributes (default32) and max_value_bytes (default1024) bound retained name
 or span-capacity drops increment their corresponding overflow counters. Invalid/nonfinite metadata,
 invalid reason codes, changed child trace identity, and updates to a closed recording span refuse
 with bounded static codes. Context-manager failure records no automatic exception/status text.
+
+
+Engine observer delivery uses explicit finite max_pending_events, max_event_bytes,
+dedup_capacity, delivery_timeout_seconds and shutdown_timeout_seconds. Default sink omission
+retains no packets and starts no delivery task. A non-None supplied port is honored even if falsey.
+Pending admission includes queued packets and scheduled cross-thread callbacks; one separate
+physical delivery permit remains occupied until the sink coroutine actually exits. After timeout,
+cancel the wait and retain the surviving emission; do not spawn replacement deliveries around it.
+Delivery and shutdown failures/drops are bounded counters, never exception text or raw packets.
+
+Create dispatcher and emission tasks in clean context-variable contexts. Packets hold copied scalar
+owner/principal/session/turn/attempt/spec/trace values only, never Actor, Credential or span-manager
+objects. The explicit captured packet trace context owns correlation; the dispatcher's ambient span
+MUST NOT be attached to another actor's event. The bounded admission/dedup/build path before a
+trusted accepted callback MUST NOT throw or await. Equal retries reuse observational identity;
+bounded deduplication is not a durable exactly-once guarantee after eviction or restart.
+
+Use one absolute caller shutdown deadline across observer and physical cleanup stages. Seal
+observation admission, retain surviving observer tasks, and expose incomplete delivery without
+holding a session lease, file lock, database acquisition or store root solely for observational
+work. Observer cleanup failure MUST NOT skip physical-worker or storage cleanup. Actual execution
+workers still retain their existing ownership until exit. Engine/service cleanup distinguishes
+physical completion, store release and observer drain rather than making a stalled sink their
+shared authority.
+
+Executor-function exit and completion of an awaitable it returns are distinct observations. Neither
+alone claims accepted tool-result commitment. Span enter/exit stay in the owning thread/task;
+late observations use captured intent position and physical-attempt identity. Guard tracer entry,
+metadata access, mutation and exit so failure/suppression cannot mask the original execution error
+or cancellation. Do not pass the body's exception object to a tracer for automatic recording.
+
+
+TelemetryLimits defaults are max_pending_events=256, max_event_bytes=16384,
+dedup_capacity=1024, delivery_timeout_seconds=1 and shutdown_timeout_seconds=1. All limits
+are strictly positive; byte limits count canonical encoded bytes. DeliveryStats exposes pending
+(queued plus scheduled), active, sealed, disabled and nonnegative counters enqueued, delivered,
+failed, timed_out, dropped_full, dropped_bytes, dropped_closed and duplicates. Observational
+counters do not imply journal durability, exporter receipt or successful application effects.
+After bounded or canceled close, surviving delivery MUST retain a strong owner through actual
+coroutine exit even when the caller drops its last reference. Release that owner after drain.
