@@ -1,10 +1,29 @@
 """Non-secret database namespace ownership, retained through actual worker exit."""
 
+import asyncio
 from dataclasses import dataclass, field
 from threading import RLock
 from uuid import UUID
 
 from tether.types.lifetime import WorkerLifetime
+
+
+class RootWorkers(WorkerLifetime):
+    """Root-local submission gate over the namespace's concrete actual-worker registry."""
+
+    def __init__(self, shared: WorkerLifetime) -> None:
+        super().__init__()
+        self.shared = shared
+        self.active = shared.active
+
+    def check_loop(self) -> None:
+        self.shared.check_loop()
+
+    def retain(self, session_id: str, task: asyncio.Future[object]) -> None:
+        self.check_loop()
+        if self.closed:
+            raise RuntimeError("worker_lifetime_closed")
+        self.shared.retain(session_id, task)
 
 
 @dataclass

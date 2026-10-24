@@ -8,7 +8,7 @@ reference CLI/terminal clients are planned in later build slices.
 **Status: gated execution, local durability and partial Client commands (slices 2–4 subset).** Pydantic AI Agent now runs tools through
 Tether's policy, validation, approval and commit gates. Model doubles and shared codecs remain
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
-Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Explicit durable resume is implemented for the qualified local profile. Provisional text production, Postgres session storage and reference clients remain unfinished. Optional PostgreSQL18 history is available as a separate content authority. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Explicit durable resume is implemented for the qualified local profile. Optional PostgreSQL18 session storage and independent content history are implemented for the qualified database profile. Provisional text production, embedded-server convenience and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
 
 ## Development
 
@@ -78,7 +78,7 @@ SessionStore contract4 exposes `store.for_actor(actor)` for caller-aware storage
 Client operations bind the present actor explicitly, including followers and retained results.
 These scopes borrow the store lifetime: closing a scope does not close its root, and global
 recovery requires explicit maintenance authority. Applications retain ownership of credential
-refresh, connection pools, database roles and RLS; Postgres itself remains unfinished.
+refresh, connection pools, database roles and RLS. The optional PostgreSQL store preserves caller predicates and never falls back to maintenance authority.
 The POSIX single-writer profile stores checksummed batches and accepted-prefix witnesses,
 fences leased writes, and reconstructs pending approval from journal/source facts with the
 original supplied specs. Unknown writes require reopening; close retains ownership while
@@ -203,25 +203,39 @@ Reference-preserving restore currently requires compatible original provider/cod
 See [archive conformance](tests/test_archive_ports.py) and [Client journeys](tests/test_client_archive.py).
 
 
-Optional PostgreSQL18 content history uses `tether[postgres]` and
-`tether.stores.postgres.PostgresHistory`. Supply a `ConnectionSource(actor, session_id)` async
+Optional PostgreSQL18 session storage and content history use `tether[postgres]` and
+`tether.stores.postgres.PostgresSessionStore` and `PostgresHistory`. Supply a `ConnectionSource(actor, session_id)` async
 context manager that borrows an idle psycopg async connection. The application owns its pool,
 credential refresh, roles and RLS. Tether owns each short transaction and refuses ambient ones.
 Run `migrate(source, actor=maintenance_actor, schema="tether")` explicitly, then
 `DatabaseRoot.open(source, actor=bootstrap_actor, schema="tether")`; ordinary opening verifies
-schema/revision, namespace and durability settings without migration. Use the resulting history
-with the existing JSONL journal and close the database root explicitly. It never closes your pool.
+schema/revision, namespace and durability settings without migration. Compose
+`PostgresSessionStore(root, maintenance=maintenance_actor)` and `PostgresHistory(root)`, or use
+independent database roots/history and journal backends. Bind every caller via `store.for_actor(actor)`;
+unbound caller operations refuse. Root recovery requires explicit maintenance authority. A bound
+PostgreSQL facade also offers `recover_owner(now=aware_datetime)` for deployments permitting only
+caller-scoped recovery. Borrowed facade close is non-owning; close database roots explicitly.
+Tether never closes your pool.
 `migration_sql(schema)` exports the fresh-schema plain SQL statements; apply the complete sequence
 in one transaction. `migrate` explicitly upgrades a verified revision1 schema to revision2,
 preserving its namespace and immutable history bytes; repeat calls verify the current revision.
 Ordinary opening refuses revision1 until that upgrade. Conflicting or drifted tables refuse
-rather than receiving implicit repair. Revision2 includes internal indexed journal, metadata/paging and persisted-feed primitives;
-the public session-store adapter and its cross-process qualification remain unfinished.
+rather than receiving implicit repair. Revision2 includes indexed journal, metadata/paging,
+materialized pending/effect state and persisted feeds. Leased writes enforce holder/generation
+and server-time expiry inside the transaction. Uncertain acknowledgments seal the current handle;
+reopening reconstructs from canonical facts. Global recovery is one bounded transaction: candidate
+count/bytes or result-byte overflow refuses without partial publication. `page_limit` bounds its
+candidate set; larger deployments must select an explicit bound and authority.
 
 This checkpoint qualifies PostgreSQL18.6 with logged ordinary tables, `fsync=on`,
 `full_page_writes=on` and `synchronous_commit=on`. It preserves canonical bytes, immutable
 keys and ordered read statuses. Cancellation/timeouts retain actual connection work, and
 release failures after possible commit remain uncertain. Independent roots share namespace
-worker ownership. PostgreSQL session transactions/fencing, multi-process takeover, RLS deployment
-proof and embedded-server convenience remain slice5 work. The development suite runs pinned
+actual-worker tracking with separate root admission gates. Closing one root seals execution through
+that root while a sibling remains usable. Real separate-client processes cover lease exclusion,
+takeover, stale operations and killed-client recovery; paired SQL Agent/Client cases cover approval
+restart, safe/unsafe resume, manual resolution and archive/restore. A fabricated application-owned
+unprivileged-role RLS profile demonstrates credential refresh and denied-caller refusal. This does
+not qualify arbitrary deployment roles, downstream exactly-once effects or OS power loss.
+Embedded-server convenience and broader release/profile coverage remain work. The development suite runs pinned
 PostgreSQL18 wheels; that dependency does not enter the base or postgres runtime extra.

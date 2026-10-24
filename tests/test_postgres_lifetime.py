@@ -175,7 +175,7 @@ async def test_repeated_old_close_cannot_detach_replacement_workers(database):
     replacement.workers.retain("session", pending)
     third = await DatabaseRoot.open(h.source, actor=h.actor, schema=h.schema)
     try:
-        assert third.workers is replacement.workers
+        assert third.workers.active is replacement.workers.active
         assert third.workers.busy("session")
     finally:
         pending.set_result(None)
@@ -235,5 +235,5 @@ async def test_canceled_root_bootstrap_releases_only_after_actual_source_exit(da
         release.set()
         await asyncio.wait_for(exited.wait(), 2)
     sibling = await DatabaseRoot.open(h.source, actor=h.actor, schema=h.schema)
-    assert sibling.workers is h.root.workers
+    assert sibling.workers.active is h.root.workers.active
     assert await sibling.aclose()

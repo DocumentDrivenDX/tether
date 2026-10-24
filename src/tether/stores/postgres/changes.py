@@ -1,7 +1,7 @@
 """Persisted owner-sequence polling; filtering never skips unobserved owner changes."""
 
 import asyncio
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 
 from psycopg import sql
 
@@ -65,6 +65,10 @@ def prefix(
     return tuple(values), through
 
 
+def no_guard() -> None:
+    return None
+
+
 class Changes(Effects):
     async def poll(
         self, position: int, *, session_id: str | None = None
@@ -113,6 +117,7 @@ class Changes(Effects):
         *,
         session_id: str | None = None,
         since: int | None = None,
+        guard: Callable[[], None] = no_guard,
     ) -> AsyncGenerator[PersistedChange, None]:
         async def initialize(connection: Connection) -> int:
             head, _ = await self.head(connection, write=False)
@@ -122,10 +127,13 @@ class Changes(Effects):
                 raise ValueError("invalid_sequence")
             return head if since is None else since
 
+        guard()
         position = await self.root.run(self.actor, session_id, initialize)
         while True:
+            guard()
             values, position = await self.poll(position, session_id=session_id)
             for value in values:
+                guard()
                 if session_id is None or value.session_id == session_id:
                     yield value
             if not values:

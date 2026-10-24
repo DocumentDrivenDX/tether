@@ -142,7 +142,7 @@ graph TD
 | tether.adapters.openai_compat | Compatible-server configuration/profile over the selected model integration | OpenAICompatModel/profile as specified by the adapter design | types, ports, adapters.pydantic_ai | A second default HTTPX/SSE protocol implementation, hosted-only behavior |
 | tether.adapters.databricks | Gateway configuration and authorized external-history reader; owns databricks.sdk imports | Gateway profile/history integration | types, ports, history, selected model/profile adapters, its extra | Engine/session internals, default-install platform dependency |
 | tether.stores.jsonl | Single-writer execution journal, atomic batches, index rebuild and local fencing | JsonlSessionStore | types, ports, stores.projections, standard library, AnyIO | Agent/provider SDKs, environment |
-| tether.stores.postgres / embedded | Live-store transaction/lease/feed and optional server lifecycle; own psycopg/pgserver imports | PostgresStore and explicit embedded configuration | types, ports, selected extras | Agent/provider SDKs, engine internals |
+| tether.stores.postgres / embedded | Live-store transaction/lease/feed and optional server lifecycle; own psycopg/pgserver imports | PostgresSessionStore and explicit embedded configuration | types, ports, selected extras | Agent/provider SDKs, engine internals |
 | tether.stores.sqlite | Optional live-store implementation | SqliteStore | types, ports, sqlite3 and offload | Agent/provider SDKs, engine internals |
 | tether.adapters.otel | Tracer/audit adapter; owns OTel imports | OtelTracer/OtelAuditSink | types, ports, selected extra | Content capture by default, engine implementation |
 | tether.scope / tether.guards | Optional scope kinds, bound-context and heuristic guards | Declared guards/kinds | types, ports | Agent internals or a dispatch bypass |
@@ -265,7 +265,8 @@ fsync/full_page_writes/synchronous_commit settings. Canonical byte envelopes pre
 payload semantics. Finite waits retain actual I/O; uncertain source release cannot authorize a
 repeat effect. Namespace registration survives outstanding workers and repeated old-root close.
 The existing JSONL journal can reference PostgresHistory without combining their transactions.
-Postgres execution-store/cross-process claims remain unimplemented until the rest of slice5 passes.
+The history-only checkpoint does not establish execution-store or cross-process capability;
+the public composition qualification is described below.
 
 
 Revision2 adds internal transactional session/entry/projection/index/feed primitives and explicit
@@ -287,3 +288,16 @@ share the envelope transfer bound. Metadata validation uses finite parameter gro
 owner-sequence prefixes independently of session filtering, detects retention/sequence gaps, and
 stops at a byte boundary without advancing past an oversized event. Public lease/fencing and
 maintenance composition remain a separate qualification gate.
+
+
+The optional PostgresSessionStore now composes the revision2 journal, indexed reads, bounded
+persisted feeds and server-time holder/generation fences. Caller facades preserve present
+acquisition identity. Explicit global maintenance recovery keeps its actor separate from target
+row ownership; owner-only recovery is an optional adapter extension. Applications retain pools,
+credentials, roles/RLS setup and downstream effect fencing. Recovery is bounded and atomic.
+Leased handles hold a bounded verified prefix, stage derivatives outside database resources and
+seal uncertainty before further dispatch. Root-local worker admission gates share concrete actual
+worker tracking, so one root can close without closing siblings or detaching physical work.
+Separate-client-process and paired SQL Agent journeys qualify the selected PostgreSQL18 profile;
+arbitrary deployment policy, external exactly-once behavior, power-cut proof, embedded lifecycle
+and performance targets require their own evidence.

@@ -274,7 +274,7 @@ async def test_actual_worker_retention_refuses_expired_takeover_across_roots(dat
         with pytest.raises(WorkerOutstanding):
             await Leases(root, h.actor).acquire(summary.id, turn_id="replacement")
         await leases.release(token)
-        assert root.workers is h.root.workers
+        assert root.workers.active is h.root.workers.active
         assert root.workers.busy(summary.id)
         view = (await Changes(root, h.actor).snapshot(summary.id)).view
         assert view.summary.status == "interrupted"

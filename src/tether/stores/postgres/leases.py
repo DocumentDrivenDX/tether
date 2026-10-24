@@ -13,6 +13,7 @@ from tether.types.storage import (
     LeaseLost,
     RecoveredTurn,
     SessionClosed,
+    SessionSummary,
     StoreError,
     TurnInProgress,
 )
@@ -26,6 +27,19 @@ class Token:
     session_id: str
     turn_id: str
     generation: int
+
+
+@dataclass(frozen=True)
+class Prefix:
+    count: int
+    row_bytes: int
+
+
+@dataclass(frozen=True)
+class Appended:
+    entries: tuple[Entry, ...]
+    summary: SessionSummary
+    prefix: Prefix | None
 
 
 def matches(frame: Frame, token: Token) -> bool:
@@ -136,21 +150,47 @@ class Leases(Journal):
         return await self.root.run(self.actor, session_id, acquire, write=True)
 
     async def append_fenced(self, token: Token, values: Sequence[NewEntry]) -> tuple[Entry, ...]:
+        return (await self.commit(token, values)).entries
+
+    async def commit(
+        self, token: Token, values: Sequence[NewEntry], *, prefix: Prefix | None = None
+    ) -> Appended:
         values = tuple(value.model_copy(deep=True) for value in values)
 
-        async def append(connection: Connection) -> tuple[Entry, ...]:
+        async def append(connection: Connection) -> Appended:
             await self.head(connection, write=True)
             frame = await self.frame(connection, token.session_id, write=True)
             now = await self.clock(connection)
             fence(frame, token, now)
+            if prefix is not None and prefix.count != frame.projection.summary.entry_count:
+                raise IntegrityError("turn_prefix_integrity")
             accepted, inserted = await self.append(connection, frame, values, now)
             fence(frame, token, await self.clock(connection))
             if inserted:
                 await self.publish(connection, frame, inserted)
+            budget = self.growth(frame, inserted, prefix)
             fence(frame, token, await self.clock(connection))
-            return accepted
+            return Appended(accepted, frame.projection.summary, budget)
 
         return await self.root.run(self.actor, token.session_id, append, write=True)
+
+    def growth(
+        self, frame: Frame, inserted: tuple[Entry, ...], prefix: Prefix | None
+    ) -> Prefix | None:
+        if prefix is None:
+            return None
+        if prefix.row_bytes < 0 or prefix.count < 0:
+            raise IntegrityError("turn_prefix_integrity")
+        rows = prefix.row_bytes + sum(
+            len(canonical(entry.model_dump(mode="json"))) for entry in inserted
+        )
+        count = frame.projection.summary.entry_count
+        limits = self.root.limits
+        if rows + frame.bytes_used > limits.max_index_bytes:
+            raise StoreError("turn_snapshot_bytes")
+        if count > limits.page_limit * limits.max_startup_batches:
+            raise StoreError("turn_snapshot_count")
+        return Prefix(count, rows)
 
     async def heartbeat(self, token: Token) -> None:
         async def heartbeat(connection: Connection) -> None:
@@ -200,16 +240,21 @@ class Leases(Journal):
             raise ValueError("invalid_recovery_datetime")
 
         async def recover(connection: Connection) -> RecoveredTurn | None:
-            await self.head(connection, write=True)
-            frame = await self.frame(connection, session_id, write=True)
-            at = min(now, await self.clock(connection))
-            if frame.lease_until is not None and frame.lease_until > at:
-                return None
-            if self.root.workers.busy(session_id):
-                raise WorkerOutstanding("worker_outstanding")
-            recovered = await self.end_phase(connection, frame, at)
-            if frame.lease_turn is not None:
-                await self.write_lease(connection, frame, None, None, frame.generation)
-            return recovered
+            return await self.recover_locked(connection, session_id, now)
 
         return await self.root.run(self.actor, session_id, recover, write=True)
+
+    async def recover_locked(
+        self, connection: Connection, session_id: str, now: datetime
+    ) -> RecoveredTurn | None:
+        await self.head(connection, write=True)
+        frame = await self.frame(connection, session_id, write=True)
+        at = min(now, await self.clock(connection))
+        if frame.lease_until is not None and frame.lease_until > at:
+            return None
+        if self.root.workers.busy(session_id):
+            raise WorkerOutstanding("worker_outstanding")
+        recovered = await self.end_phase(connection, frame, at)
+        if frame.lease_turn is not None:
+            await self.write_lease(connection, frame, None, None, frame.generation)
+        return recovered

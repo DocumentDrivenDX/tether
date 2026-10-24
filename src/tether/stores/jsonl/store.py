@@ -10,7 +10,7 @@ from typing import Self
 from uuid import uuid4
 
 from tether.ports.bound import ActorStore
-from tether.stores.projections import SessionIndex, create_index
+from tether.stores.projections import SessionIndex, create_index, patch_entries
 from tether.types.canonical import canonical
 from tether.types.execution import (
     Actor,
@@ -190,23 +190,7 @@ class JsonlSessionStore(SessionReads):
             return self.index[staged.state.id].summary.model_copy(deep=True)
 
     async def update(self, session_id: str, owner: str, patch: SessionPatch) -> SessionSummary:
-        changes = patch.model_dump(mode="json", exclude_unset=True)
-        values: list[NewEntry] = []
-        for key in ("title", "tags"):
-            if key in changes and (key == "title" or changes[key] is not None):
-                values.append(
-                    NewEntry.model_validate(
-                        {
-                            "kind": "session",
-                            "facts": {
-                                "event": "titled" if key == "title" else "tagged",
-                                "value": changes[key],
-                            },
-                        }
-                    )
-                )
-        if patch.settings is not None:
-            values.append(NewEntry(kind="settings", facts={"changes": patch.settings}))
+        values = patch_entries(patch)
         async with self.turn(session_id, owner, turn_id="update:" + str(uuid4())) as log:
             await log.append(values)
         return self.owned(session_id, owner).summary.model_copy(deep=True)

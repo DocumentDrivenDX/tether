@@ -9,10 +9,10 @@ from psycopg import AsyncConnection
 
 from tether.types.execution import Actor, CommitUnknown, copy_actor
 from tether.types.lifetime import WorkerLifetime
-from tether.types.storage import IntegrityError, StorageLimits
+from tether.types.storage import IntegrityError, StorageLimits, StoreError
 
 from .io import PendingIO
-from .namespace import Namespace, acquire
+from .namespace import Namespace, RootWorkers, acquire
 from .schema import idle, inspect, qualified
 from .source import ConnectionSource as ConnectionSource
 
@@ -24,6 +24,7 @@ class DatabaseRoot:
         qualified(schema)
         self.source, self.schema, self.limits = source, schema, limits.model_copy(deep=True)
         self._namespace: Namespace | None = None
+        self._workers: RootWorkers | None = None
         self._io = PendingIO(self.limits, self._release)
 
     @classmethod
@@ -43,6 +44,7 @@ class DatabaseRoot:
                 async with connection.transaction():
                     identity = await inspect(connection, schema)
             root._namespace = acquire(identity, root)
+            root._workers = RootWorkers(root._namespace.workers)
 
         try:
             await root._io.run(bootstrap)
@@ -55,11 +57,18 @@ class DatabaseRoot:
     def check_loop(self) -> None:
         self._io.check_loop()
 
-    @property
-    def workers(self) -> WorkerLifetime:
+    def check_open(self) -> None:
+        self.check_loop()
+        if self._io.closed:
+            raise StoreError("database_root_closed")
         if self._namespace is None:
             raise RuntimeError("database_root_not_open")
-        return self._namespace.workers
+
+    @property
+    def workers(self) -> WorkerLifetime:
+        if self._workers is None:
+            raise RuntimeError("database_root_not_open")
+        return self._workers
 
     async def _transaction(
         self,
@@ -101,6 +110,8 @@ class DatabaseRoot:
         """Retain actual pure reconstruction work through caller cancellation and shutdown."""
 
         async def prepare() -> T:
+            if self.workers.closed:
+                raise StoreError("database_root_closed")
             context = copy_context()
 
             def invoke() -> T:
@@ -117,5 +128,7 @@ class DatabaseRoot:
             self._namespace.release(self)
 
     async def aclose(self) -> bool:
+        self.check_loop()
+        self.workers.closed = True
         drained = await self._io.aclose()
         return drained and not self.workers.active

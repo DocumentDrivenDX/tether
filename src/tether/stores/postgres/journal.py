@@ -224,14 +224,19 @@ class Journal(Rows):
             raise ExecutionDenied("denied")
         if created_at.tzinfo is None:
             raise ValueError("invalid_archive_datetime")
-        encoded = canonical(archive.model_dump(mode="json"))
-        if len(encoded) > self.root.limits.max_batch_bytes:
-            raise StoreError("journal_write_bytes")
-        oracle = create_index(archive.state.id, archive.state.owner, archive.init, created_at)
-        for entry in archive.entries:
-            oracle.apply(entry)
-        if oracle.state != archive.state:
-            raise IntegrityError("archive_state_integrity")
+
+        def prepare() -> SessionIndex:
+            encoded = canonical(archive.model_dump(mode="json"))
+            if len(encoded) > self.root.limits.max_batch_bytes:
+                raise StoreError("journal_write_bytes")
+            oracle = create_index(archive.state.id, archive.state.owner, archive.init, created_at)
+            for entry in archive.entries:
+                oracle.apply(entry)
+            if oracle.state != archive.state:
+                raise IntegrityError("archive_state_integrity")
+            return oracle
+
+        oracle = await self.root.prepare(archive.state.id, prepare)
 
         async def restore(connection: Connection) -> SessionSummary:
             return await self._restore_locked(connection, archive, oracle)

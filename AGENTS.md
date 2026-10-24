@@ -153,8 +153,9 @@ canonical bytes and charge failed-envelope bytes against aggregate reads. Public
 caller waits with actual acquisition/transaction/source-release tasks retained through cancellation;
 post-commit release failures are unknown. Closing a root seals only its admission, never an external
 pool or sibling root. Old repeated close cannot remove a replacement namespace registry entry.
-PostgresSessionStore, cross-process fencing/takeover, deployment RLS and embedded convenience remain
-unimplemented until separately qualified; do not infer those claims from the history adapter.
+PostgresSessionStore now composes the selected revision2 SQL profile. Its dedicated process and
+Agent suites qualify that profile; do not infer guarantees for arbitrary roles, downstream physical
+effects or OS power loss. Embedded convenience and broader release/profile coverage remain work.
 
 
 Revision2 now adds internal indexed session/journal/projection/feed primitives and shared pure
@@ -183,5 +184,20 @@ recovery ends that phase without clearing pending approvals or unknown effects. 
 cleanup is metadata-only; stale cleanup cannot touch a replacement. Bounded canonical capture
 releases database resources before retained executor reconstruction and validates the lease again
 before returning. Reconstruction uses linear group/usage updates and staged clones isolate groups.
-These primitives remain internal; public handles/facades, global maintenance authority, full SQL
-Agent integration, true multiprocess faults and deployment RLS remain qualification work.
+These primitives alone do not confer public capabilities; use the full SessionStore process,
+Agent and caller-acquisition qualification below when assessing the selected profile.
+
+
+Public PostgresSessionStore requires explicit caller facades; root caller I/O refuses. Global
+recovery retains the original supplied maintenance actor/credential while row ownership comes
+from verified candidates. Bound recover_owner is optional and cannot widen to global authority.
+Recovery candidate count is bounded by page_limit, transfer stops at its first byte-overflow
+sentinel, and returned recovery bytes are bounded; any failure rolls back the whole operation.
+Root-local WorkerLifetime admission gates share the namespace's concrete active-worker registry.
+Close seals only that root's submissions; already-running futures remain tracked across roots.
+Preflight preparation admission before executor submission, so failed registration cannot orphan
+work. Leased handles enforce cumulative row plus final-frame bounds in the append transaction,
+including lease-holder bytes; stable keys consume no extra prefix budget. Post-commit staging
+and final heartbeat failures poison the old handle as CommitUnknown, except terminal LeaseLost.
+Cache publication follows retained executor staging and a current lease check. Metadata-only
+release never clears actual worker ownership; cleanup preserves an existing primary exception.
