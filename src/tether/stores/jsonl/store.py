@@ -13,7 +13,6 @@ from tether.stores.projections import SessionIndex, create_index
 from tether.types.canonical import canonical
 from tether.types.execution import Clock, CommitUnknown, Entry, NewEntry, SessionState
 from tether.types.storage import (
-    EntryPage,
     IntegrityError,
     JournalEvent,
     JournalFiles,
@@ -22,35 +21,33 @@ from tether.types.storage import (
     SessionArchive,
     SessionClosed,
     SessionInit,
-    SessionSnapshot,
+    SessionPatch,
     SessionSummary,
-    SessionView,
     StoreCapabilities,
     StoreError,
-    UnknownSession,
 )
 
 from .leases import Lease, Leases
+from .reads import SessionReads
 
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-class JsonlSessionStore:
+class JsonlSessionStore(SessionReads):
     def __init__(self, files: JournalFiles, *, clock: Clock = utc_now) -> None:
-        self.files, self.clock = files, clock
+        super().__init__(files, clock=clock)
         self.capabilities = StoreCapabilities(
             durability=files.durability, lease="process", fencing=True
         )
-        self.index: dict[str, SessionIndex] = {}
-        self.refs: dict[tuple[str, str], str] = {}
-        self.sequences: dict[str, int] = {}
-        self.feed: dict[str, list[PersistedChange]] = {}
         self.leases = Leases(clock, files.limits.lease_seconds)
-        self.lock = asyncio.Lock()
-        self._failed = False
         self._index_bytes = 0
+
+    async def aclose(self) -> bool:
+        self._check_loop()
+        self._failed = True
+        return await self.files.aclose()
 
     @classmethod
     async def open(cls, files: JournalFiles, *, clock: Clock = utc_now) -> Self:
@@ -60,15 +57,8 @@ class JsonlSessionStore:
             store._publish(JournalEvent.model_validate(item.value))
         return store
 
-    def owned(self, session_id: str, owner: str) -> SessionIndex:
-        if self._failed:
-            raise StoreError("store_requires_reopen")
-        data = self.index.get(session_id)
-        if data is None or data.state.owner != owner:
-            raise UnknownSession("unknown_session")
-        return data
-
     async def _commit(self, event: JournalEvent, guard: Callable[[], None] | None = None) -> None:
+        self._check_loop()
         if self._failed:
             raise StoreError("store_requires_reopen")
         self._check_capacity(event)
@@ -171,6 +161,7 @@ class JsonlSessionStore:
         )
 
     async def create(self, owner: str, init: SessionInit) -> SessionSummary:
+        self._limit(1)
         async with self.lock:
             existing = self.refs.get((owner, init.ref)) if init.ref is not None else None
             if existing is not None:
@@ -179,7 +170,30 @@ class JsonlSessionStore:
             await self._commit(self._event("create", staged, (), staged.init))
             return self.index[staged.state.id].summary.model_copy(deep=True)
 
+    async def update(self, session_id: str, owner: str, patch: SessionPatch) -> SessionSummary:
+        changes = patch.model_dump(mode="json", exclude_unset=True)
+        values: list[NewEntry] = []
+        for key in ("title", "tags"):
+            if key in changes and (key == "title" or changes[key] is not None):
+                values.append(
+                    NewEntry.model_validate(
+                        {
+                            "kind": "session",
+                            "facts": {
+                                "event": "titled" if key == "title" else "tagged",
+                                "value": changes[key],
+                            },
+                        }
+                    )
+                )
+        if patch.settings is not None:
+            values.append(NewEntry(kind="settings", facts={"changes": patch.settings}))
+        async with self.turn(session_id, owner, turn_id="update:" + str(uuid4())) as log:
+            await log.append(values)
+        return self.owned(session_id, owner).summary.model_copy(deep=True)
+
     async def restore(self, session: SessionArchive, *, created_at: datetime) -> SessionSummary:
+        self._limit(1)
         from tether.types.execution import EntryConflict
 
         async with self.lock:
@@ -199,44 +213,13 @@ class JsonlSessionStore:
             await self._commit(self._event("restore", staged, session.entries, session.init))
             return self.index[session.state.id].summary.model_copy(deep=True)
 
-    async def get(self, session_id: str, owner: str) -> SessionView | None:
-        async with self.lock:
-            if self._failed:
-                raise StoreError("store_requires_reopen")
-            data = self.index.get(session_id)
-            return data.view().model_copy(deep=True) if data and data.state.owner == owner else None
-
-    async def snapshot(self, session_id: str, owner: str) -> SessionSnapshot:
-        async with self.lock:
-            data = self.owned(session_id, owner)
-            return SessionSnapshot(
-                view=data.view(), through_index=len(data.entries) - 1, seq=self.sequences[owner]
-            ).model_copy(deep=True)
-
-    async def entries(
-        self, session_id: str, owner: str, *, start: int, limit: int, reverse: bool = False
-    ) -> EntryPage:
-        if start < 0 or not 0 < limit <= self.files.limits.page_limit:
-            raise ValueError("invalid_page")
-        async with self.lock:
-            entries = self.owned(session_id, owner).entries
-            indexes = (
-                range(min(start, len(entries) - 1), -1, -1)
-                if reverse
-                else range(start, len(entries))
-            )
-            positions = list(indexes[: limit + 1])
-            values = tuple(entries[i].model_copy(deep=True) for i in positions[:limit])
-            return EntryPage(
-                items=values, next_start=positions[-1] if len(positions) > limit else None
-            )
-
     async def append(
         self, session_id: str, owner: str, generation: int, entries: Sequence[NewEntry]
     ) -> tuple[Entry, ...]:
+        self._check_loop()
         async with self.lock:
-            self.leases.check(session_id, generation)
             staged = self.owned(session_id, owner).clone()
+            self.leases.check(session_id, generation)
             before = len(staged.entries)
             accepted = staged.append(tuple(entries), self.clock())
             new = tuple(staged.entries[before:])
@@ -252,6 +235,7 @@ class JsonlSessionStore:
     async def turn(
         self, session_id: str, owner: str, *, turn_id: str
     ) -> AsyncGenerator[TurnHandle, None]:
+        self._check_loop()
         async with self.lock:
             data = self.owned(session_id, owner)
             if data.summary.status == "closed":
@@ -276,7 +260,9 @@ class JsonlSessionStore:
             await asyncio.shield(self.release(session_id, owner, lease.generation))
 
     async def heartbeat(self, session_id: str, owner: str, generation: int) -> None:
+        self._check_loop()
         async with self.lock:
+            self.owned(session_id, owner)
             self.leases.check(session_id, generation)
             lease = self.leases.active[session_id]
             await self._commit(
@@ -293,6 +279,7 @@ class JsonlSessionStore:
             )
 
     async def release(self, session_id: str, owner: str, generation: int) -> None:
+        self._check_loop()
         if self._failed:
             return
         async with self.lock:
@@ -358,6 +345,7 @@ class JsonlSessionStore:
         return recovered
 
     async def recover(self, *, now: datetime) -> tuple[RecoveredTurn, ...]:
+        self._limit(1)
         async with self.lock:
             result = [
                 await self._recover_one(session_id, now) for session_id in tuple(self.leases.active)

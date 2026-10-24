@@ -1,7 +1,7 @@
 {
   "date": "2026-10-23",
   "scope": "SD-001 slice 3: durable local journal/history and pending-approval reconstruction",
-  "status": "Implemented foundation; full local quality gate passed; clean installed-artifact verification pending.",
+  "status": "Implemented foundation; full local gates and both clean installed-artifact environments passed. PR 1 merged at 9bb25b7df99b9546cc1cad79171c8940f3a09415 after review and qualification.",
   "git_baseline": "d680c4d",
   "source_state": "Working tree identified by source hashes; later slices remain incomplete.",
   "governing_plan": "docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md",
@@ -28,8 +28,8 @@
     },
     "git_diff_check": "pass",
     "build": "pass; fresh wheel/sdist built",
-    "installed_base": "pending",
-    "installed_openai_extra": "pending",
+    "installed_base": "pass: offline Agent/replay/gated execution and real JSONL root/Engine restart of pending approval; 0 foundation SDKs",
+    "installed_openai_extra": "pass: same offline durable journey; optional compatible adapter import, exactly OpenAI foundation SDK",
     "local_profile": "macOS/Python 3.11.17/POSIX local single-writer filesystem; no remote OS/Python matrix yet"
   },
   "review": {
@@ -121,5 +121,13 @@
     "tests/test_restart_agent.py": "703a7e7e958148e6f62ee262c0aab2558b795a37fa4e5f8e22bbcc37d8f8bb52",
     "tests/test_storage_faults.py": "952d1d2b0ee382397e919082c912c5b3728f4a274bc89e0b589511039f7abf57",
     "tests/test_tooling.py": "f02db19425ae8b81fdaaa19df0730d2f12a5646c571a585a47e19f6603bea186"
+  },
+  "qualification_commit": "9ec4b9a1cf1449cd10c5d527829edd5da35d6021",
+  "pull_request": "https://github.com/DocumentDrivenDX/tether/pull/1",
+  "additional_release_qualification": {
+    "head": "9ec4b9a1cf1449cd10c5d527829edd5da35d6021",
+    "environment": "isolated macOS/Python 3.13.16",
+    "check": "251 tests, 91.62% branch-inclusive coverage; full gate and both fresh clean installed-artifact journeys passed",
+    "hosted": "Ubuntu 3.11/3.13 and macOS 3.11 passed; hosted macOS 3.13 queued at merge; local exact-head qualification used for that environment"
   }
 }

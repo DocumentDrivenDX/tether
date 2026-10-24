@@ -9,18 +9,9 @@ from pydantic import Field, JsonValue, model_validator
 
 from tether.types import AttemptIdentity, Message, Payload, ResponseReceipt
 from tether.types.execution import Actor, HistoryRef
+from tether.types.execution import HistoryStatus as HistoryStatus
 
-HistoryStatus = Literal[
-    "ready",
-    "pending",
-    "denied",
-    "unavailable",
-    "missing",
-    "partial",
-    "ambiguous",
-    "unsupported",
-    "integrity_error",
-]
+HISTORY_CONTRACT_VERSION = 2
 
 
 class HistoryRecord(Payload):

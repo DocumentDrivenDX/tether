@@ -162,6 +162,7 @@ async def run_agent(
         toolsets=[ExternalToolset(definitions)],
         retries=0,
     )
+    agent.instrument = False
     history = to_sdk_messages(request.messages, request.system)
     result = None
     failure: str | None = None

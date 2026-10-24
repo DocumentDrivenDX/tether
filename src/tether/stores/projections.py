@@ -7,8 +7,15 @@ from datetime import datetime
 
 from tether.types import JsonValue, TokenUsage
 from tether.types.canonical import digest
-from tether.types.execution import Entry, EntryConflict, NewEntry, SessionState
-from tether.types.storage import IntegrityError, SessionInit, SessionSummary, SessionView
+from tether.types.execution import (
+    ApprovalBinding,
+    Entry,
+    EntryConflict,
+    NewEntry,
+    PendingConfirmation,
+    SessionState,
+)
+from tether.types.storage import IntegrityError, SessionInit, SessionSummary, SessionView, SpecRef
 
 
 @dataclass
@@ -21,6 +28,10 @@ class SessionIndex:
     pending: dict[str, Entry] = field(default_factory=lambda: dict[str, Entry]())
     effects: dict[str, Entry] = field(default_factory=lambda: dict[str, Entry]())
     sources: dict[str, Entry] = field(default_factory=lambda: dict[str, Entry]())
+    lookups: dict[tuple[str, str], tuple[Entry, ...]] = field(
+        default_factory=lambda: dict[tuple[str, str], tuple[Entry, ...]]()
+    )
+    specs: dict[str, SpecRef] = field(default_factory=lambda: dict[str, SpecRef]())
     counted: dict[str, TokenUsage | None] = field(
         default_factory=lambda: dict[str, TokenUsage | None]()
     )
@@ -34,6 +45,8 @@ class SessionIndex:
             effects=self.effects.copy(),
             sources=self.sources.copy(),
             counted=self.counted.copy(),
+            lookups=self.lookups.copy(),
+            specs=self.specs.copy(),
         )
 
     def append(self, values: tuple[NewEntry, ...], at: datetime) -> tuple[Entry, ...]:
@@ -58,6 +71,7 @@ class SessionIndex:
             self.keys[entry.key] = entry
         for manifest in entry.call_manifest:
             self.sources[digest([self.state.id, entry.index, manifest.position])] = entry
+        self._index(entry)
         self._facts(entry)
         self.summary = self.summary.model_copy(
             update={
@@ -68,20 +82,39 @@ class SessionIndex:
             }
         )
 
+    def _index(self, entry: Entry) -> None:
+        groups: set[tuple[str, str]] = set()
+        if entry.turn_id is not None:
+            groups.add(("turn", entry.turn_id))
+        identity = entry.facts.get("identity")
+        call = (
+            identity.get("model_call_id")
+            if isinstance(identity, dict)
+            else entry.facts.get("model_call_id")
+        )
+        if isinstance(call, str) and entry.kind in {"model_attempt", "model_receipt", "model_call"}:
+            groups.add(("model_call", call))
+        binding = entry.facts.get("binding")
+        inv = (
+            binding.get("invocation_id")
+            if isinstance(binding, dict)
+            else entry.facts.get("invocation_id")
+        )
+        if isinstance(inv, str) and entry.kind in {"confirmation", "tool_call", "resolved"}:
+            groups.add(("invocation", inv))
+        groups.update(
+            ("invocation", digest([self.state.id, entry.index, m.position]))
+            for m in entry.call_manifest
+        )
+        for group in groups:
+            self.lookups[group] = (*self.lookups.get(group, ()), entry)
+
     def _facts(self, entry: Entry) -> None:
         facts, summary = entry.facts, self.summary
         if entry.kind == "message":
             self.summary = summary.model_copy(update={"message_count": summary.message_count + 1})
         elif entry.kind == "turn_started":
-            self.summary = summary.model_copy(
-                update={
-                    "turn_count": summary.turn_count + 1,
-                    "status": "running",
-                    "active_turn_id": entry.turn_id,
-                    "last_turn_at": entry.at,
-                    "spec_id": facts.get("spec_id") or summary.spec_id,
-                }
-            )
+            self._start(entry)
         elif entry.kind == "turn_ended":
             stop = facts.get("stop_reason")
             interrupted = stop in {"cancelled", "interrupted"}
@@ -105,8 +138,29 @@ class SessionIndex:
             self._usage(entry)
         elif entry.kind == "settings":
             self._settings(facts)
-        elif entry.kind == "session" and facts.get("event") == "closed":
-            self.summary = summary.model_copy(update={"status": "closed", "resumable": False})
+        elif entry.kind == "session":
+            self._session(facts)
+
+    def _start(self, entry: Entry) -> None:
+        facts, summary = entry.facts, self.summary
+        spec_id = facts.get("spec_id")
+        if isinstance(spec_id, str):
+            self.specs[spec_id] = SpecRef.model_validate(
+                {
+                    "id": spec_id,
+                    "version": facts.get("spec_version"),
+                    "digest": facts.get("spec_digest"),
+                }
+            )
+        self.summary = summary.model_copy(
+            update={
+                "turn_count": summary.turn_count + 1,
+                "status": "running",
+                "active_turn_id": entry.turn_id,
+                "last_turn_at": entry.at,
+                "spec_id": facts.get("spec_id") or summary.spec_id,
+            }
+        )
 
     def _confirmation(self, entry: Entry) -> None:
         binding = entry.facts.get("binding")
@@ -157,6 +211,15 @@ class SessionIndex:
             }
         )
 
+    def _session(self, facts: dict[str, JsonValue]) -> None:
+        event, value = facts.get("event"), facts.get("value")
+        if event == "closed":
+            self.summary = self.summary.model_copy(update={"status": "closed", "resumable": False})
+        elif event in {"titled", "tagged"}:
+            key = "title" if event == "titled" else "tags"
+            self.init = SessionInit.model_validate(self.init.model_dump() | {key: value})
+            self.summary = self.summary.model_copy(update={key: getattr(self.init, key)})
+
     def _settings(self, facts: dict[str, JsonValue]) -> None:
         changes = facts.get("changes")
         if not isinstance(changes, dict):
@@ -166,15 +229,35 @@ class SessionIndex:
         self.init = self.init.model_copy(update={"settings": self.init.settings | changes})
 
     def view(self) -> SessionView:
-        pending: dict[str, JsonValue] | None = None
+        pending: PendingConfirmation | None = None
         if self.pending:
             inv, entry = next(iter(self.pending.items()))
-            pending = dict(entry.facts) | {"arguments": None, "history_status": "not_loaded"}
             source = self.sources.get(inv)
             if source is None or source.history_ref is None:
                 raise IntegrityError("pending_source_missing")
-            pending["history_ref"] = source.history_ref.model_dump(mode="json")
-        return SessionView(summary=self.summary, settings=self.init.settings, pending=pending)
+            manifest = next(
+                (
+                    m
+                    for m in source.call_manifest
+                    if digest([self.state.id, source.index, m.position]) == inv
+                ),
+                None,
+            )
+            if manifest is None:
+                raise IntegrityError("pending_source_missing")
+            expiry = entry.facts.get("expires_at")
+            pending = PendingConfirmation(
+                **ApprovalBinding.model_validate(entry.facts.get("binding")).model_dump(),
+                tool=manifest.tool,
+                arguments=None,
+                history_ref=source.history_ref,
+                history_status="not_loaded",
+                requested_at=entry.at,
+                expires_at=datetime.fromisoformat(expiry) if isinstance(expiry, str) else None,
+            )
+        return SessionView(
+            summary=self.summary, settings=self.init.settings, specs=self.specs, pending=pending
+        )
 
 
 def create_index(session_id: str, owner: str, init: SessionInit, at: datetime) -> SessionIndex:

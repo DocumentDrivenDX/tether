@@ -6,6 +6,7 @@ import pytest
 
 from tether.models.testing import ListAttemptRecorder
 from tether.types import Message, ModelExecutionLimits, ModelRequest, RequestTags, ToolSpec
+from tether.types.client import ClientLimits
 
 
 @pytest.fixture
@@ -51,4 +52,21 @@ def tool_spec() -> ToolSpec:
             "required": ["count"],
             "additionalProperties": False,
         },
+    )
+
+
+@pytest.fixture
+def client_limits():
+    return ClientLimits(
+        max_page_size=100,
+        max_call_ids=8,
+        max_read_bytes=1024 * 1024,
+        max_lookup_entries=1000,
+        read_timeout_seconds=2,
+        heartbeat_interval_seconds=0.02,
+        shutdown_timeout_seconds=2,
+        follower_queue_size=8,
+        max_followers=8,
+        max_active_turns=8,
+        max_request_bytes=65536,
     )

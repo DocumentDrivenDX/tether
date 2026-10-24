@@ -31,6 +31,7 @@ class JsonlRoot:
     """Explicit root lifetime; close before another process/instance may open this root."""
 
     def __init__(self, path: Path, limits: StorageLimits) -> None:
+        self._loop = asyncio.get_running_loop()
         self.path, self.limits = path, limits
         self.durability: Literal["os"] = "os"
         self.recovery_notices: list[dict[str, str | int]] = []
@@ -73,7 +74,12 @@ class JsonlRoot:
             if torn:
                 self.recovery_notices.append({"file": name, "offset": head.end, "torn_bytes": torn})
 
+    def _check_loop(self) -> None:
+        if asyncio.get_running_loop() is not self._loop:
+            raise RuntimeError("wrong_event_loop")
+
     async def _io(self, function: Callable[..., T], *args: object) -> T:
+        self._check_loop()
         if self._closed or self._poisoned:
             raise StoreError("writer_unavailable")
         if len(self._active) >= self.limits.max_pending_io:
@@ -161,6 +167,7 @@ class JsonlRoot:
             offset += len(line)
 
     async def aclose(self) -> bool:
+        self._check_loop()
         self._closed = True
         if self._active:
             _, pending = await asyncio.wait(

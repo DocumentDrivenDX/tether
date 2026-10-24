@@ -78,8 +78,13 @@ Local storage requires explicit `JsonlRoot` lifetime and a qualified POSIX singl
 filesystem profile. Unknown writes poison the open writer until reopen; a canceled close must
 retain its OS lock until actual I/O exits. Process-exit tests do not establish power-cut proof.
 Supply the original pinned specs when reconstructing pending work; SDK caches confer no
-authority. Full safe-invocation recovery/manual resolution, Client, context and telemetry
-qualification remain later slices. `AllowAll` is the documented permissive default. Engine's
+authority. The partial `Tether.client(actor)` facade provides bounded owner/policy-checked
+metadata, history, attempt detail and verified pending reads. Raw exchange payloads require
+current READ_CALL_PAYLOAD at aggregate disclosure as well as individual hydration. Recovery
+currently accepts immediate writable history with all record kinds and durability at least
+that of the journal; external/eventual profiles require separate qualification. Async context
+close retains storage ownership until actual worker exit. Task-owned Client commands/follow,
+full safe-invocation recovery/manual resolution, context and telemetry remain later work. `AllowAll` is the documented permissive default. Engine's
 default journal attempt recorder checks current reads/model policy and commits preparation
 before each physical model attempt; supplying a test recorder does not establish durability.
 Development dependencies include the optional

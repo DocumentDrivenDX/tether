@@ -1,7 +1,8 @@
-"""Execution facade for the slice 2 subset. Agent exclusively owns iteration."""
+"""Gated execution and journal-derived continuation; Agent exclusively owns iteration."""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from uuid import uuid4
 
@@ -19,22 +20,29 @@ from tether.types.execution import (
     AgentSpec,
     Answer,
     ApprovalBinding,
+    AuthzRequest,
     Clock,
+    Decision,
+    Entry,
     ExecutionDenied,
     ExecutionLimits,
     MessageHistory,
     NewEntry,
+    PendingConfirmation,
     Policy,
     Provider,
     ResultGuard,
+    SessionState,
     Tool,
     TurnLog,
     TurnResult,
+    copy_actor,
 )
 from tether.types.history import HistoryProvider
 from tether.types.tooling import tool_spec
 
 from .governance import AllowAll, Governance, utc_now
+from .inspection import describe_pending
 from .reconstruction import pinned_spec, requested_turn, restore_pending, restored_usage
 from .run import Run
 from .tools import Invocation, Registry, ToolExecutor
@@ -42,7 +50,7 @@ from .workers import Workers
 
 
 class Engine:
-    """Slice 2 facade with process-local pending runs; durable continuation is slice 3."""
+    """Agent facade whose cached runs are reconstructable from accepted journal/history."""
 
     def __init__(
         self,
@@ -74,8 +82,19 @@ class Engine:
         self._runs: dict[str, Run] = {}
         self._specs = {digest(s.model_dump(mode="json")): s.model_copy(deep=True) for s in specs}
         self._running: set[str] = set()
+        self._idle = asyncio.Event()
+        self._idle.set()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def _bind_loop(self) -> None:
+        current = asyncio.get_running_loop()
+        if self._loop is None:
+            self._loop = current
+        if current is not self._loop:
+            raise RuntimeError("wrong_event_loop")
 
     def _enter(self, actor: Actor, log: TurnLog) -> None:
+        self._bind_loop()
         if self.workers.closed:
             raise ExecutionDenied("engine_closed")
         if actor.id != log.session.owner:
@@ -83,6 +102,7 @@ class Engine:
         if log.session.id in self._running or self.workers.busy(log.session.id):
             raise ExecutionDenied("worker_outstanding")
         self._running.add(log.session.id)
+        self._idle.clear()
 
     async def run_turn(
         self, actor: Actor, log: TurnLog, text: str, *, spec: AgentSpec
@@ -120,6 +140,8 @@ class Engine:
             return await run.finish()
         finally:
             self._running.discard(log.session.id)
+            if not self._running:
+                self._idle.set()
 
     async def _close_incomplete(self, gov: Governance, spec: AgentSpec) -> None:
         executor = ToolExecutor(gov, self.registry, spec, self.workers, self.guards)
@@ -161,7 +183,7 @@ class Engine:
         )
         tags = RequestTags(
             session_id=gov.log.session.id,
-            principal=gov.actor.id,
+            principal=gov.actor.principal or gov.actor.id,
             turn_id=gov.turn_id,
             model_call_id=str(uuid4()),
             spec_id=spec.id,
@@ -209,6 +231,7 @@ class Engine:
     async def answer(
         self, actor: Actor, log: TurnLog, invocation_id: str, answer: Answer
     ) -> TurnResult | None:
+        self._bind_loop()
         run = self._runs.get(log.session.id)
         if run is None:
             run = await self._restore(actor, log, invocation_id)
@@ -238,6 +261,8 @@ class Engine:
             return await run.finish(continuing=True)
         finally:
             self._running.discard(log.session.id)
+            if not self._running:
+                self._idle.set()
 
     async def _restore(self, actor: Actor, log: TurnLog, invocation_id: str) -> Run | None:
         source_turn = requested_turn(log.entries, invocation_id)
@@ -255,7 +280,46 @@ class Engine:
         self._runs[log.session.id] = run
         return run
 
+    async def inspect_pending(
+        self, actor: Actor, session: SessionState, source: Entry, request: Entry, proposal: Message
+    ) -> PendingConfirmation:
+        self._bind_loop()
+        try:
+            async with asyncio.timeout(self.limits.hook_timeout_seconds):
+                decision = Decision.model_validate(
+                    await self.policy.authorize(
+                        AuthzRequest(
+                            actor=copy_actor(actor), action="read_session", resource=session.id
+                        )
+                    )
+                )
+        except Exception:
+            raise ExecutionDenied("policy_denied") from None
+        if not decision.allowed or actor.id != session.owner:
+            raise ExecutionDenied("policy_denied")
+        return await describe_pending(
+            actor,
+            session,
+            source,
+            request,
+            proposal,
+            self.registry,
+            self._specs,
+            self.workers,
+            self.limits,
+        )
+
+    async def wait_closed(self) -> None:
+        """Wait for actual exits after aclose sealed submissions; caller may bound this wait."""
+        self._bind_loop()
+        if not self.workers.closed:
+            raise RuntimeError("engine_not_closing")
+        await self._idle.wait()
+        if self.workers.active:
+            await asyncio.wait(tuple(self.workers.active))
+
     async def aclose(self) -> bool:
         """Bounded shutdown; False explicitly means active work has not exited."""
+        self._bind_loop()
         drained = await self.workers.close(self.limits.shutdown_timeout_seconds)
         return drained and not self._running

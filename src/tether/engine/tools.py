@@ -11,6 +11,7 @@ from typing import cast
 from tether.types import JsonValue, Message, ToolCall
 from tether.types.canonical import canonical, digest
 from tether.types.execution import (
+    ENGINE_CONTRACT_VERSION,
     AgentSpec,
     ApprovalBinding,
     CallManifest,
@@ -45,7 +46,9 @@ class Registry:
         self.tools: dict[str, PinnedTool] = {}
         self.providers = providers
         ids = [p.id for p in providers]
-        if len(set(ids)) != len(ids) or any(p.contract != 1 for p in providers):
+        if len(set(ids)) != len(ids) or any(
+            not 1 <= p.contract <= ENGINE_CONTRACT_VERSION for p in providers
+        ):
             raise ValueError("provider_conflict")
         for tool in (*tools, *(t for p in providers for t in p.tools())):
             if tool.name in self.tools:
@@ -241,6 +244,8 @@ class ToolExecutor:
             **binding.model_dump(),
             tool=tool.name,
             arguments=args.arguments,
+            description=tool.description,
+            history_ref=inv.source.history_ref,
             requested_at=now,
             expires_at=now + timedelta(seconds=ttl) if ttl else None,
         )

@@ -14,11 +14,12 @@ from tether.types.execution import (
     CallManifest,
     Entry,
     ExecutionDenied,
+    HistoryRef,
     PendingConfirmation,
     UsageSoFar,
 )
-from tether.types.tooling import definition, normalize
 
+from .inspection import normalize_pending
 from .run import Run
 
 
@@ -73,7 +74,7 @@ async def restore_pending(run: Run, invocation_id: str) -> bool:
                 continue
             binding, requested, expiry = bindings[inv_id]
             run.executor.pending[inv_id] = await _pending(
-                run, proposal, manifest, binding, requested, expiry
+                run, proposal, manifest, binding, requested, expiry, source.history_ref
             )
         run.deferred_ids = frozenset(deferred)
         return True
@@ -87,39 +88,30 @@ async def _pending(
     binding: ApprovalBinding,
     requested: datetime,
     expiry: datetime | None,
+    source_ref: HistoryRef | None,
 ) -> PendingConfirmation:
-    if not 0 <= manifest.position < len(proposal.tool_calls):
-        raise ExecutionDenied("approval_source_missing")
-    call = proposal.tool_calls[manifest.position]
     pinned = run.executor.registry.tools.get(manifest.tool)
-    if (
-        pinned is None
-        or call.id != manifest.call_id
-        or call.name != manifest.tool
-        or digest(call.arguments) != manifest.args_digest
-        or digest(definition(pinned.tool)) != binding.tool_digest
-        or binding.tool_digest != manifest.tool_digest
-    ):
+    if pinned is None:
         raise ExecutionDenied("approval_invalid")
     async with asyncio.timeout(run.gov.limits.hook_timeout_seconds):
         args = await run.executor.workers.call(
             run.gov.log.session.id,
-            normalize,
+            normalize_pending,
+            proposal,
+            manifest,
+            binding,
             pinned.tool,
-            call.arguments,
+            run.executor.spec,
+            run.gov.actor,
+            run.gov.log.session.id,
             run.gov.limits.max_argument_bytes,
         )
-    if (
-        args.sha256 != binding.args_digest
-        or binding.actor_id != run.gov.actor.id
-        or binding.session_id != run.gov.log.session.id
-        or binding.spec_digest != digest(run.executor.spec.model_dump(mode="json"))
-    ):
-        raise ExecutionDenied("approval_invalid")
     return PendingConfirmation(
         **binding.model_dump(),
         tool=manifest.tool,
         arguments=args.arguments,
+        history_ref=source_ref,
+        description=pinned.tool.description,
         requested_at=requested,
         expires_at=expiry,
     )

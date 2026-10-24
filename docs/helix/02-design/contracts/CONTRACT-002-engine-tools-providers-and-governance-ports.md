@@ -49,7 +49,7 @@ ddx:
 
 **Contract ID**: CONTRACT-002
 **Type**: library (Python ports)
-**Version**: v1
+**Version**: v2
 **Related**: ADR-001, ADR-003, ADR-005, ADR-010, ADR-011, ADR-014, ADR-015, ADR-016, ADR-017, ADR-018, CONTRACT-001, CONTRACT-003
 
 ## Purpose
@@ -73,12 +73,17 @@ Signatures are Python 3.11. Payload types are frozen `pydantic` models with `ext
 ```python
 class Actor(BaseModel):                                                          # who a call is for
     id: str; kind: str = "user"; attributes: dict[str, JsonValue] = {}
+    principal: str | None = None  # verified model attribution; defaults to id, never a credential
     credential: Credential | None = Field(default=None, exclude=True, repr=False)   # CONTRACT-001; never stored (ADR-011)
 
 # Actions are strings. The core defines these; an optional package defines its own as `x.<package>.<action>`.
 CALL_MODEL = "call_model"; CALL_TOOL = "call_tool"; RETRIEVE = "retrieve"
 APPROVE = "approve"; RESUME = "resume"; READ_SESSION = "read_session"
-RESOLVE_EFFECT = "resolve_effect"
+RESOLVE_EFFECT = "resolve_effect"; READ_CALL_PAYLOAD = "read_call_payload"
+
+# Actor.id remains the session owner and policy/approval subject. Model RequestTags.principal
+# is Actor.principal when supplied, otherwise Actor.id. The application verifies the mapping;
+# neither field selects a credential or grants access. Empty supplied principal is refused.
 
 class Decision(BaseModel):  allowed: bool; reason: str                          # "allowed" when allowed
 class AgentSpec(BaseModel):                                                      # what the loop reads of a task
@@ -105,11 +110,24 @@ class Engine:                                                                   
                        parent: object | None = None) -> TurnResult: ...
     async def answer(self, actor: Actor, log: TurnLog, invocation_id: str, answer: Answer, *,
                      events: EventSink | None = None, parent: object | None = None) -> TurnResult | None: ...
+    async def inspect_pending(self, actor: Actor, session: SessionState, source: Entry,
+                              request: Entry, proposal: Message) -> PendingConfirmation: ...
+    async def aclose(self) -> bool: ...             # bounded, seals submissions; false if work remains
+    async def wait_closed(self) -> None: ...         # explicit actual-exit wait after close; caller may bound it
     async def resume(self, actor: Actor, log: TurnLog, *, events: EventSink | None = None,
                      parent: object | None = None) -> TurnResult: ...
 ```
 
 `TurnLog` is the live store's write handle for one turn (CONTRACT-003). `Engine.answer` returns `None` when `invocation_id` is not the pending approval or another answer already won, and changes nothing. The engine records denied barrier checks as `authorization` facts with reason `effect_unresolved`; they cannot be overridden by a policy result. `AuthzRequest.resource` for a model call is `model:<tier>` and `purpose` distinguishes answer from summary. The engine decides exclusively from `Decision.allowed`; `reason` is an allow-listed metadata code explaining that decision. An unrecognized or content-bearing reason is normalized to `policy_reason_invalid` without overriding a denial or logging the original text. Neither a reason string nor a provider result can grant authorization. A provider's reason MUST be `x.<provider id>.<reason>`.
+
+`inspect_pending` is read-only: current READ_SESSION, original manifest/proposal identity,
+current tool/schema/spec digests and exact normalized executable arguments are checked using
+the same validator as restart reconstruction. It does not acquire an execution approval,
+dispatch a tool, call a model or append read facts to the journal. The service first verifies
+the reachable source record and hash; unavailable content produces unhydrated pending metadata.
+A displayed value never replaces confirmation's fresh gates. Inspection failures expose only
+short metadata codes. `wait_closed` preserves actual worker lifetime for resource cleanup;
+it is not permission for another invocation or a synchronous facade.
 
 The engine owns execution semantics, tool registration and resolution by name. Its implementation uses Pydantic AI Agent through the internal runtime integration selected in ADR-003. Engine is the Tether invariant facade, not a second model/tool loop; public Agent hooks and Tether-owned callbacks preserve these gates and authoritative state boundaries. SDK capability composition is fixed/trusted and SDK types stay internal. Finding tools or workflows for the model, engagement and routing, the specification a session is pinned to, stages, skills, and suggestions are the application's or a provider's, and read what they need from `AgentSpec.ext`. The `turn_started` entry records the specification's id, version, and digest, and a resolver may pin it (ADR-017, ADR-018).
 
@@ -364,7 +382,7 @@ The package ships `tether.testing.conformance`, as asynchronous tests run with t
 
 The initial v1 is revised before release, including CONTRACT-004 and `RESOLVE_EFFECT`; no compatibility layer is required.
 
-- Versioning: one integer, `ENGINE_CONTRACT_VERSION`. A provider declares the version it was written for in `Provider.contract`; the registry refuses a provider above the engine's and accepts a lower one the engine still supports. `AgentSpec.schema_version` versions a specification separately.
+- Versioning: one integer, `ENGINE_CONTRACT_VERSION=2`. Version 2 adds explicit model principal and the enforced READ_CALL_PAYLOAD action. Existing version-1 providers retain the identical hook surface and are supported; policies must handle the new action or fail closed. A provider declares the version it was written for in `Provider.contract`; the registry refuses a provider above the engine's and accepts a lower one the engine still supports. `AgentSpec.schema_version` versions a specification separately.
 - Ordering or precedence: the gate sequence of section 8 is normative and overrides any provider's expectation.
 - Backward-compatibility rules: adding an optional method with a default to `Provider`, a new action string the engine does not itself raise, or a new optional field is compatible. Changing a signature, adding a reason the engine reads, reordering the sequence, or tightening a rule is a new version. There is no synchronous form, so asynchrony is not a compatibility axis.
 - Deprecation rules: a removed item is announced one version ahead and kept, with a warning, for that version.

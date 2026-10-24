@@ -49,7 +49,7 @@ ddx:
 
 **Contract ID**: CONTRACT-003
 **Type**: library (Python ports and API)
-**Version**: v1
+**Version**: v2
 **Related**: ADR-001, ADR-004, ADR-005, ADR-010, ADR-011, ADR-014, ADR-015, ADR-018, ADR-019, ADR-020, CONTRACT-001, CONTRACT-002
 
 ## Purpose
@@ -133,10 +133,17 @@ class SessionSummary(BaseModel):                      # small; kept current by t
     spec_id: str | None; pending: bool                # an approval is waiting
     last_seq: Seq                                     # the change sequence of the last change to this session
 
+class SpecRef(BaseModel):
+    id: str; version: str | None = None; digest: str | None = None  # missing imported metadata stays unknown
+class ToolInfo(BaseModel):
+    name: str; version: str | None = None; tool_digest: str | None = None
+    description: str | None = None
+
 class SessionView(BaseModel):
     summary: SessionSummary; settings: dict[str, JsonValue]
     specs: dict[str, SpecRef]                         # the specs the session has run: id, version, digest
     pending: PendingConfirmation | None; tools: tuple[ToolInfo, ...]
+    tools_status: Literal["not_loaded", "ready", "unsupported"] = "not_loaded"
 
 class CallManifest(BaseModel):
     position: int; call_id: str; tool: str; args_digest: str; tool_digest: str
@@ -184,6 +191,13 @@ class StoreCapabilities(BaseModel):
     # always true, so not declared: atomic append, idempotent keys
 
 class SessionInit(BaseModel):  ref: str | None = None; spec: str | None = None; title: str | None = None; tags: tuple[str, ...] = (); settings: dict[str, JsonValue] = {}
+class SessionPatch(BaseModel):
+    title: str | None = None
+    tags: tuple[str, ...] | None = None
+    settings: dict[str, JsonValue] | None = None
+# Omitted patch fields do not change state. Explicit title=None clears a title at the
+# store boundary. tags/settings=None do not change those fields; an empty tags tuple
+# clears tags, while supplied settings merge into existing settings after validation.
 
 class LiveStore(Protocol):
     capabilities: StoreCapabilities
@@ -195,6 +209,10 @@ class LiveStore(Protocol):
     async def snapshot(self, session_id: str, owner: str) -> SessionSnapshot: ...
     async def effects(self, session_id: str, owner: str, *, start: int, limit: int) -> EffectPage: ...
     async def find(self, owner: str, ref: str) -> SessionSummary | None: ...
+    async def lookup(self, session_id: str, owner: str, *,
+                     kind: Literal["key", "invocation", "model_call", "turn"], value: str,
+                     limit: int = 1000, max_bytes: int | None = None) -> tuple[Entry, ...]: ...
+    async def aclose(self) -> bool: ...              # seals the store; false means actual I/O remains
     # writes
     async def create(self, owner: str, init: SessionInit) -> SessionSummary: ...      # idempotent on (owner, init.ref)
     def turn(self, session_id: str, owner: str, *, turn_id: str) -> AbstractAsyncContextManager[TurnLog]: ...
@@ -221,7 +239,9 @@ class RecoveredTurn(BaseModel):  session_id: str; turn_id: str; resumable: bool
 | Ownership | An owner that does not own the session, and an id that does not exist, MUST both raise `UnknownSession` with no distinguishing detail. |
 | Closed | A closed session accepts no turn and `turn` raises `SessionClosed`. |
 | Change records | Every commit that changes a summary writes a change record with the next per-owner `Seq`. The store retains change records for a configured window. |
+| Tool view readiness | An empty tools tuple with tools_status="not_loaded" does not assert that the selected specification has no tools. Current provider/spec capability rendering must be qualified before reporting ready; the UI never derives execution authority from this view. Pending metadata and normalized arguments use the same typed PendingConfirmation shape, with arguments=None until verified hydration. |
 | Snapshot | `snapshot` reads view, pending approval, inclusive entry head and per-owner sequence atomically. Pending metadata and the immutable argument-source ref are maintained transactionally. Snapshot does not read an external history source and returns arguments as `None` with `history_status="not_loaded"`, which is distinct from a source read returning pending. `Client.pending` performs the separate bounded authorized hydration; it never scans the transcript or treats unavailable arguments as approved empty input. |
+| Indexed lookup | `lookup` resolves only accepted keys, invocation manifests/facts, logical model calls/attempts, or turn ids within the selected owner/session. It preserves commit order, refuses count/byte overflow before copying a result, and never treats an input provider id/ref as authority. Indexes rebuild from accepted facts. It returns metadata entries, never hydrates source records. A missing group returns an empty tuple; the Client maps an unknown logical call to UnknownModelCall. |
 | Effect projection | Started effectful invocations lacking a proved final outcome/resolution remain in an indexed unresolved-effect projection, including an `interrupted/outcome_unknown` result. `effects` pages by intent position; it never scans the transcript. Resolution updates this projection, count, summary and changes in one fenced commit. |
 | Approvals wait without a lease | A session waiting for an approval holds no lease, so it survives a restart; an answer takes the lease like any turn. |
 
@@ -235,7 +255,7 @@ class RecoveredTurn(BaseModel):  session_id: str; turn_id: str; resumable: bool
 | `fencing=false` | Single-runner behavior if the application guarantees one runner | Protection from a stale runner appending after recovery; a double execution is possible |
 | `lease=process` with several processes | Nothing across processes | One turn per session across processes; use a `cross_process` store |
 
-A `Tether` configured to resume (`resume` other than `off`) MUST refuse a store that declares `durability=none` or `fencing=false`, and MUST validate the chosen writable history provider's recovery durability/availability profile with `UnsupportedStore`.
+A `Tether` configured to resume (`resume` other than `off`) MUST refuse a store that declares `durability=none` or `fencing=false`, and MUST validate the chosen writable history provider's recovery durability/availability profile with `UnsupportedStore`. The initial local composition accepts only immediate writable history covering message, summary and model_exchange, with durability at least that of the journal; external/eventual recovery needs an explicitly qualified conditional profile and is refused until supplied.
 
 ### Local JSONL execution profile
 
@@ -275,7 +295,8 @@ class ArchiveSource(Protocol):
 class LegacyCallDetail(BaseModel): request_id: str; request: JsonValue | None; response: JsonValue | None
 class CallDetail(BaseModel):
     identity: AttemptIdentity
-    receipt: ResponseReceipt | None
+    receipt: ResponseReceipt | None                 # latest observed receipt, if any
+    receipts: tuple[ResponseReceipt, ...] = ()        # every committed receipt in observation order
     status: HistoryStatus
     observations: tuple[HistoryValue, ...]            # all relevant invocation/component refs, never first-row wins
     reason: str | None = None
@@ -366,6 +387,7 @@ class Tether:                                          # the composition: engine
 |------|-------------|
 | History | `history` hydrates only referenced content in a bounded position page; every slot reports readiness independently. Entries/snapshots/listing remain usable during provider outage and carry refs/facts, not empty substituted text. `pending` first verifies authorized raw source arguments against CallManifest.args_digest, then validates with the pinned tool/schema and displays the normalized executable values whose digest the approval binds. `confirm` repeats both checks and cannot dispatch changed executable values under an earlier approval. The selected HistoryProvider is a separate Tether composition dependency, defaulting to JSONL in reference clients. |
 | One object | A UI needs only `Client`. It never imports a store or the engine. |
+| Payload disclosure | `call_detail` payloads and exports containing model exchanges additionally require current `READ_CALL_PAYLOAD` for the session. READ_SESSION alone permits metadata and separately authorized original-message history, not raw exchange bodies. Denial returns no exchange payload; it never falls back to cached or broader-identity content. Engine use of original sources is governed by READ_SESSION and CALL_MODEL, not a UI payload grant. |
 | Identity | Each read/snapshot/effects operation and each feed delivery/replay batch is authorized with `READ_SESSION` for the bound actor and owner; denial or policy failure stops it without revealing content. `client(actor)` binds an actor. Commands that start model calls (`send`, `confirm`, `resume`) use its credential for that call and never persist it (ADR-011). A metadata-only follower needs no model credential; hydrating external source content may require its own current caller credential. |
 | Send | `send` durably writes the user content through HistoryProvider, then commits its ref and the turn start, then returns a `TurnHandle` without waiting for the turn to finish. The turn runs as a task owned by `Tether`; the consumer follows it through `follow` or awaits `result`. |
 | Idempotent send | `send` with a `request_id` that exists in the session with the same canonical accepted input (text, attachments and requested spec) digest returns the existing turn's handle; a different digest raises `RequestConflict`. The key is `request:<request_id>` (ADR-018). |
@@ -376,6 +398,7 @@ class Tether:                                          # the composition: engine
 | Resume | `resume` continues the session's interrupted turn as a new turn (ADR-010). It raises `NotInterrupted` when there is none, `ResumeLimit` when the chain limit is reached, and `UnsupportedStore` as in section 3. |
 | Cancel | cancel cancels the session's running turn and returns whether there was one. Steps already committed remain. A cancel on a pending-approval turn returns false; it does not count as a declined approval. Use confirm(declined), a superseding send, or close to settle waiting work. |
 | Close | close is owner-authorized and lease-serialized with send/confirm/resolve/update. An active turn refuses with TurnInProgress; a real outstanding worker refuses with WorkerOutstanding; an unresolved effect refuses with EffectsUnresolved so resolution remains possible. Otherwise close seals any incomplete non-effectful call groups, supersedes every pending approval with non-success results, and commits closure/projections/feed atomically. Content writes precede that commit; failure leaves the accepted session state unchanged or explicitly CommitUnknown. Repeating close returns the existing closed summary. A closed session remains readable but accepts no new turn, approval or settings mutation. Closing is not deletion, eviction, or proof that an external effect stopped. Races have one accepted ordering; a late confirm cannot revive closed work. |
+| Observation receipts | CallDetail retains every committed receipt, including when history is unavailable/denied or two observations share payload bytes. An observation sourced from a receipt carries its zero-based `receipt_index` in HistoryValue.source_locator. Request-only preparation remains explicit; unobserved response content is not invented. Raw-payload denial retains authorized identity/receipt metadata and returns denied values without provider lookup. |
 | Call detail | call_detail accepts only logical model_call_ids reachable from the selected owner's session journal. Unknown/unreachable ids refuse with UnknownModelCall before provider lookup. Return one CallDetail per prepared attempt in requested call order then committed attempt order, retaining every verified provider invocation observation and every HistoryStatus. Receipts and source locators preserve provider ids separately; input provider request ids, traces or arbitrary refs never grant access. A source hole never removes an accepted attempt from the result. Legacy ArchiveSource.call_detail is an explicitly separate historical-import surface and cannot implement this lookup. |
 | Read limits | list/entries/history/effects/call_detail enforce positive finite page, id-count, decoded-byte and deadline caps from explicit client limits; oversized/invalid requests refuse before allocation/provider I/O. A cursor is owner/query/tier/version-bound and never an authorization grant. No error reason includes content. |
 | Resolve | P0. `resolve` requires a current actor, `Policy.authorize(RESOLVE_EFFECT)`, the session lease and an unresolved invocation. A same-process running worker refuses it. Append `resolved` with its outcome/actor/reason and atomically clear the indexed barrier; identical retries return the existing summary, different outcomes/reasons raise `ResolutionConflict`. Already-known non-unknown invocations raise `NotUnresolved`. If the unknown invocation lacks a terminal tool-result message, resolution first appends its single interrupted/unknown result in the same transaction; an optional reconciler output is a labelled assistant resolution notice, not another tool result. Resolution creates no new execution and cannot change its original evidence. |
@@ -383,6 +406,24 @@ class Tether:                                          # the composition: engine
 | Settings | `update` records a `settings` or `session` entry and the change appears in the feed. |
 | Defaults | A `SessionQuery` of `None` lists the owner's live sessions, most recently updated first. |
 | Application references | A `ref` ties a session to an application's own record; tether never reads the application's records (ADR-018). |
+
+**Collection authorization.** Client list/find authorize READ_SESSION on `owner:<actor.id>`
+for the bound owner and on each returned session id. A denied row stops the operation without
+returning a cursor or metadata from that page. Per-session reads use the requested session id.
+All deliveries recheck current policy after source I/O; cached content is never a grant.
+
+**Resource ownership.** Tether owns the supplied store lifetime once entered. Close seals
+client operations and submissions immediately. If actual Engine work survives its shutdown
+deadline, close returns incomplete and retains the store/root ownership in deferred cleanup
+until that work exits. A canceled close also arranges cleanup; it never cancels the underlying
+worker future or hands the namespace to another writer early. Externally owned provider pools
+require their selected adapter's explicit ownership configuration.
+
+**Event-loop ownership.** `Tether.__aenter__` binds composition, owned tasks and async
+resources to the current running event loop. All client I/O and shutdown MUST run on that
+loop; a wrong-loop call raises `RuntimeError("wrong_event_loop")` before touching resources.
+An external thread bridge may submit to the bound loop; no blocking bridge may run on it.
+Engine and storage lifetimes cannot migrate async pools/locks/tasks between loops.
 
 **`Tether` options.** `history` is an explicit HistoryProvider; reference clients supply local JSONL and tests supply InMemoryHistory.  Executor limits and shutdown deadline are explicit finite settings (CONTRACT-002); `max_resolution_reason_chars` bounds operator text. `max_pending_argument_bytes` and `max_resolution_reason_chars` are positive finite limits; oversized inputs are refused before persistence. Read/argument/context limits are shared with CONTRACT-001/004/005. The demo uses `resume="off"` on the non-durable in-memory store.  `resume` (`"off"`, `"report"`, or `"auto"`; the durable reference default is `"report"`), `resume_actor` (a function that returns an actor with a live credential for a session, or `None`, used only with `"auto"`), `recover_interval`, `max_resumes` (the reference configuration proposes 3, qualified before release), `lease_window` and `heartbeat_interval`, `approval_ttl` (none by default), `archive` and `archive_on` (a policy for when a session is archived), and the archive read time limit. The numeric defaults other than those named are supplied by the owner after the first baseline.
 
@@ -477,7 +518,7 @@ detail = await client.call_detail(session_id, [entry.model_call_id for entry in 
 - Position-addressed entries and keyset-addressed sessions are chosen so no read needs a scan. A UI that wants "jump to page N" of sessions must search or filter instead.
 - A server adapter (HTTP, WebSocket, server-sent events) maps `Client` calls to routes and `follow` to a stream. Its authentication and the choice of the actor are its own.
 - Preview and metadata search follow the explicit authority rule in section 2; a cached source read never grants later disclosure after source access is revoked.
-- The live and archive ports follow a pattern in the first downstream platform: its session store keeps keys and facts (request ids, usage, statuses), and a bounded, per-user reader returns the gateway's logged request and response on demand. That reader is the model for a derived archive.
+- Execution facts, original conversation content and optional externally observed model exchanges have separate authorities. Gateway detail may enrich a separately retained original transcript; selecting that source does not imply that a deployment reconstructs its conversation from gateway logs.
 - Original content is referenced through CONTRACT-005; the runtime journal keeps execution facts and ordering. Gateway reads are a history-source dependency only when content is requested, not an archive dependency of execution recovery.
 
 ## Open Items
@@ -489,3 +530,5 @@ detail = await client.call_detail(session_id, [entry.model_call_id for entry in 
 | Fork and rewind (PRD FR-15) entry and API shape | Erik LaBianca, when FR-15 is scheduled |
 | Gateway exact receipt/tag/row correlation and configured retention/coverage | Databricks provider qualification under CONTRACT-005 |
 | The visibility watermark (section 5) | Erik LaBianca, when a consumer needs it |
+
+Aggregate history/detail disclosure rechecks READ_CALL_PAYLOAD after assembly and final READ_SESSION authorization. A denial removes every raw exchange record already hydrated in that result, including earlier successful observations, while preserving identity/receipts and independently authorized original transcript records.

@@ -19,6 +19,20 @@ from tether.types import (
     ToolCall,
 )
 
+ENGINE_CONTRACT_VERSION = 2
+
+HistoryStatus = Literal[
+    "ready",
+    "pending",
+    "denied",
+    "unavailable",
+    "missing",
+    "partial",
+    "ambiguous",
+    "unsupported",
+    "integrity_error",
+]
+
 Effect = Literal["read_only", "effectful"]
 Replay = Literal["safe", "unsafe"]
 
@@ -27,6 +41,7 @@ class Actor(Payload):
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
     id: str
     kind: str = "user"
+    principal: str | None = Field(default=None, min_length=1)
     attributes: dict[str, JsonValue] = Field(default_factory=dict)
     credential: SkipJsonSchema[Credential | None] = Field(default=None, exclude=True, repr=False)
 
@@ -138,7 +153,11 @@ class ApprovalBinding(Payload):
 
 class PendingConfirmation(ApprovalBinding):
     tool: str
-    arguments: dict[str, JsonValue]
+    arguments: dict[str, JsonValue] | None
+    history_ref: HistoryRef | None = None
+    history_status: Literal["not_loaded"] | HistoryStatus = "ready"
+    reason: str | None = None
+    description: str = ""
     requested_at: datetime
     expires_at: datetime | None = None
 

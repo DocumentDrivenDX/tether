@@ -31,7 +31,7 @@ ddx:
 
 ## Finding and scope
 
-Propose a first-class, optional Databricks integration package that composes Tether with platform services. Keep Tether's owned Python harness and the existing Databricks Apps application server, consistent with accepted ADR-003. The package name `tether-databricks`, distribution boundary, service coverage, and implementation sequence below are proposals, not accepted decisions.
+Propose a first-class, optional Databricks integration package that composes Tether with platform services. Keep the Pydantic AI Agent runtime behind Tether's invariant integration and the existing Databricks Apps application server, consistent with accepted ADR-003. The package name `tether-databricks`, distribution boundary, service coverage, and implementation sequence below are proposals, not accepted decisions.
 
 This is desk research and a design handoff, as of 2026-10-22. No integration was implemented or verified against a workspace. It extends the chat assessment without changing ADR-013, dependencies, or the contracts. Public documentation establishes available interfaces; it does not establish conformance with Tether's execution guarantees.
 
@@ -97,7 +97,7 @@ The proposed value is a tested composition of Databricks services around Tether'
 | Postgres session implementation | Reusable Postgres store | Own transactions, projections, leases, fencing, and recovery |
 | Lakebase connection configuration | Databricks integration | Discover endpoints, acquire connection credentials, and manage pool lifecycle; reuse the store |
 | Authoritative archive | Archive adapter | Preserve Tether entries including approvals and execution intents; prove export completeness before live eviction |
-| Gateway-log reader | Databricks derived-archive adapter | Reconcile model requests by IDs; mark partial, pending, denied, missing, and unavailable results distinctly |
+| Gateway-log reader | Optional Databricks HistoryProvider with writable supplement; derived archive is a separate legacy/import profile | Reconcile observed exchanges by exact IDs; preserve original conversation separately and report partial, pending, denied, missing and unavailable sources |
 | Artifact storage | Databricks integration, proposed | Store outputs in governed storage; return references with provenance and access semantics |
 | OTel export | Generic telemetry component plus Databricks configuration | Export content-free diagnostics by default; preserve correlation identifiers |
 | MLflow evaluation and human feedback | Optional evaluation integration | Explicitly authorized datasets and content capture; independent of runtime telemetry |
@@ -109,7 +109,7 @@ Databricks MCP services provide a governed integration surface [S4]. Tool discov
 
 Lakebase supports standard Postgres drivers and OAuth rotation [S5]. Verify token renewal when new physical connections open, pool isolation, reconnect behavior, and asynchronous operation against the chosen Lakebase offering. Do not create a separate session state machine for it.
 
-Keep authoritative archives, derived gateway observations, and artifact storage distinct. A gateway cannot record Tether-only approvals or execution intents. ADR-019 already distinguishes derived archives and defers live content-by-reference. Preserve that deferral until missing payloads, retention, permission changes, and unavailable logs have defined behavior.
+Keep execution journal, authoritative source history, archives and application artifact storage distinct. ADR-018 and CONTRACT-005 permit an optional external model-exchange history authority with a writable supplement for original local-only content. Gateway observations never establish Tether-only approvals, intents or the whole original transcript. Readiness, retention, current caller access and exact source bindings require profile qualification. No existing consumer RLS configuration or gateway-only transcript is assumed.
 
 Databricks supports OpenTelemetry (OTel) ingestion into Unity Catalog, its governance catalog [S6]. Correlate session, turn, invocation, model request, trace, and evaluation IDs. An exported trace does not prove durable execution. Evaluation datasets may contain content and need a separate, explicit handling policy.
 
@@ -132,7 +132,7 @@ The proposed acceptance evidence is:
 5. Lakebase credential renewal and new connections work across credential expiration; the pool does not reuse another user's identity.
 6. A permitted user can retrieve the artifact and citation provenance; a denied user receives a typed refusal. Artifact authorization is checked independently of session visibility.
 7. A trace is found in the configured Databricks destination and joins to model request and tool invocation records, without credentials or content in default telemetry.
-8. Gateway-log delay or unavailability does not block execution or recovery. Derived history remains visibly partial.
+8. Gateway-log delay or unavailability never masquerades as available source content. Metadata remains usable; execution or recovery requiring unavailable originals pauses with explicit history readiness instead of inventing content or an outcome.
 9. The same core scenario passes against scripted tools/models and a non-Databricks configuration. Workspace tests prove the adapters, not exclusive platform support.
 
 These are proposed future tests, not observed outcomes. Performance budgets, dataset size, fault-injection mechanism, and selected service versions remain to be specified in a test plan.
@@ -144,7 +144,7 @@ These are proposed future tests, not observed outcomes. Performance budgets, dat
 | Package and maintenance ownership | `tether-databricks` is a proposed name; extra versus separate distribution is undecided | Erik LaBianca; integration ADR |
 | SDK scope | ADR-013 permits Databricks SDK authentication/host discovery only | Erik LaBianca; amend deliberately before adding broader SDK clients or dependencies |
 | Identity per operation | ADR-011 requires explicit, nonpersisted credentials and fresh-identity continuation | Identity matrix and auth spike; operator settles user/application modes and unattended work |
-| Retention and archive authority | ADR-019 supplies no lifecycle numbers; live content-by-reference remains deferred | Operator policy plus archive design; no eviction until authoritative export is verified |
+| Retention and archive authority | ADR-018/019 and CONTRACT-005 separate external exchange authority from original transcript and archive; lifecycle numbers remain unqualified | Operator policy and explicit source/retention profile; no eviction until equivalent durable bindings or authoritative export are verified |
 | Supported services and deployment variants | This assessment does not establish a cloud/region/version support matrix | Select initial Apps, Gateway, Lakebase, MCP, and trace interfaces; record exact tested versions and permissions |
 | Long-running effects | A job or remote action may complete after cancellation or timeout | Tool contracts plus service-specific reconciliation spike |
 | Artifact and evaluation content | Runtime telemetry is content-free by default | Artifact authorization/retention design and explicit evaluation-data policy |
