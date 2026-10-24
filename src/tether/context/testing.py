@@ -2,10 +2,20 @@
 
 from collections import deque
 from collections.abc import Sequence
+from typing import TypedDict
 
 from tether.types import ModelRequest
 from tether.types.canonical import canonical
-from tether.types.context import ContextCode, ContextError, ContextInput, ContextPlan, TokenEstimate
+from tether.types.context import (
+    ContextCode,
+    ContextConfig,
+    ContextError,
+    ContextInput,
+    ContextPlan,
+    ModelLimits,
+    TokenEstimate,
+    TokenEstimator,
+)
 
 from .validation import copied, validated_input
 
@@ -79,3 +89,29 @@ class FixedEstimator:
         self._capacity.admit(canonical(snapshot.model_dump(mode="json")), len(self.requests))
         self.requests.append(snapshot)
         return self._estimate.model_copy(deep=True)
+
+
+class FabricatedContext(TypedDict):
+    context_config: ContextConfig
+    estimator: TokenEstimator
+
+
+def fabricated_context() -> FabricatedContext:
+    """Explicit composition for fabricated demo/fixture tiers; never wire-qualified estimates."""
+    return {
+        "context_config": ContextConfig(
+            limits={
+                tier: ModelLimits(
+                    profile_id="fabricated",
+                    revision="1",
+                    context_window_tokens=1000000,
+                    output_tokens=1024,
+                    safety_margin_tokens=128,
+                )
+                for tier in ("demo", "fixture")
+            },
+            max_source_bytes=4 * 1024 * 1024,
+            timeout_seconds=30,
+        ),
+        "estimator": FixedEstimator(0, capacity=1024, max_bytes=16 * 1024 * 1024),
+    }

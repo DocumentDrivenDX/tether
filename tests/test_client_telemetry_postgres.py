@@ -7,6 +7,7 @@ from test_client_resume import FreshCredential
 from test_telemetry_ports import id_factory
 
 from tether import Tether
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.history.messages import MessageHistoryAdapter
 from tether.models.testing import ScriptedModel
@@ -28,6 +29,7 @@ async def test_sql_client_observations_follow_accepted_metadata_and_current_call
     h = database
     sink, tracer = ListAuditSink(capacity=128), RecordingTracer(id_factory(), capacity=128)
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([]),
         history=MessageHistoryAdapter(h.history),
         history_provider=h.history,

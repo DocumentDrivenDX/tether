@@ -62,6 +62,7 @@ async def smoke():
         prepare=prepare, authorize_history=authorize_history)
     assert result.response == response
     from pydantic import BaseModel
+    from tether.context.testing import fabricated_context
     from tether.engine import Engine
     from tether.testing.execution import MemoryHistory, MemoryTurnLog
     from tether.types import ToolCall
@@ -85,7 +86,8 @@ async def smoke():
     log = MemoryTurnLog(SessionState(id='fabricated', owner=actor.id, approval='manual'))
     proposed = ModelResponse(finish_reason='tool_calls', tool_calls=(
         ToolCall(id='fabricated-call', name='count', arguments={'count': '3'}),))
-    engine = Engine(model=ScriptedModel([proposed, response]), history=MemoryHistory(),
+    engine = Engine(**fabricated_context(), model=ScriptedModel([proposed, response]),
+        history=MemoryHistory(),
         model_limits=limits, attempt_factory=ListAttemptRecorder, tools=(tool,))
     spec = AgentSpec(id='demo', version='1', title='Demo', instructions='Fabricated.',
         model='demo', tools=('count',))
@@ -111,7 +113,8 @@ async def smoke():
         store = await JsonlSessionStore.open(root)
         provider = await JsonlHistory.open(root)
         session = await store.create(actor.id, SessionInit(settings={'approval': 'manual'}))
-        first = Engine(model=ScriptedModel([proposed]), history=MessageHistoryAdapter(provider),
+        first = Engine(**fabricated_context(), model=ScriptedModel([proposed]),
+            history=MessageHistoryAdapter(provider),
             history_provider=provider, model_limits=limits, tools=(tool,), specs=(spec,))
         async with store.turn(session.id, actor.id, turn_id='installed-first') as durable_log:
             waiting = await first.run_turn(
@@ -131,7 +134,7 @@ async def smoke():
         try:
             store = await JsonlSessionStore.open(root)
             provider = await JsonlHistory.open(root)
-            second = Engine(
+            second = Engine(**fabricated_context(),
                 model=ScriptedModel([response]), history=MessageHistoryAdapter(provider),
                 history_provider=provider, model_limits=limits, tools=(tool,), specs=(spec,))
             async with store.turn(session.id, actor.id, turn_id='installed-answer') as durable_log:
@@ -142,7 +145,8 @@ async def smoke():
             assert not snapshot.view.summary.pending
             assert snapshot.view.summary.unresolved_effect_count == 0
             assert await second.aclose()
-            reader = Engine(model=ScriptedModel([]), history=MessageHistoryAdapter(provider),
+            reader = Engine(**fabricated_context(), model=ScriptedModel([]),
+                history=MessageHistoryAdapter(provider),
                 history_provider=provider, model_limits=limits, tools=(tool,), specs=(spec,))
             async with Tether(engine=reader, store=store, history=provider,
                               limits=client_limits) as app:

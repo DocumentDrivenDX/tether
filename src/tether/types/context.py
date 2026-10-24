@@ -231,6 +231,7 @@ class ContextSummary(ContextValue):
 
 
 class ContextPreparation(ContextValue):
+    model_call_id: Text
     ordinal: Count
     through_index: Count
     source_view_digest: Digest
@@ -244,6 +245,7 @@ class ContextPreparation(ContextValue):
 
 
 class ContextUse(ContextValue):
+    model_call_id: Text
     preparation_ordinal: Count
     config_digest: Digest
     through_index: Count

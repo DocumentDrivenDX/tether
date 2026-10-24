@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from tether.context.testing import fabricated_context
 from tether.engine.attempts import JournalAttemptRecorder
 from tether.engine.governance import AllowAll, Governance
 from tether.engine.reconstruction import restored_usage
@@ -220,6 +221,7 @@ def test_falsey_policy_and_recorder_factory_are_used(limits):
             factory = Factory()
             model = ScriptedModel([ModelResponse(content="Fabricated", finish_reason="stop")])
             engine = Engine(
+                **fabricated_context(),
                 model=model,
                 history=MemoryHistory(),
                 model_limits=limits,

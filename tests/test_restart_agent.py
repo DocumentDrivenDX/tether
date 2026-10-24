@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from test_gated_execution import DemoTool, final, proposal
 
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.history.jsonl import JsonlHistory
 from tether.history.messages import MessageHistoryAdapter
@@ -36,6 +37,7 @@ async def test_approval_after_root_and_engine_restart_runs_bound_invocation_once
     history = MessageHistoryAdapter(await JsonlHistory.open(root))
     session = await store.create(actor.id, SessionInit(settings={"approval": "manual"}))
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([proposal()]),
         history=history,
         model_limits=limits,
@@ -55,6 +57,7 @@ async def test_approval_after_root_and_engine_restart_runs_bound_invocation_once
         store = await JsonlSessionStore.open(root)
         history = MessageHistoryAdapter(await JsonlHistory.open(root))
         rebuilt = Engine(
+            **fabricated_context(),
             model=ScriptedModel([final()]),
             history=history,
             model_limits=limits,
@@ -88,6 +91,7 @@ async def test_default_recorder_prepares_accepted_attempt_before_model_response(
     response = final().model_copy(update={"usage": TokenUsage(input_tokens=7, output_tokens=3)})
     session = await store.create(actor.id, SessionInit())
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([response]),
         history=MessageHistoryAdapter(provider),
         history_provider=provider,
@@ -136,6 +140,7 @@ async def make_pending(limits, *, max_steps=20, clock=None, execution_limits=Non
             finish_reason="tool_calls",
         )
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([proposed]),
         history=MessageHistoryAdapter(provider),
         model_limits=limits,
@@ -167,6 +172,7 @@ async def test_restart_cannot_bypass_current_reads_or_pinned_bindings(limits, fa
     elif fault == "source_missing":
         provider._index.clear()
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([final()]),
         history=MessageHistoryAdapter(provider),
         model_limits=limits,
@@ -185,6 +191,7 @@ async def test_restart_preserves_the_original_step_limit(limits):
     actor, tool, spec, store, provider, session, pending = await make_pending(limits, max_steps=1)
     model = ScriptedModel([final()])
     engine = Engine(
+        **fabricated_context(),
         model=model,
         history=MessageHistoryAdapter(provider),
         model_limits=limits,
@@ -205,6 +212,7 @@ async def test_restart_preserves_the_original_step_limit(limits):
 async def test_new_turn_after_restart_supersedes_pending_without_the_old_runner(limits):
     actor, tool, spec, store, provider, session, _ = await make_pending(limits)
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([final()]),
         history=MessageHistoryAdapter(provider),
         model_limits=limits,
@@ -222,6 +230,7 @@ async def test_new_turn_after_restart_supersedes_pending_without_the_old_runner(
 async def test_batch_approval_can_restart_between_each_answer(limits):
     actor, tool, spec, store, provider, session, first = await make_pending(limits, batch=True)
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([final()]),
         history=MessageHistoryAdapter(provider),
         model_limits=limits,
@@ -237,6 +246,7 @@ async def test_batch_approval_can_restart_between_each_answer(limits):
     assert len(tool.calls) == 1
     assert await engine.aclose()
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([final()]),
         history=MessageHistoryAdapter(provider),
         model_limits=limits,
@@ -283,6 +293,7 @@ async def test_default_physical_attempt_fencing_prevents_egress_after_expiry(lim
             yield final()
 
     engine = Engine(
+        **fabricated_context(),
         model=ExpiredModel(),
         history=MessageHistoryAdapter(history),
         model_limits=limits,

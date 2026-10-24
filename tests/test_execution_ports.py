@@ -5,17 +5,18 @@ from __future__ import annotations
 import pytest
 from test_gated_execution import DemoTool
 
+from tether.context.provenance import align_sources
 from tether.engine.governance import AllowAll
-from tether.engine.providers import BaseProvider, structural_subset
+from tether.engine.providers import BaseProvider
 from tether.engine.tools import Registry
 from tether.testing.execution import MemoryHistory, MemoryTurnLog
 from tether.types import Message, ToolCall
+from tether.types.context import ContextError, ContextSource
 from tether.types.execution import (
     Actor,
     AgentSpec,
     AuthzRequest,
     EntryConflict,
-    ExecutionDenied,
     NewEntry,
     SessionState,
 )
@@ -110,9 +111,10 @@ def test_structural_narrowing_preserves_call_bindings():
     user = Message(role="user", content="fabricated")
     call = ToolCall(id="call", name="write", arguments={"count": 3})
     assistant = Message(role="assistant", content="fabricated", tool_calls=(call,))
-    assert structural_subset((user, assistant), (assistant,)) == (assistant,)
+    sources = (ContextSource(index=0, message=user), ContextSource(index=2, message=assistant))
+    assert align_sources(sources, (user, assistant), (assistant,)).sources == (sources[1],)
     changed = assistant.model_copy(
         update={"tool_calls": (call.model_copy(update={"id": "other"}),)}
     )
-    with pytest.raises(ExecutionDenied, match="provider_output_invalid"):
-        structural_subset((user, assistant), (changed,))
+    with pytest.raises(ContextError, match="context_invalid"):
+        align_sources(sources, (user, assistant), (changed,))

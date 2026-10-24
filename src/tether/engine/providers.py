@@ -6,7 +6,9 @@ import asyncio
 from collections.abc import Mapping, Sequence
 from typing import cast
 
+from tether.context.provenance import SourceProjection, align_sources
 from tether.types import Message, ModelRequest, Payload, ToolCall
+from tether.types.context import ContextSource
 from tether.types.execution import (
     Actor,
     AgentSpec,
@@ -58,10 +60,18 @@ async def provider_hook(
     gov: Governance, workers: Workers, provider: Provider, method: str, *args: object
 ) -> object:
     try:
-        copies = [_copy(a) for a in args]
+        return await prepared_hook(gov, workers, provider, method, tuple(_copy(a) for a in args))
+    except Exception:
+        raise ExecutionDenied(f"x.{provider.id}.provider_error") from None
+
+
+async def prepared_hook(
+    gov: Governance, workers: Workers, provider: Provider, method: str, args: tuple[object, ...]
+) -> object:
+    try:
         with gov.observers.steps.provider(gov.scope, provider, method):
             async with asyncio.timeout(gov.limits.hook_timeout_seconds):
-                return await workers.call(gov.log.session.id, getattr(provider, method), *copies)
+                return await workers.call(gov.log.session.id, getattr(provider, method), *args)
     except Exception:
         raise ExecutionDenied(f"x.{provider.id}.provider_error") from None
 
@@ -76,37 +86,16 @@ def _copy(value: object) -> object:
     return value
 
 
-def structural_subset(original: tuple[Message, ...], narrowed: object) -> tuple[Message, ...]:
-    if not isinstance(narrowed, tuple) or not all(
-        isinstance(m, Message) for m in cast(tuple[object, ...], narrowed)
-    ):
-        raise ExecutionDenied("provider_output_invalid")
-    narrowed = cast(tuple[Message, ...], narrowed)
-    remaining = iter(original)
-    for message in narrowed:
-        found = False
-        for source in remaining:
-            if (message.role, message.tool_call_id, message.tool_calls, message.is_error) == (
-                source.role,
-                source.tool_call_id,
-                source.tool_calls,
-                source.is_error,
-            ) and all(a in source.attachments for a in message.attachments):
-                found = True
-                break
-        if not found:
-            raise ExecutionDenied("provider_output_invalid")
-    return narrowed
-
-
-async def narrow_request(
+async def narrow_sources(
     gov: Governance,
     workers: Workers,
     providers: tuple[Provider, ...],
     spec: AgentSpec,
     request: ModelRequest,
-) -> ModelRequest:
-    messages, system, tools = request.messages, request.system, request.tools
+    sources: tuple[ContextSource, ...],
+) -> tuple[ModelRequest, SourceProjection]:
+    system, tools = request.system, request.tools
+    filtered: set[int] = set()
     for provider in providers:
         section = await provider_hook(
             gov, workers, provider, "prompt_section", gov.log.session, spec
@@ -120,8 +109,22 @@ async def narrow_request(
             raise ExecutionDenied("provider_output_invalid")
         system += "\n\n" + section if section else ""
         tools = tuple(t for t in tools if t.name not in hidden)
-        narrowed = await provider_hook(
-            gov, workers, provider, "before_request", gov.log.session, spec, messages
+        supplied = tuple(source.message.model_copy(deep=True) for source in sources)
+        narrowed = await prepared_hook(
+            gov,
+            workers,
+            provider,
+            "before_request",
+            (_copy(gov.log.session), _copy(spec), supplied),
         )
-        messages = structural_subset(messages, narrowed)
-    return request.model_copy(update={"messages": messages, "system": system, "tools": tools})
+        projection = align_sources(sources, supplied, narrowed)
+        sources = projection.sources
+        filtered.update(projection.filtered_indices)
+    request = request.model_copy(
+        update={
+            "messages": tuple(s.message.model_copy(deep=True) for s in sources),
+            "system": system,
+            "tools": tools,
+        }
+    )
+    return request, SourceProjection(sources, tuple(sorted(filtered)))

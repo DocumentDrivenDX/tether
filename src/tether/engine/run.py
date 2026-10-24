@@ -20,6 +20,7 @@ from tether.types import (
     RequestTags,
     ToolSpec,
 )
+from tether.types.context import CODES, ContextError
 from tether.types.execution import (
     ExecutionDenied,
     NewEntry,
@@ -28,8 +29,10 @@ from tether.types.execution import (
 from tether.types.history import HistoryProvider
 
 from .attempts import JournalAttemptRecorder
+from .context import ContextBoundary
+from .context.attempts import CheckedRecorder
+from .context.step import ContextStep
 from .governance import Governance
-from .providers import narrow_request
 from .tools import ToolExecutor
 
 
@@ -42,7 +45,8 @@ class Run:
         model: ModelPort,
         limits: ModelExecutionLimits,
         attempt_factory: Callable[[RequestTags], AttemptRecorder] | None,
-        history_provider: HistoryProvider | None = None,
+        history_provider: HistoryProvider | None,
+        context: ContextBoundary,
     ) -> None:
         self.gov, self.executor, self.template = gov, executor, template
         self.model, self.limits = model, limits
@@ -51,6 +55,8 @@ class Run:
         self.result_turn_ids = frozenset({gov.turn_id})
         self.attempt_factory = attempt_factory
         self.history_provider = history_provider
+        self.context = context
+        self.preparation: ContextStep | None = None
         self.recorder: AttemptRecorder | None = None
         self.current_call: str | None = None
         self.deferred_ids: frozenset[str] = frozenset()
@@ -65,46 +71,54 @@ class Run:
         if self.steps >= self.executor.spec.max_steps:
             raise ExecutionDenied("step_limit")
         await self.gov.authorize("call_model", "model:" + request.model)
-        if (
-            request.messages != await self.messages()
-            or request.system != self.executor.spec.instructions
-        ):
-            raise ExecutionDenied("derived_history_changed")
-        visible = {t.name for t in self.template.tools}
-        request = request.model_copy(
-            update={"tools": tuple(t for t in request.tools if t.name in visible)}
-        )
-        request = await narrow_request(
-            self.gov,
-            self.executor.workers,
-            self.executor.registry.providers,
-            self.executor.spec,
-            request,
-        )
-        await self.gov.authorize("call_model", "model:" + request.model)
-        self.steps += 1
-        self.current_call = str(uuid4())
-        tags = request.tags.model_copy(
-            update={
-                "model_call_id": self.current_call,
-                "principal": self.gov.actor.principal or self.gov.actor.id,
-                "context": self.gov.log.session.held,
-            }
-        )
-        self.recorder = (
-            self.attempt_factory(tags)
-            if self.attempt_factory is not None
-            else JournalAttemptRecorder(
-                self.gov, tags, request.model, self.history_provider, self.messages
+        if self.preparation is None or self.preparation.used:
+            self.preparation = ContextStep(
+                self.context, self.gov, self.executor, request.model, self.result_turn_ids
             )
-        )
-        return request.model_copy(
-            update={
-                "tags": tags,
-                "attempts": self.recorder,
-                "credential": self.gov.actor.credential,
-            }
-        )
+        step = self.preparation
+        async with step.guarded():
+            if (
+                request.messages != await step.capture()
+                or request.system != self.executor.spec.instructions
+            ):
+                raise ExecutionDenied("derived_history_changed")
+            visible = {t.name for t in self.template.tools}
+            self.steps += 1
+            self.current_call = str(uuid4())
+            tags = request.tags.model_copy(
+                update={
+                    "model_call_id": self.current_call,
+                    "principal": self.gov.actor.principal or self.gov.actor.id,
+                    "context": self.gov.log.session.held,
+                }
+            )
+            request = request.model_copy(
+                update={
+                    "tools": tuple(
+                        sorted(
+                            (t for t in request.tools if t.name in visible), key=lambda t: t.name
+                        )
+                    ),
+                    "tags": tags,
+                }
+            )
+            request = await step.prepare(request)
+            await self.gov.authorize("call_model", "model:" + request.model)
+            self.recorder = (
+                CheckedRecorder(self.attempt_factory(tags), step, self.gov, tags)
+                if self.attempt_factory is not None
+                else JournalAttemptRecorder(
+                    self.gov,
+                    tags,
+                    request.model,
+                    self.history_provider,
+                    step.recheck,
+                    admit=step.check,
+                )
+            )
+            return request.model_copy(
+                update={"attempts": self.recorder, "credential": self.gov.actor.credential}
+            )
 
     async def accept(self, response: ModelResponse) -> None:
         message = Message(
@@ -163,7 +177,12 @@ class Run:
         try:
             await self.gov.authorize("read_session", self.gov.log.session.id)
             if self.runner is None and not recovered_final:
-                request = self.template.model_copy(update={"messages": await self.messages()})
+                self.preparation = ContextStep(
+                    self.context, self.gov, self.executor, self.template.model, self.result_turn_ids
+                )
+                async with self.preparation.guarded():
+                    messages = await self.preparation.capture()
+                    request = self.template.model_copy(update={"messages": messages})
                 self.runner = GatedAgent(
                     self.model,
                     request,
@@ -188,6 +207,18 @@ class Run:
                 ]
             )
             stop, reason = ("confirmation_required" if waiting else "final"), None
+        except ContextError as error:
+            stop, reason = (
+                "context_unavailable",
+                error.code if error.code in CODES else "context_failed",
+            )
+            await self.gov.fact(
+                "x.context.failed",
+                reason=reason,
+                preparation_ordinal=self.preparation.ordinal
+                if self.preparation is not None
+                else None,
+            )
         except ExecutionDenied as error:
             stop = error.reason if error.reason == "step_limit" else "model_denied"
             reason = error.reason

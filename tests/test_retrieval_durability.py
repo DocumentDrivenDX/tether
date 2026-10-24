@@ -10,6 +10,7 @@ from test_resume_engine import recovery as recovery
 from test_retrieval_observers import ReadTool, observers, retrievals
 
 from tether import Tether
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.history.jsonl import JsonlHistory
 from tether.history.messages import MessageHistoryAdapter
@@ -35,6 +36,7 @@ async def test_fresh_agent_resume_read_uses_original_source_and_current_phase(
     sid = await interrupted(h, run, "proposal", monkeypatch)
     sink, tracer = observers()
     fresh = Engine(
+        **fabricated_context(),
         model=run.model,
         history=MessageHistoryAdapter(h.provider),
         history_provider=h.provider,
@@ -84,6 +86,7 @@ async def test_retrieval_with_hung_sink_finishes_and_releases_storage_root(
         tools=(tool.name,),
     )
     engine = Engine(
+        **fabricated_context(),
         model=ScriptedModel([proposal(), final()]),
         history=MessageHistoryAdapter(history),
         history_provider=history,

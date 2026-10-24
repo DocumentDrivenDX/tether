@@ -16,6 +16,7 @@ from tether.types import (
     RequestTags,
 )
 from tether.types.canonical import digest
+from tether.types.context import ContextConfig, ContextStrategy, TokenEstimator
 from tether.types.execution import (
     Actor,
     AgentSpec,
@@ -48,6 +49,7 @@ from tether.types.tooling import tool_spec
 from . import resuming
 from .closing import close_session
 from .confirmations import approval_entries
+from .context import ContextBoundary
 from .governance import AllowAll, Governance, utc_now
 from .inspection import describe_pending
 from .observers.facade import Observers
@@ -77,7 +79,9 @@ class Engine:
         policy: Policy | None = None,
         limits: ExecutionLimits | None = None,
         clock: Clock = utc_now,
-        max_output_tokens: int = 1024,
+        context_config: ContextConfig | None = None,
+        estimator: TokenEstimator | None = None,
+        context: ContextStrategy | None = None,
         specs: tuple[AgentSpec, ...] = (),
         audit: AuditSink | None = None,
         tracer: Tracer | None = None,
@@ -85,7 +89,8 @@ class Engine:
     ) -> None:
         self.model, self.history, self.model_limits = model, history, model_limits
         self.history_provider = history_provider
-        self.attempt_factory, self.max_output_tokens = attempt_factory, max_output_tokens
+        self.attempt_factory = attempt_factory
+        self.context = ContextBoundary(context_config, estimator, context)
         self.registry, self.guards = Registry(tools, providers), guards
         self.policy, self.limits, self.clock = (
             policy if policy is not None else AllowAll(),
@@ -139,6 +144,7 @@ class Engine:
     @contextmanager
     def _operation(self, actor: Actor, log: TurnLog) -> Generator[None, None, None]:
         self._enter(actor, log)
+        session_id = log.session.id
         try:
             with self.observers.tracer.start_as_current_span(
                 "tether.turn",
@@ -150,7 +156,7 @@ class Engine:
             ):
                 yield
         finally:
-            self._running.discard(log.session.id)
+            self._running.discard(session_id)
             if not self._running:
                 self._idle.set()
 
@@ -218,7 +224,7 @@ class Engine:
             system=spec.instructions,
             messages=(),
             tools=selected,
-            max_output_tokens=self.max_output_tokens,
+            max_output_tokens=self.context.output_tokens(spec.model),
             credential=gov.actor.credential,
         )
         executor = ToolExecutor(gov, self.registry, spec, self.workers, self.guards)
@@ -230,6 +236,7 @@ class Engine:
             self.model_limits,
             self.attempt_factory,
             self.history_provider,
+            self.context,
         )
 
     async def answer(

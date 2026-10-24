@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from test_gated_execution import DemoTool, final, proposal
 
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.history.jsonl import JsonlHistory
 from tether.history.messages import MessageHistoryAdapter
@@ -50,6 +51,7 @@ def build(h, *, safe=False, steps=20, tool=None, model=None, spec=None):
     )
     model = model or ScriptedModel([proposal(), final()])
     engine = Engine(
+        **fabricated_context(),
         model=model,
         history=MessageHistoryAdapter(h.provider),
         history_provider=h.provider,

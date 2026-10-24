@@ -273,7 +273,12 @@ async def test_provider_request_narrowing_cannot_widen_or_dispatch_hidden_tools(
     h = Harness(limits, providers=(provider,))
     result = await h.run()
     assert not h.tool.calls
-    assert result.stop_reason in {"model_denied", "model_unavailable", "final"}
+    if fault in {"widen", "bad_type"}:
+        assert result.stop_reason == "context_unavailable"
+        assert result.reason == "context_invalid"
+        assert not h.model.requests
+    else:
+        assert result.stop_reason in {"model_denied", "model_unavailable", "final"}
 
 
 async def test_provider_redactions_and_prompt_sections_are_narrow_and_isolated(limits):
@@ -554,6 +559,6 @@ async def test_dropping_tool_result_cannot_send_incomplete_group_to_model(limits
     )
     h = Harness(limits, providers=(provider,))
     result = await h.run()
-    assert result.stop_reason == "model_unavailable"
-    assert result.reason == "invalid_history"
+    assert result.stop_reason == "context_unavailable"
+    assert result.reason == "context_invalid"
     assert len(h.model.requests) == 1

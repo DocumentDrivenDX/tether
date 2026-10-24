@@ -9,6 +9,7 @@ from typing import cast
 import pytest
 from pydantic import BaseModel, JsonValue
 
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.engine.governance import AllowAll
 from tether.engine.providers import BaseProvider
@@ -137,6 +138,7 @@ class Harness:
         self.tool = options.pop("tool", DemoTool())
         self.model = ScriptedModel(script or [proposal(), final()])
         self.engine = Engine(
+            **fabricated_context(),
             model=self.model,
             history=self.history,
             model_limits=model_limits,

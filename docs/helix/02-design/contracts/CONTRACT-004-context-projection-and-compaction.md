@@ -124,7 +124,9 @@ class ContextStrategy(Protocol):
 | Payload isolation | The strategy sees copies of the currently authorized, provider-filtered source view, with no credential. It MUST NOT mutate the original log, settings, tool definitions, or gate state. |
 | Hooks | `before_request` keeps its narrowing/redaction contract. The engine applies it to source messages first, validates group integrity, then builds context. A summary is derived from that sanitized view, never from pre-redaction content. No later hook may widen the resulting view. |
 | Retrieval | A strategy may select earlier source ranges from this session's committed refs after bounded, actor-authorized history hydration. External data first enters through the application's authorized tools; a strategy receives no unrestricted store/network handle. Optional archive access never becomes a turn dependency. The authoritative history provider is a separate bounded dependency: unresolved content is `history_pending` or `history_unavailable`, never inferred from the next model prompt. |
-| Bounded work | Planning and summarization share the configured context deadline and byte/call limits. Exceeding a bound ends the step explicitly; no unbounded replan/compress/retry loop. |
+| Bounded work | Initial hydration, planning, summarization and physical-attempt admission share the configured context deadline and byte/call limits. Exceeding a bound ends the step explicitly; no unbounded replan/compress/retry loop. |
+
+The engine bounds copied source metadata, callback inputs/outputs and the complete logical request before estimating or admitting them. Callback mutation and malformed typed returns refuse preparation. Strategy/estimator exceptions expose only a closed failure code. Storage uncertainty and lease loss retain their original recovery semantics. Actual callback work remains owned through timeout or cancellation. Before each physical attempt, including retries and custom recorder paths, the engine revalidates accepted context, current sources, effective configuration and final estimate, then reauthorizes READ_SESSION. A final synchronous admission check after policy and recorder waits refuses an expired deadline or changed accepted binding before egress.
 
 The engine supplies a fixed-payload estimate (current system/provider instructions, tool schemas and envelope) and per-group estimates including framing. Strategies use these to select candidates within the input allowance `window - output - margin`; summing group estimates is preliminary, not a replacement for the final full-request estimate. Token estimation may inspect only the already byte-bounded source view. For `source` and `omit` parts, `summary_index` MUST be absent; `summary` requires an existing compatible compaction index; `summarize` may name one compatible predecessor. Only `omit` has a reason, which is required; other parts MUST leave it absent. Each part has at least one range. The engine validates each plan before materialization. An invalid plan ends `context_invalid`; there is no fallback that discards additional history without an explicit valid plan.
 
@@ -164,6 +166,7 @@ class ContextSummary(BaseModel):
     index: int; record: CompactionRecord           # actual committed compaction-entry position
 
 class ContextPreparation(BaseModel):
+    model_call_id: str                            # logical main-call correlation, not an attempt ID
     ordinal: int; through_index: int              # >= 0; snapshot before this allocation entry
     source_view_digest: str; scope_digest: str; spec_digest: str
     config_digest: str; main_profile_digest: str
@@ -171,6 +174,7 @@ class ContextPreparation(BaseModel):
     strategy_id: str; strategy_version: str
 
 class ContextUse(BaseModel):
+    model_call_id: str
     preparation_ordinal: int                     # >= 0; allocated under the lease
     config_digest: str
     through_index: int
@@ -179,6 +183,8 @@ class ContextUse(BaseModel):
     profile_id: str; profile_revision: str
     estimate: TokenEstimate; output_tokens: int; safety_margin_tokens: int
 ```
+
+Preparation and use records bind the same logical main model_call_id and are discoverable through its bounded model-call lookup group. Their correlation never depends on temporal adjacency or inspecting a captured request body. The context request digest covers the credential/recorder-free logical ModelRequest excluding traceparent; observer trace propagation is added after preparation and is not prompt input. Physical wire digests and attempt IDs remain CONTRACT-001 facts.
 
 `CompactionRecord` is the payload of a new `compaction` entry; `ContextUse` is a new `context_use` entry. The engine persists/binds successful summary content through CONTRACT-005, then commits its ref, the auxiliary `model_call` fact and associated change records atomically in the execution journal under the current lease before using that summary. After final main-request validation/estimation it commits `context_use` before sending. Failed appends stop preparation; the request MUST NOT be sent on an uncommitted projection. Records contain no credential. Only the referenced summary history record carries derived content; digests, counts, ranges, and reasons remain facts.
 

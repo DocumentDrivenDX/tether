@@ -275,6 +275,7 @@ async def test_new_summaries_are_preflighted_and_not_materialized_before_commit(
         materialize(original, selected)
     with pytest.raises(ValidationError):
         ContextUse(
+            model_call_id="fabricated-call",
             preparation_ordinal=0,
             config_digest=digest("config"),
             through_index=20,

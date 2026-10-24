@@ -11,6 +11,7 @@ from test_client_reads import harness as harness
 from test_gated_execution import final
 
 from tether import Tether
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.history.jsonl import JsonlHistory
 from tether.history.messages import MessageHistoryAdapter
@@ -50,6 +51,7 @@ async def turns(request, tmp_path, limits, client_limits):
     actor, model, policy = Actor(id="owner"), WaitingModel(), CurrentPolicy()
     spec = AgentSpec(id="demo", version="1", title="Demo", instructions="Fabricated", model="demo")
     engine = Engine(
+        **fabricated_context(),
         model=model,
         history=MessageHistoryAdapter(history),
         history_provider=history,
@@ -499,6 +501,7 @@ async def test_request_retry_after_real_root_and_composition_restart(
     store, history = await JsonlSessionStore.open(root), await JsonlHistory.open(root)
     model = ScriptedModel([final()])
     engine = Engine(
+        **fabricated_context(),
         model=model,
         history=MessageHistoryAdapter(history),
         history_provider=history,
@@ -514,6 +517,7 @@ async def test_request_retry_after_real_root_and_composition_restart(
     store, history = await JsonlSessionStore.open(root), await JsonlHistory.open(root)
     model = ScriptedModel([])
     engine = Engine(
+        **fabricated_context(),
         model=model,
         history=MessageHistoryAdapter(history),
         history_provider=history,

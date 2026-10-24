@@ -310,3 +310,10 @@ registered DatabaseRoots avoid hidden pool or role ownership. Startup and shutdo
 process/acquisition work through caller cancellation; stop follows physical root/worker drain.
 Unmanaged or already-running directories refuse instead of adoption. The selected profile is
 POSIX/non-root; no external server administration or automatic migration is added.
+
+
+The scoped C4 main-request runtime now performs explicit Full/Tail projection within Agent's
+existing preparation callback. Accepted preparation/use facts bind the logical main model call;
+per-physical-attempt rechecks apply to default and custom recorders. The complete original
+conversation remains verified history. Auxiliary summary execution, actual wire estimators,
+attachment encoding and streaming remain separate qualification work; no second Agent loop exists.

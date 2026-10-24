@@ -159,12 +159,12 @@ async def test_orphan_actual_result_cannot_block_unknown_closure(harness, monkey
     assert orphan.record.message.content == "Wrote 3"
 
 
-async def test_known_acceptance_is_signaled_before_fallible_run_setup(harness):
+async def test_known_acceptance_is_signaled_before_fallible_run_setup(harness, monkeypatch):
     from pydantic import ValidationError
 
     h, sid = harness, harness.session.id
     previous = await h.client.pending(sid)
-    h.engine.max_output_tokens = 0
+    monkeypatch.setattr(h.engine.context, "output_tokens", lambda tier: 0)
     signaled = []
     async with h.store.turn(sid, h.actor.id, turn_id="accepted-setup-failure") as log:
         with pytest.raises(ValidationError):

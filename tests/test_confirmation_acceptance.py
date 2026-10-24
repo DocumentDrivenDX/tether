@@ -8,6 +8,7 @@ import pytest
 from test_client_reads import harness as harness
 from test_client_turns import WaitingModel
 
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.types.execution import Answer
 
@@ -21,6 +22,7 @@ def anyio_backend():
 
 def other_engine(h, model):
     return Engine(
+        **fabricated_context(),
         model=model,
         history=h.engine.history,
         history_provider=h.history,

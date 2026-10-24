@@ -222,7 +222,10 @@ class Governance:
         await self.authorize("read_session", self.log.session.id)
         if not any(e.history_ref == ref for e in self.log.entries):
             raise ExecutionDenied("unreachable_source")
-        message = await self.history.read(ref, actor=self.actor, session_id=self.log.session.id)
+        try:
+            message = await self.history.read(ref, actor=self.actor, session_id=self.log.session.id)
+        except (ValueError, PermissionError):
+            raise ExecutionDenied("history_unavailable") from None
         payload = (
             HistoryRecord(kind="message", message=message).model_dump(mode="json")
             if ref.codec == "tether-history-v1"

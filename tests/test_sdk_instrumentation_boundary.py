@@ -10,6 +10,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.instrumented import InstrumentationSettings
 from pydantic_ai.models.test import TestModel
 
+from tether.context.testing import fabricated_context
 from tether.models.testing import ScriptedModel
 from tether.runtime.pydantic_ai.bridge import run_agent
 from tether.types import ModelResponse
@@ -88,6 +89,7 @@ async def test_ambient_sdk_instrumentation_is_ignored_by_gated_engine(limits):
         actor = Actor(id="fabricated")
         log = MemoryTurnLog(SessionState(id="fabricated", owner=actor.id))
         engine = Engine(
+            **fabricated_context(),
             model=ScriptedModel([ModelResponse(content="Fabricated", finish_reason="stop")]),
             history=MemoryHistory(),
             model_limits=limits,

@@ -12,6 +12,7 @@ from test_gated_execution import DemoTool, final, proposal
 from test_telemetry_ports import id_factory
 
 from tether import Tether
+from tether.context.testing import fabricated_context
 from tether.engine import Engine
 from tether.engine.governance import Governance
 from tether.engine.observers.facade import Observers
@@ -48,6 +49,7 @@ def anyio_backend():
 
 def make_engine(limits, *, audit=None, tracer=None, model=None, history=None, tools=(), **kwargs):
     return Engine(
+        **fabricated_context(),
         model=model if model is not None else ScriptedModel([final()]),
         history=history if history is not None else MemoryHistory(),
         model_limits=limits,

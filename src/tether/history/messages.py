@@ -21,6 +21,8 @@ class MessageHistoryAdapter:
         if ref.owner != actor.id or ref.session_id != session_id:
             raise ExecutionDenied("history_denied")
         values = await self.provider.read([ref], actor=actor)
+        if len(values) == 1 and values[0].ref == ref and values[0].status == "pending":
+            raise ExecutionDenied("history_pending")
         if len(values) != 1 or values[0].ref != ref or values[0].status != "ready":
             raise ExecutionDenied("history_unavailable")
         record = values[0].record

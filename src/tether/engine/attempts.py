@@ -29,9 +29,11 @@ class JournalAttemptRecorder:
         tier: str,
         history: HistoryProvider | None = None,
         recheck: Callable[[], Awaitable[object]] | None = None,
+        *,
+        admit: Callable[[], None] | None = None,
     ) -> None:
         self.gov, self.tags, self.tier, self.history = gov, tags, tier, history
-        self.recheck = recheck
+        self.recheck, self.admit = recheck, admit
         self.latest_exchange: HistoryRef | None = None
         self.reserved: dict[str, AttemptIdentity] = {}
         self.started: dict[str, tuple[AttemptIdentity, JsonValue, str]] = {}
@@ -95,6 +97,8 @@ class JournalAttemptRecorder:
             history_ref=ref.model_dump(mode="json") if ref else None,
         )
         self.started[identity.attempt_id] = (identity, wire_request, codec)
+        if self.admit is not None:
+            self.admit()
 
     async def observe(
         self,

@@ -441,6 +441,7 @@ The initial v1 is revised before release, including CONTRACT-004 and `RESOLVE_EF
 # An application composes the ports (the only place adapters are imported):
 engine = Engine(
     model=OpenAICompatModel(settings.model),         # ADR-002
+    context_config=settings.context, estimator=adapter_estimator,  # CONTRACT-004
     policy=AllowAll(), binder=NoScope(), resolver=FixedSpec(SPEC),
     providers=[NotesProvider()], guards=[],          # the default guard list is empty
     audit=ListAuditSink(), tracer=NullTracer(), clock=SystemClock(), ids=UuidIds(),
