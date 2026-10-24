@@ -17,7 +17,7 @@ from tether.types.storage import IntegrityError, SessionInit, SessionSummary, Se
 
 from .indexing import entry_groups, ledger_change, pending_confirmation
 from .projection import Projection, finish_summary, new_projection
-from .usage import sum_usage, usage_change, usage_value
+from .usage import add_usage, usage_change, usage_value
 
 
 @dataclass
@@ -30,13 +30,15 @@ class SessionIndex:
     pending: dict[str, Entry] = field(default_factory=lambda: dict[str, Entry]())
     effects: dict[str, Entry] = field(default_factory=lambda: dict[str, Entry]())
     sources: dict[str, Entry] = field(default_factory=lambda: dict[str, Entry]())
-    lookups: dict[tuple[str, str], tuple[Entry, ...]] = field(
-        default_factory=lambda: dict[tuple[str, str], tuple[Entry, ...]]()
+    lookups: dict[tuple[str, str], list[Entry]] = field(
+        default_factory=lambda: dict[tuple[str, str], list[Entry]]()
     )
     specs: dict[str, SpecRef] = field(default_factory=lambda: dict[str, SpecRef]())
     counted: dict[str, TokenUsage | None] = field(
         default_factory=lambda: dict[str, TokenUsage | None]()
     )
+
+    missing_usage: int = 0
 
     def clone(self) -> SessionIndex:
         return replace(
@@ -47,7 +49,7 @@ class SessionIndex:
             effects=self.effects.copy(),
             sources=self.sources.copy(),
             counted=self.counted.copy(),
-            lookups=self.lookups.copy(),
+            lookups={key: values.copy() for key, values in self.lookups.items()},
             specs=self.specs.copy(),
         )
 
@@ -84,7 +86,7 @@ class SessionIndex:
 
     def _index(self, entry: Entry) -> None:
         for group in entry_groups(self.state.id, entry):
-            self.lookups[group] = (*self.lookups.get(group, ()), entry)
+            self.lookups.setdefault(group, []).append(entry)
 
     def _facts(self, entry: Entry) -> None:
         projection = Projection(self.state, self.init, self.summary, self.specs)
@@ -105,12 +107,12 @@ class SessionIndex:
         key, value = usage_value(entry)
         change = usage_change(self.counted.get(key), value, exists=key in self.counted)
         self.counted[key] = change.value
-        known = [value for value in self.counted.values() if value is not None]
-        totals = sum_usage(known)
+        self.missing_usage += change.missing_delta
+        totals = add_usage(self.summary.usage, change.added)
         self.summary = self.summary.model_copy(
             update={
                 "usage": totals,
-                "usage_complete": all(value is not None for value in self.counted.values()),
+                "usage_complete": self.missing_usage == 0,
             }
         )
 

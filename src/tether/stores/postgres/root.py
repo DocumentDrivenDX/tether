@@ -1,7 +1,9 @@
 """Bounded borrowed database transactions and explicit root admission/lifetime."""
 
+import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Self, TypeVar
+from contextvars import copy_context
+from typing import Self, TypeVar, cast
 
 from psycopg import AsyncConnection
 
@@ -94,6 +96,21 @@ class DatabaseRoot:
         return await self._io.run(
             lambda: self._transaction(actor, session_id, operation, write), write=write
         )
+
+    async def prepare(self, session_id: str, operation: Callable[[], T]) -> T:
+        """Retain actual pure reconstruction work through caller cancellation and shutdown."""
+
+        async def prepare() -> T:
+            context = copy_context()
+
+            def invoke() -> T:
+                return context.run(operation)
+
+            future = asyncio.get_running_loop().run_in_executor(None, invoke)
+            self.workers.retain(session_id, cast(asyncio.Future[object], future))
+            return await asyncio.shield(future)
+
+        return await self._io.run(prepare)
 
     def _release(self) -> None:
         if self._io.closed and not self._io.active and self._namespace is not None:

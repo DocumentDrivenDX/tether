@@ -612,3 +612,15 @@ unrelated owner changes, yields bounded prefixes and explicitly refuses gaps, ma
 or oversized first events. These read primitives remain internal; they do not advertise a complete
 SessionStore. Next implement leased append/update/recovery, current-caller facades and real-process
 fencing/takeover before exposing the selected SQL execution profile.
+
+
+The internal lease/capture checkpoint uses server-time expiry and generation/holder tokens,
+checks the fence after final publication, and renews only an unexpired holder at SQL mutation.
+Recovery distinguishes lease jobs from logical execution phases, preserving pending approvals
+and unknown effects. Two independent roots/connections exercise takeover and stale operations;
+these are not multiprocess qualification. Canonical execution capture is bounded under database
+locks; retained pure reconstruction runs after database resources exit and checks current lease
+validity before yielding. Shared group and usage reconstruction avoids repeated full scans,
+with no measured scale claim. Next compose a poisonable leased TurnLog, caller-bound public
+facades and explicit maintenance recovery, then qualify real-process loss and the full SQL
+Agent/Client lifecycle before declaring the cross-process store capability.

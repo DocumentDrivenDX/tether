@@ -174,3 +174,14 @@ opaque provider/codec metadata until later history hydration. Owner-head shared 
 snapshot watermark through pending lookup. Feed filtering advances across unrelated owner changes;
 retention/sequence gaps and oversized first events fail explicitly. No public SQL lease or complete
 SessionStore capability follows from those read primitives.
+
+
+Internal SQL lease/capture primitives use server time after row locks and again after final
+publication. Renewals atomically require an unexpired matching holder/generation and derive expiry
+from database time. Lease holder identity is distinct from the authoritative logical phase;
+recovery ends that phase without clearing pending approvals or unknown effects. Expired current
+cleanup is metadata-only; stale cleanup cannot touch a replacement. Bounded canonical capture
+releases database resources before retained executor reconstruction and validates the lease again
+before returning. Reconstruction uses linear group/usage updates and staged clones isolate groups.
+These primitives remain internal; public handles/facades, global maintenance authority, full SQL
+Agent integration, true multiprocess faults and deployment RLS remain qualification work.
