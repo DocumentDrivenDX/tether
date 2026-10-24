@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from tether.types import Message
-from tether.types.canonical import digest
+from tether.types.canonical import digest, input_digest
 from tether.types.execution import AgentSpec, Entry, ExecutionDenied, NewEntry, TurnStart
 
 from .governance import Governance
@@ -89,13 +89,6 @@ async def accept_input(
         message=Message(role="user", content=text, attachments=start.attachments),
     )
     closures = await interrupted_calls(gov)
-    input_digest = digest(
-        {
-            "text": text,
-            "attachments": [v.model_dump(mode="json") for v in start.attachments],
-            "spec": start.requested_spec,
-        }
-    )
     return await gov.commit(
         [
             *closures,
@@ -107,7 +100,7 @@ async def accept_input(
                     "spec_digest": digest(spec.model_dump(mode="json")),
                     "spec_id": spec.id,
                     "spec_version": spec.version,
-                    "input_digest": input_digest,
+                    "input_digest": input_digest(text, start.attachments, start.requested_spec),
                 },
             ),
             NewEntry(

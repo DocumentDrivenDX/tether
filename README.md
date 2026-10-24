@@ -1,15 +1,14 @@
 # tether
 
-A Python library for building agent harnesses. Tether provides the underpinnings: an
-asynchronous agent loop, a typed tool-call interface, durable session management, and
-telemetry. It exposes the session list and session data to a user interface through a fast
-in-process Python API, and ships a simple command-line client and terminal UI for
-development and testing.
+A Python library for building agent harnesses. Tether integrates Pydantic AI Agent with
+typed tools, execution policy and durable sessions. Its in-process async Client API exposes
+session metadata, history, persisted changes and a partial command facade. Telemetry and
+reference CLI/terminal clients are planned in later build slices.
 
-**Status: gated execution, local durability and Client reads (slices 2–4 subset).** Pydantic AI Agent now runs tools through
+**Status: gated execution, local durability and partial Client commands (slices 2–4 subset).** Pydantic AI Agent now runs tools through
 Tether's policy, validation, approval and commit gates. Model doubles and shared codecs remain
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
-Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned commands, provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Confirmation/resume/update/close/resolve commands, provisional text production, Postgres and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
 
 ## Development
 
@@ -84,6 +83,27 @@ remain unfinished. Model/tool attachments,
 non-JSON executable argument leaves and lossy argument serializers are refused by this subset.
 The fabricated examples and faults are in [the execution tests](tests/test_gated_execution.py)
 and [the integration review](tests/test_execution_review.py).
+
+## Client command subset
+
+Within an active `Tether` context, `client.send(session_id, text, request_id=...)`
+returns a handle after durable input acceptance. Await `handle.result()` for completion;
+canceling that waiter leaves Tether's turn running. Use `handle.cancel()` or
+`client.cancel(session_id)` to request cancellation explicitly. An old handle cannot cancel
+a newer turn. A waiting approval is not declined by cancellation.
+
+Select a supplied unambiguous spec by the command's `spec`, the session's stored spec id,
+or explicit `Tether(default_spec=...)`. A repeated request id must have identical canonical
+text, attachment refs and requested spec. The existing turn is returned without another Agent
+run, including after local root/composition restart. Each result delivery uses current caller
+policy and verified original sources; unavailable or denied sources refuse content rather than
+substituting an empty transcript. Result reads have a finite deadline after execution completes.
+An external still-running turn without a local task reports `TurnInProgress` on result lookup;
+cross-process following and automatic recovery remain separate qualification.
+
+Tether bounds its owned jobs by `ClientLimits.max_active_turns`. Lease loss stops the Agent;
+shutdown cancels owned turns and retains storage until actual workers and in-flight heartbeats
+exit. An incomplete bounded close keeps ownership through deferred cleanup.
 
 ## What it is for
 

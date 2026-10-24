@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Protocol
 
 from tether.types import AttemptIdentity, Payload, PositiveInt, PositiveSeconds, ResponseReceipt
-from tether.types.execution import Entry
+from tether.types.execution import Entry, TurnResult
 from tether.types.history import HistoryStatus, HistoryValue
 from tether.types.storage import SessionSummary, StoreError
 
@@ -106,3 +106,11 @@ Change = (
     | Lagged
     | ResyncRequired
 )
+
+
+class TurnHandle(Protocol):
+    @property
+    def turn_id(self) -> str: ...
+
+    async def result(self) -> TurnResult: ...
+    async def cancel(self) -> None: ...
