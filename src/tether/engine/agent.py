@@ -20,22 +20,29 @@ from tether.types.execution import (
     AgentSpec,
     Answer,
     ApprovalBinding,
+    AuthzRequest,
     Clock,
+    Decision,
+    Entry,
     ExecutionDenied,
     ExecutionLimits,
     MessageHistory,
     NewEntry,
+    PendingConfirmation,
     Policy,
     Provider,
     ResultGuard,
+    SessionState,
     Tool,
     TurnLog,
     TurnResult,
+    copy_actor,
 )
 from tether.types.history import HistoryProvider
 from tether.types.tooling import tool_spec
 
 from .governance import AllowAll, Governance, utc_now
+from .inspection import describe_pending
 from .reconstruction import pinned_spec, requested_turn, restore_pending, restored_usage
 from .run import Run
 from .tools import Invocation, Registry, ToolExecutor
@@ -75,6 +82,8 @@ class Engine:
         self._runs: dict[str, Run] = {}
         self._specs = {digest(s.model_dump(mode="json")): s.model_copy(deep=True) for s in specs}
         self._running: set[str] = set()
+        self._idle = asyncio.Event()
+        self._idle.set()
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def _bind_loop(self) -> None:
@@ -93,6 +102,7 @@ class Engine:
         if log.session.id in self._running or self.workers.busy(log.session.id):
             raise ExecutionDenied("worker_outstanding")
         self._running.add(log.session.id)
+        self._idle.clear()
 
     async def run_turn(
         self, actor: Actor, log: TurnLog, text: str, *, spec: AgentSpec
@@ -130,6 +140,8 @@ class Engine:
             return await run.finish()
         finally:
             self._running.discard(log.session.id)
+            if not self._running:
+                self._idle.set()
 
     async def _close_incomplete(self, gov: Governance, spec: AgentSpec) -> None:
         executor = ToolExecutor(gov, self.registry, spec, self.workers, self.guards)
@@ -249,6 +261,8 @@ class Engine:
             return await run.finish(continuing=True)
         finally:
             self._running.discard(log.session.id)
+            if not self._running:
+                self._idle.set()
 
     async def _restore(self, actor: Actor, log: TurnLog, invocation_id: str) -> Run | None:
         source_turn = requested_turn(log.entries, invocation_id)
@@ -265,6 +279,44 @@ class Engine:
             return None
         self._runs[log.session.id] = run
         return run
+
+    async def inspect_pending(
+        self, actor: Actor, session: SessionState, source: Entry, request: Entry, proposal: Message
+    ) -> PendingConfirmation:
+        self._bind_loop()
+        try:
+            async with asyncio.timeout(self.limits.hook_timeout_seconds):
+                decision = Decision.model_validate(
+                    await self.policy.authorize(
+                        AuthzRequest(
+                            actor=copy_actor(actor), action="read_session", resource=session.id
+                        )
+                    )
+                )
+        except Exception:
+            raise ExecutionDenied("policy_denied") from None
+        if not decision.allowed or actor.id != session.owner:
+            raise ExecutionDenied("policy_denied")
+        return await describe_pending(
+            actor,
+            session,
+            source,
+            request,
+            proposal,
+            self.registry,
+            self._specs,
+            self.workers,
+            self.limits,
+        )
+
+    async def wait_closed(self) -> None:
+        """Wait for actual exits after aclose sealed submissions; caller may bound this wait."""
+        self._bind_loop()
+        if not self.workers.closed:
+            raise RuntimeError("engine_not_closing")
+        await self._idle.wait()
+        if self.workers.active:
+            await asyncio.wait(tuple(self.workers.active))
 
     async def aclose(self) -> bool:
         """Bounded shutdown; False explicitly means active work has not exited."""

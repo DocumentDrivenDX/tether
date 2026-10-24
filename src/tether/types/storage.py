@@ -10,7 +10,9 @@ from typing import Generic, Literal, Protocol, TypeVar
 from pydantic import Field, JsonValue
 
 from tether.types import Payload, PositiveInt, PositiveSeconds, TokenUsage
-from tether.types.execution import Entry, SessionState, TurnLog
+from tether.types.execution import Entry, PendingConfirmation, SessionState, TurnLog
+
+SESSION_CONTRACT_VERSION = 2
 
 
 class StoreError(Exception):
@@ -103,12 +105,26 @@ class SessionSummary(Payload):
     last_seq: int = 0
 
 
+class SpecRef(Payload):
+    id: str
+    version: str | None = None
+    digest: str | None = None
+
+
+class ToolInfo(Payload):
+    name: str
+    version: str | None = None
+    tool_digest: str | None = None
+    description: str | None = None
+
+
 class SessionView(Payload):
     summary: SessionSummary
     settings: dict[str, JsonValue] = Field(default_factory=dict)
-    specs: dict[str, JsonValue] = Field(default_factory=dict)
-    pending: dict[str, JsonValue] | None = None
-    tools: tuple[str, ...] = ()
+    specs: dict[str, SpecRef] = Field(default_factory=dict)
+    pending: PendingConfirmation | None = None
+    tools: tuple[ToolInfo, ...] = ()
+    tools_status: Literal["not_loaded", "ready", "unsupported"] = "not_loaded"
 
 
 class SessionSnapshot(Payload):
@@ -185,6 +201,8 @@ class JournalFiles(Protocol):
 
     limits: StorageLimits
 
+    async def aclose(self) -> bool: ...
+
     def claim(self, name: Literal["journal", "history"]) -> None: ...
 
     def scan(self, name: Literal["journal", "history"]) -> AsyncIterator[FileRecord]: ...
@@ -201,6 +219,8 @@ class JournalFiles(Protocol):
 class SessionStore(Protocol):
     capabilities: StoreCapabilities
 
+    async def aclose(self) -> bool: ...
+
     async def create(self, owner: str, init: SessionInit) -> SessionSummary: ...
     async def get(self, session_id: str, owner: str) -> SessionView | None: ...
     async def list(
@@ -214,6 +234,16 @@ class SessionStore(Protocol):
         self, owner: str, *, session_id: str | None = None, since: int | None = None
     ) -> AsyncIterator[PersistedChange]: ...
     async def update(self, session_id: str, owner: str, patch: SessionPatch) -> SessionSummary: ...
+    async def lookup(
+        self,
+        session_id: str,
+        owner: str,
+        *,
+        kind: Literal["key", "invocation", "model_call", "turn"],
+        value: str,
+        limit: int = 1000,
+        max_bytes: int | None = None,
+    ) -> tuple[Entry, ...]: ...
     async def snapshot(self, session_id: str, owner: str) -> SessionSnapshot: ...
     async def entries(
         self, session_id: str, owner: str, *, start: int, limit: int, reverse: bool = False

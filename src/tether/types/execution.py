@@ -21,6 +21,18 @@ from tether.types import (
 
 ENGINE_CONTRACT_VERSION = 2
 
+HistoryStatus = Literal[
+    "ready",
+    "pending",
+    "denied",
+    "unavailable",
+    "missing",
+    "partial",
+    "ambiguous",
+    "unsupported",
+    "integrity_error",
+]
+
 Effect = Literal["read_only", "effectful"]
 Replay = Literal["safe", "unsafe"]
 
@@ -141,7 +153,11 @@ class ApprovalBinding(Payload):
 
 class PendingConfirmation(ApprovalBinding):
     tool: str
-    arguments: dict[str, JsonValue]
+    arguments: dict[str, JsonValue] | None
+    history_ref: HistoryRef | None = None
+    history_status: Literal["not_loaded"] | HistoryStatus = "ready"
+    reason: str | None = None
+    description: str = ""
     requested_at: datetime
     expires_at: datetime | None = None
 

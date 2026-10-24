@@ -100,6 +100,12 @@ async def smoke():
     from tether.history.messages import MessageHistoryAdapter
     from tether.stores.jsonl import JsonlRoot, JsonlSessionStore
     from tether.types.storage import SessionInit
+    from tether.types.client import ClientLimits
+    from tether import Tether
+    client_limits = ClientLimits(max_page_size=100, max_call_ids=8,
+        max_read_bytes=1048576, max_lookup_entries=1000, read_timeout_seconds=10,
+        heartbeat_interval_seconds=1, shutdown_timeout_seconds=10,
+        follower_queue_size=8, max_followers=8, max_active_turns=8, max_request_bytes=65536)
     with tempfile.TemporaryDirectory(prefix='tether-installed-') as directory:
         root = await JsonlRoot.open(Path(directory))
         store = await JsonlSessionStore.open(root)
@@ -112,6 +118,13 @@ async def smoke():
                 actor, durable_log, 'Fabricated durable request', spec=spec)
         assert waiting.stop_reason == 'confirmation_required' and tool.calls == 1
         invocation = waiting.pending[0].invocation_id
+        async with Tether(engine=first, store=store, history=provider,
+                          limits=client_limits) as app:
+            pending_view = await app.client(actor).pending(session.id)
+            assert pending_view.arguments == {'count': 3}
+            assert pending_view.history_status == 'ready'
+            assert (await app.client(actor).snapshot(session.id)).view.pending.arguments is None
+        assert app.drained
         assert await first.aclose()
         assert await root.aclose()
         root = await JsonlRoot.open(Path(directory))
@@ -129,6 +142,21 @@ async def smoke():
             assert not snapshot.view.summary.pending
             assert snapshot.view.summary.unresolved_effect_count == 0
             assert await second.aclose()
+            reader = Engine(model=ScriptedModel([]), history=MessageHistoryAdapter(provider),
+                history_provider=provider, model_limits=limits, tools=(tool,), specs=(spec,))
+            async with Tether(engine=reader, store=store, history=provider,
+                              limits=client_limits) as app:
+                client = app.client(actor)
+                assert (await client.get(session.id)).summary.id == session.id
+                entries = await client.entries(session.id)
+                calls = tuple(e.facts['model_call_id'] for e in entries.items
+                              if e.kind == 'model_call')
+                details = await client.call_detail(session.id, calls)
+                assert len(details) == 2
+                assert all(detail.status == 'ready' for detail in details)
+                assert all(slot.value.status == 'ready'
+                           for slot in (await client.history(session.id)).items)
+            assert app.drained
         finally:
             assert await root.aclose()
 asyncio.run(smoke())

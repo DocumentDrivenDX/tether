@@ -110,11 +110,24 @@ class Engine:                                                                   
                        parent: object | None = None) -> TurnResult: ...
     async def answer(self, actor: Actor, log: TurnLog, invocation_id: str, answer: Answer, *,
                      events: EventSink | None = None, parent: object | None = None) -> TurnResult | None: ...
+    async def inspect_pending(self, actor: Actor, session: SessionState, source: Entry,
+                              request: Entry, proposal: Message) -> PendingConfirmation: ...
+    async def aclose(self) -> bool: ...             # bounded, seals submissions; false if work remains
+    async def wait_closed(self) -> None: ...         # explicit actual-exit wait after close; caller may bound it
     async def resume(self, actor: Actor, log: TurnLog, *, events: EventSink | None = None,
                      parent: object | None = None) -> TurnResult: ...
 ```
 
 `TurnLog` is the live store's write handle for one turn (CONTRACT-003). `Engine.answer` returns `None` when `invocation_id` is not the pending approval or another answer already won, and changes nothing. The engine records denied barrier checks as `authorization` facts with reason `effect_unresolved`; they cannot be overridden by a policy result. `AuthzRequest.resource` for a model call is `model:<tier>` and `purpose` distinguishes answer from summary. The engine decides exclusively from `Decision.allowed`; `reason` is an allow-listed metadata code explaining that decision. An unrecognized or content-bearing reason is normalized to `policy_reason_invalid` without overriding a denial or logging the original text. Neither a reason string nor a provider result can grant authorization. A provider's reason MUST be `x.<provider id>.<reason>`.
+
+`inspect_pending` is read-only: current READ_SESSION, original manifest/proposal identity,
+current tool/schema/spec digests and exact normalized executable arguments are checked using
+the same validator as restart reconstruction. It does not acquire an execution approval,
+dispatch a tool, call a model or append read facts to the journal. The service first verifies
+the reachable source record and hash; unavailable content produces unhydrated pending metadata.
+A displayed value never replaces confirmation's fresh gates. Inspection failures expose only
+short metadata codes. `wait_closed` preserves actual worker lifetime for resource cleanup;
+it is not permission for another invocation or a synchronous facade.
 
 The engine owns execution semantics, tool registration and resolution by name. Its implementation uses Pydantic AI Agent through the internal runtime integration selected in ADR-003. Engine is the Tether invariant facade, not a second model/tool loop; public Agent hooks and Tether-owned callbacks preserve these gates and authoritative state boundaries. SDK capability composition is fixed/trusted and SDK types stay internal. Finding tools or workflows for the model, engagement and routing, the specification a session is pinned to, stages, skills, and suggestions are the application's or a provider's, and read what they need from `AgentSpec.ext`. The `turn_started` entry records the specification's id, version, and digest, and a resolver may pin it (ADR-017, ADR-018).
 

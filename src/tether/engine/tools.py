@@ -244,6 +244,8 @@ class ToolExecutor:
             **binding.model_dump(),
             tool=tool.name,
             arguments=args.arguments,
+            description=tool.description,
+            history_ref=inv.source.history_ref,
             requested_at=now,
             expires_at=now + timedelta(seconds=ttl) if ttl else None,
         )

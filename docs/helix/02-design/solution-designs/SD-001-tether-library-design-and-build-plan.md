@@ -321,8 +321,13 @@ authority and no finding requires a second loop.
 Slice 4 is in progress. Its versioned owner/principal, payload-read and loop-affinity
 prerequisites and shared store query/update/effect/feed surfaces have local execution evidence
 in [the release execution record](../evidence/release-execution-20261023.json). This does not
-complete or expose the full Client API: authorized content hydration, task-owned commands,
-request deduplication, heartbeat/follow lifecycle and race qualification remain in this slice.
+complete the full Client API. Owner-bound metadata/history/physical-attempt/pending reads now
+use current authorization, verified history and finite explicit limits. Aggregate payload
+permission is rechecked before disclosure; denial preserves receipts and redacts all raw
+observations. Async composition enforces loop affinity, rejects weaker/unqualified recovery
+history and retains root ownership until actual workers exit. SDK instrumentation is explicitly
+disabled against ambient `Agent.instrument_all` configuration. Task-owned commands, request
+deduplication, heartbeat/follow lifecycle and remaining race qualification stay in this slice.
 
 ### Consumer boundary review and implementation plan
 

@@ -44,6 +44,11 @@ class JsonlSessionStore(SessionReads):
         self.leases = Leases(clock, files.limits.lease_seconds)
         self._index_bytes = 0
 
+    async def aclose(self) -> bool:
+        self._check_loop()
+        self._failed = True
+        return await self.files.aclose()
+
     @classmethod
     async def open(cls, files: JournalFiles, *, clock: Clock = utc_now) -> Self:
         files.claim("journal")

@@ -48,6 +48,7 @@ class GatedAgent:
             output_type=[str, DeferredToolRequests],
             retries=0,
         )
+        self._agent.instrument = False
         self._history: list[ModelMessage] = to_sdk_messages(request.messages, request.system)
         self._deferred: set[str] = set(deferred_ids)
 

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator
+from typing import Literal
 
 from tether.stores.projections import SessionIndex
-from tether.types.execution import Clock
+from tether.types.canonical import canonical
+from tether.types.execution import Clock, Entry
 from tether.types.storage import (
     ChangeGap,
     EffectInfo,
@@ -98,6 +100,36 @@ class SessionReads:
         self._limit(limit)
         async with self.lock:
             return page((item.summary for item in self.index.values()), query, cursor, limit)
+
+    async def lookup(
+        self,
+        session_id: str,
+        owner: str,
+        *,
+        kind: Literal["key", "invocation", "model_call", "turn"],
+        value: str,
+        limit: int = 1000,
+        max_bytes: int | None = None,
+    ) -> tuple[Entry, ...]:
+        self._limit(limit)
+        async with self.lock:
+            data = self.owned(session_id, owner)
+            if kind == "key":
+                entry = data.keys.get(value)
+                entries = (entry,) if entry is not None else ()
+            else:
+                entries = data.lookups.get((kind, value), ())
+            if len(entries) > limit:
+                raise StoreError("lookup_limit")
+            maximum = max_bytes if max_bytes is not None else self.files.limits.max_batch_bytes
+            if maximum <= 0:
+                raise ValueError("invalid_read_bytes")
+            used = 0
+            for entry in entries:
+                used += len(canonical(entry.model_dump(mode="json")))
+                if used > maximum:
+                    raise StoreError("lookup_bytes")
+            return tuple(e.model_copy(deep=True) for e in entries)
 
     async def find(self, owner: str, ref: str) -> SessionSummary | None:
         self._limit(1)
