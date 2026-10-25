@@ -1,0 +1,93 @@
+{
+  "evidence_id": "native-stream-execution-20261025",
+  "captured_on": "2026-10-25",
+  "source": {
+    "repository": "tether",
+    "branch": "main",
+    "head": "91acbace016b6d44c29a0f7e026eab0f06b68595",
+    "source_worktree_clean_at_checks_and_build": true,
+    "integration_chain": [
+      {
+        "commit": "c5db8f351c9afd25e985cfa5564a2bc8dc530f87",
+        "contains": "PR #37 merge and model-port v3 frame commit 62884c12f545db60bf7262f12a4e94eeb57790d4"
+      },
+      {
+        "commit": "912b093ecf6844545d792637da8b9e4fd1e86a4e",
+        "scope": "recorder-backed accepted start and current-policy per-delta disclosure gate"
+      },
+      {
+        "commit": "0a95fbaca65e7376b49d7a216ccd9e4e5df2cf0f",
+        "scope": "bounded live queue, reset/loss, reconnect, and terminal ordering"
+      },
+      {
+        "commit": "323567db8e7f6af0f4045301158a4addb3a254c9",
+        "scope": "native incremental Pydantic AI stream producer, validated SSE frames, attempt identity, retry/cancellation handling, usage and terminal evidence"
+      },
+      {
+        "commit": "b114d6ab97b6048e8e9745283bea3ff41b067a25",
+        "scope": "Ruff formatting correction required by exact-source CI"
+      },
+      {
+        "commit": "c9f8a9a2334fceafa9045ccaf7144118d878858f",
+        "scope": "Pyright typing corrections in live-disclosure and stream tests"
+      },
+      {
+        "commit": "91acbace016b6d44c29a0f7e026eab0f06b68595",
+        "scope": "stable test-fixture registration so bounded pytest groups collect identical AnyIO node IDs"
+      }
+    ]
+  },
+  "shared_quality_gate": {
+    "command": "make check CHECK_BASE=HEAD",
+    "result": "pass",
+    "runtime": "macOS, Python 3.11.17",
+    "collected_cases": 1620,
+    "bounded_groups": 51,
+    "ruff": "pass",
+    "format": "pass",
+    "pyright_errors": 0,
+    "layer_boundaries": "pass",
+    "coverage": {
+      "statements": 12216,
+      "missed_statements": 769,
+      "branches": 3486,
+      "partial_branches": 539,
+      "percent": 91,
+      "configured_floor_percent": 85
+    }
+  },
+  "distribution_gate": {
+    "build_command": "uv build --out-dir /private/tmp/tether-native-stream-91acbac",
+    "version": "0.0.0.post89.dev0+91acbac",
+    "profiles": [
+      {
+        "command": "UV_CACHE_DIR=/private/tmp/tether-uv-cache .venv/bin/python scripts/check_distribution.py /private/tmp/tether-native-stream-91acbac",
+        "result": "pass",
+        "provider_sdk_count": 0,
+        "smoke_scope": "offline public Agent/replay and gated-Agent journeys"
+      },
+      {
+        "command": "UV_CACHE_DIR=/private/tmp/tether-uv-cache .venv/bin/python scripts/check_distribution.py /private/tmp/tether-native-stream-91acbac openai",
+        "result": "pass",
+        "provider_sdk_count": 1,
+        "smoke_scope": "offline public Agent/replay and gated-Agent journeys with optional OpenAI dependency closure"
+      }
+    ],
+    "artifacts": {
+      "wheel": {
+        "file": "tether-0.0.0.post89.dev0+91acbac-py3-none-any.whl",
+        "sha256": "891c9fca4b3b2be76b39452b3f173f94a18f4e6b2da95bc327c8723419d283c8"
+      },
+      "sdist": {
+        "file": "tether-0.0.0.post89.dev0+91acbac.tar.gz",
+        "sha256": "78609ebc780adacc4ddfd0884b27e0e8f572a47b8a1c79c0cce97ae3c962a935"
+      }
+    }
+  },
+  "qualification_limits": [
+    "Installed distribution smoke checks package metadata, dependency closure, and offline public Agent journeys; it does not independently exercise native incremental streaming.",
+    "The exact-source streaming behavior is covered by the 1620-case shared local quality gate, including the incremental, status-preservation, retry, cancellation, usage, and terminal regressions.",
+    "The hosted Ubuntu/macOS and Python 3.11/3.13 CI matrix has not run against this unpushed local head.",
+    "No stable release tag or package publication was performed."
+  ]
+}
