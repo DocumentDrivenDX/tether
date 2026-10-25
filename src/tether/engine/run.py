@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from tether.ports import ModelPort
@@ -11,6 +11,7 @@ from tether.runtime.pydantic_ai.attachments import projected
 from tether.runtime.pydantic_ai.gated import GatedAgent
 from tether.runtime.pydantic_ai.response import IncompleteModelResponse
 from tether.types import (
+    AttemptIdentity,
     AttemptRecorder,
     JsonValue,
     Message,
@@ -50,6 +51,7 @@ class Run:
         attempt_factory: Callable[[RequestTags], AttemptRecorder] | None,
         history_provider: HistoryProvider | None,
         context: ContextBoundary,
+        live_text: Callable[[AttemptIdentity, int, str], Awaitable[None]] | None = None,
     ) -> None:
         self.gov, self.executor, self.template = gov, executor, template
         self.model, self.limits = model, limits
@@ -59,6 +61,7 @@ class Run:
         self.attempt_factory = attempt_factory
         self.history_provider = history_provider
         self.context = context
+        self.live_text = live_text
         self.context_services = ContextServices(model, limits, history_provider, attempt_factory)
         self.preparation: ContextStep | None = None
         self.recorder: AttemptRecorder | None = None
@@ -127,6 +130,7 @@ class Run:
                     self.history_provider,
                     step.recheck,
                     admit=step.check,
+                    live_text=self.live_text,
                 )
             )
             return request.model_copy(

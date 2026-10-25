@@ -41,6 +41,10 @@ async def bounded_response(
                         size += len(item.text.encode("utf-8"))
                         if size > limits.max_response_bytes:
                             raise ModelUnavailable("response_too_large")
+                        recorder = request.attempts
+                        disclose = getattr(recorder, "disclose_delta", None)
+                        if disclose is not None:
+                            await disclose(item.identity, item.text)
                     else:
                         response = item
     except TimeoutError:
