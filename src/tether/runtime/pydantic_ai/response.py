@@ -15,8 +15,16 @@ from tether.types import (
 from .validation import validate_response
 
 
+class IncompleteModelResponse(Exception):
+    """A known accepted non-executable terminal; never an SDK or provider retry signal."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
 async def bounded_response(
-    port: ModelPort, request: ModelRequest, limits: ModelExecutionLimits
+    port: ModelPort, request: ModelRequest, limits: ModelExecutionLimits, *, executable: bool = True
 ) -> ModelResponse:
     size = 0
     response: ModelResponse | None = None
@@ -37,5 +45,5 @@ async def bounded_response(
         raise ModelUnavailable("timeout") from None
     if response is None:
         raise ModelUnavailable("incomplete_stream")
-    validate_response(response, request.tools, limits)
+    validate_response(response, request.tools, limits, executable=executable)
     return ModelResponse.model_validate(response.model_dump(mode="json"))

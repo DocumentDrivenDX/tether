@@ -86,7 +86,7 @@ class Entry(BaseModel):                               # a discriminated union on
 #   turn_started     spec_id: str; spec_version: str; spec_digest: str | None; trace_id: str | None; resumes: str | None
 #   turn_resumed     purpose: str; invocation_id: str | None; resumes: str | None; no extra turn count
 #   turn_ended       stop_reason: StopReason; reason: str | None
-#   model_call       tier: str; request_id: str | None; status: Literal["ok", "error"]; duration_ms: int
+#   model_call       tier: str; request_id: str | None; status: Literal["ok", "error", "incomplete"]; duration_ms: int
 #                    model_call_id: str; attempt_ids: tuple[str, ...]; receipt: ResponseReceipt | None
 #                    exchange_ref: HistoryRef | None
 #                    purpose: Literal["answer", "summary", "correction"]; finish_reason: str | None
@@ -404,6 +404,7 @@ class Tether:                                          # the composition: engine
 | Payload disclosure | `call_detail` payloads and exports containing model exchanges additionally require current `READ_CALL_PAYLOAD` for the session. READ_SESSION alone permits metadata and separately authorized original-message history, not raw exchange bodies. Denial returns no exchange payload; it never falls back to cached or broader-identity content. Engine use of original sources is governed by READ_SESSION and CALL_MODEL, not a UI payload grant. |
 | Identity | Each read/snapshot/effects operation and each feed delivery/replay batch is authorized with `READ_SESSION` for the bound actor and owner; denial or policy failure stops it without revealing content. `client(actor)` binds an actor. Commands that start model calls (`send`, `confirm`, `resume`) use its credential for that call and never persist it (ADR-011). A metadata-only follower needs no model credential; hydrating external source content may require its own current caller credential. |
 | Send | `send` durably writes the user content through HistoryProvider, then commits its ref and the turn start, then returns a `TurnHandle` without waiting for the turn to finish. The turn runs as a task owned by `Tether`; the consumer follows it through `follow` or awaits `result`. |
+| Incomplete result | `TurnHandle.result()` reconstructs `model_incomplete` with the committed original text under the same bounded, current-authorized hydration path as final/approval results. Retained handles and request-id retries after reopen preserve its fixed finish reason, text and turn identity without a new model call. A denied read discloses no cached content; unavailable history remains explicit. Incomplete text carries no pending or executable tool-call authority. |
 | Idempotent send | `send` with a `request_id` that exists in the session with the same canonical accepted input (text, attachments and requested spec) digest returns the existing turn's handle; a different digest raises `RequestConflict`. The key is `request:<request_id>` (ADR-018). |
 | One turn | `send` to a session with a running turn raises `TurnInProgress`; the running turn is unaffected. |
 | Supersession | `send` to a session with a pending approval supersedes it: each pending call gets a denied result with reason `superseded`, then the new turn starts (ADR-015). |

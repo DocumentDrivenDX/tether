@@ -9,6 +9,7 @@ from uuid import uuid4
 from tether.ports import ModelPort
 from tether.runtime.pydantic_ai.attachments import projected
 from tether.runtime.pydantic_ai.gated import GatedAgent
+from tether.runtime.pydantic_ai.response import IncompleteModelResponse
 from tether.types import (
     AttemptRecorder,
     JsonValue,
@@ -62,6 +63,7 @@ class Run:
         self.preparation: ContextStep | None = None
         self.recorder: AttemptRecorder | None = None
         self.current_call: str | None = None
+        self._incomplete: tuple[str | None, str, int, int] | None = None
         self.deferred_ids: frozenset[str] = frozenset()
         self.recovery_tools: tuple[ToolSpec, ...] = ()
 
@@ -69,6 +71,7 @@ class Run:
         return await self.gov.messages()
 
     async def prepare(self, request: ModelRequest) -> ModelRequest:
+        self._incomplete = None
         if self.executor.workers.closed:
             raise ExecutionDenied("engine_closed")
         if self.steps >= self.executor.spec.max_steps:
@@ -131,18 +134,16 @@ class Run:
             )
 
     async def accept(self, response: ModelResponse) -> None:
-        message = Message(
-            role="assistant", content=response.content, tool_calls=response.tool_calls
-        )
+        incomplete = response.finish_reason in {"length", "filtered", "unknown"}
+        calls = () if incomplete else response.tool_calls
+        message = Message(role="assistant", content=response.content, tool_calls=calls)
         ref = await self.gov.history.put(
             actor=self.gov.actor,
             session_id=self.gov.log.session.id,
             key="model:" + str(self.current_call),
             message=message,
         )
-        manifests = tuple(
-            self.executor.registry.manifest(c, i) for i, c in enumerate(response.tool_calls)
-        )
+        manifests = tuple(self.executor.registry.manifest(c, i) for i, c in enumerate(calls))
         accepted = await self.gov.commit(
             [
                 NewEntry(
@@ -151,13 +152,17 @@ class Run:
                     turn_id=self.gov.turn_id,
                     history_ref=ref,
                     call_manifest=manifests,
-                    facts={"role": "assistant", "is_error": False},
+                    facts={
+                        "role": "assistant",
+                        "is_error": False,
+                        "model_status": "incomplete" if incomplete else "ok",
+                    },
                 ),
                 NewEntry(
                     kind="model_call",
                     turn_id=self.gov.turn_id,
                     facts={
-                        "status": "ok",
+                        "status": "incomplete" if incomplete else "ok",
                         "model_call_id": self.current_call,
                         "purpose": "answer",
                         **self.attempt_facts(),
@@ -167,7 +172,15 @@ class Run:
                 ),
             ]
         )
-        self.executor.bind(accepted[0])
+        if incomplete:
+            self._incomplete = (
+                self.current_call,
+                response.finish_reason,
+                accepted[0].index,
+                accepted[1].index,
+            )
+        else:
+            self.executor.bind(accepted[0])
 
     def attempt_facts(self) -> dict[str, JsonValue]:
         recorder = self.recorder
@@ -213,15 +226,15 @@ class Run:
                         usage=lambda call: self.gov.accounting.call_usage(call),
                     ),
                 )
-            waiting = False if recovered_final else await self._run(continuing)
-            visible = tuple(
-                [
-                    await self.gov.read(e.history_ref)
-                    for e in self.gov.log.entries
-                    if e.kind == "message" and e.turn_id in self.result_turn_ids
-                ]
+            waiting, incomplete = (
+                (False, None) if recovered_final else await self.outcome(continuing)
             )
-            stop, reason = ("confirmation_required" if waiting else "final"), None
+            visible = await self.visible_messages()
+            stop, reason = (
+                ("model_incomplete", incomplete)
+                if incomplete is not None
+                else ("confirmation_required" if waiting else "final", None)
+            )
         except ContextError as error:
             stop, reason = (
                 "context_unavailable",
@@ -266,6 +279,24 @@ class Run:
             reason=reason,
             pending=tuple(self.executor.pending.values()) if visible else (),
             messages=visible,
+        )
+
+    async def outcome(self, continuing: bool) -> tuple[bool, str | None]:
+        try:
+            return await self._run(continuing), None
+        except IncompleteModelResponse as error:
+            accepted = self._incomplete
+            if accepted is None or accepted[:2] != (self.current_call, error.reason):
+                raise ModelUnavailable("invalid_terminal") from None
+            return False, accepted[1]
+
+    async def visible_messages(self) -> tuple[Message, ...]:
+        return tuple(
+            [
+                await self.gov.read(e.history_ref)
+                for e in self.gov.log.entries
+                if e.kind == "message" and e.turn_id in self.result_turn_ids
+            ]
         )
 
     async def _run(self, continuing: bool) -> bool:

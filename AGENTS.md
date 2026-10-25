@@ -308,3 +308,10 @@ Workers. Native egress rebuilds explicit headers; ambient SDK defaults cannot re
 Server framing/count fidelity and provisional stream integration remain qualification work. Explicit context
 configuration and an estimator are required; fabricated_context is a fabricated test composition only.
 Never treat fixed-token fixture conformance as wire evidence.
+
+Structurally valid incomplete model terminals preserve bounded original text and observed usage with
+explicit incomplete journal facts, without executable call manifests or SDK success conversion.
+Runtime stop signals confer no authority before known current-call acceptance. Client retained/reopened
+results hydrate that text only under current authorization and existing byte/entry limits. Native
+missing finish reasons remain unknown even if SDK defaults suggest stop. Preserve shared cancellation
+and unknown-acknowledgment handling; metadata-only audits retain exact closed incomplete statuses.

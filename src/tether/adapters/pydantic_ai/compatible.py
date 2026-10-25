@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 import httpx2 as httpx
 from openai import APIConnectionError
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 
 from tether.models.canonical import copy_request
 from tether.runtime.pydantic_ai.messages import from_sdk_response
@@ -129,6 +130,13 @@ class OpenAIAdapter:
             raise boundary.local_error
         if isinstance(error, ModelUnavailable):
             raise error
+        if (
+            isinstance(error, UnexpectedModelBehavior)
+            and boundary.response is not None
+            and boundary.response.finish_reason == "unknown"
+        ):
+            # A validated observed unknown is incomplete evidence, never SDK execution authority.
+            return boundary.response
         if error is not None:
             reason = (
                 "transport_error" if isinstance(error, APIConnectionError) else "invalid_response"
@@ -137,11 +145,12 @@ class OpenAIAdapter:
         observed = boundary.response
         if observed is None or normalized is None:
             raise ModelUnavailable("invalid_response")
-        if (observed.content, observed.tool_calls, observed.finish_reason) != (
+        # A missing wire reason remains unknown even if the SDK defaults it to stop.
+        finish_matches = observed.finish_reason in {"unknown", normalized.finish_reason}
+        if (observed.content, observed.tool_calls) != (
             normalized.content,
             normalized.tool_calls,
-            normalized.finish_reason,
-        ):
+        ) or not finish_matches:
             raise ModelUnavailable("sdk_projection_changed")
         return observed
 
