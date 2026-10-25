@@ -48,7 +48,7 @@ async def outcome(
         raise asyncio.CancelledError
     messages: list[Message] = []
     used = 0
-    if stop in {"final", "confirmation_required"}:
+    if stop in {"final", "confirmation_required", "model_incomplete"}:
         for entry in entries:
             if entry.kind != "message" or entry.history_ref is None:
                 continue

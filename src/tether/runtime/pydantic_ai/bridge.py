@@ -29,7 +29,7 @@ from tether.types import (
 
 from .attachments import projected
 from .messages import from_sdk_messages, to_sdk_messages, to_sdk_response
-from .response import bounded_response
+from .response import IncompleteModelResponse, bounded_response
 
 PrepareModel = Callable[[ModelRequest], Awaitable[ModelRequest]]
 
@@ -124,11 +124,15 @@ class PortModel(Model):
             raise ModelUnavailable("timeout") from None
         if self._accept_response is not None:
             await self._accept_response(response.model_copy(deep=True))
+        if response.finish_reason in {"length", "filtered", "unknown"}:
+            raise IncompleteModelResponse(response.finish_reason)
         self.last_response = response.model_copy(deep=True)
         return to_sdk_response(response, prepared.model)
 
     async def _bounded_response(self, request: ModelRequest) -> ModelResponse:
-        return await bounded_response(self._port, request, self._limits)
+        return await bounded_response(
+            self._port, request, self._limits, executable=self._accept_response is None
+        )
 
 
 @dataclass(frozen=True)

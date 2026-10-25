@@ -1086,3 +1086,32 @@ standard-vocabulary native-wire cases agree with the separate BPE oracle. Four f
 installed profiles and 166 matching package sources are recorded in the execution
 receipt. Approximate JSON counts with fabricated framing do not establish server accounting, semantic
 summary fidelity, provisional streaming or broader external/hosted matrix proof.
+
+
+The next slice 9a checkpoint corrects incomplete terminal outcomes before provisional delivery.
+Structurally valid bounded length/filtered/unknown replies retain text and usage with explicit
+incomplete facts; executable proposals are excluded from source messages/manifests. A private runtime
+stop is accepted only against the Run's current known journal acceptance, inside the shared failure
+and cancellation scope. Unknown acknowledgments propagate, current read authorization still gates
+result disclosure, and native missing finish reasons stay unknown over SDK defaults. Client live and
+reopened result reconstruction and closed audit metadata use the same semantics. Provisional attempt
+binding, delta/terminal consistency, resets, bounded follower admission/loss and native streaming
+qualification remain separate work.
+
+The selected native profile additionally qualifies missing, empty and future terminal reasons with
+and without valid returned calls. A bounded recorded unknown response rejected by the public SDK
+may survive unchanged as incomplete evidence after local error propagation. This fallback has no
+SDK projection-parity claim; successful normalization still requires exact text/call comparison.
+Original observed reasons, usage, receipts and a single physical attempt remain visible in authorized
+exchange evidence. Structural/byte/observation failures cannot enter the fallback.
+
+
+The incomplete-outcome checkpoint passes 1558 cases in 49 bounded groups at 92.25%
+branch-inclusive coverage with strict typing 0 and unchanged gates. Its 46 added cases cover actual
+Agent/native terminal handling, original text/usage after root reopen, failed/unknown commits, forged
+signals, cancellation during disclosure, public Client retained/reopened current-authorized results
+and exact content-free audit statuses. Independent review findings have exact regressions; final
+review found no remaining concrete blocker and ran no tests. Four fresh hash-locked installed
+profiles and 166 matching package sources pass cumulative qualification. This
+checkpoint does not qualify provisional delivery, native incremental streaming, summary fidelity or
+the broader external/hosted matrix.

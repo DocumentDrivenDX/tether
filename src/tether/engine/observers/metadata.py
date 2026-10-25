@@ -51,11 +51,14 @@ REASONS = CODES | frozenset(
         "step_limit",
         "model_denied",
         "model_unavailable",
+        "length",
+        "filtered",
+        "unknown",
     }
 )
 ENUMS = {
     "status": frozenset(
-        {"prepared", "started", "ok", "error", "denied", "interrupted", "withheld"}
+        {"prepared", "started", "ok", "error", "incomplete", "denied", "interrupted", "withheld"}
     ),
     "state": frozenset({"requested", "approved", "declined", "expired", "invalid", "superseded"}),
     "purpose": frozenset({"answer", "summary", "correction"}),
@@ -70,6 +73,7 @@ ENUMS = {
             "step_limit",
             "model_denied",
             "model_unavailable",
+            "model_incomplete",
             "context_unavailable",
         }
     ),

@@ -331,3 +331,13 @@ exit. Context conformance suites use that existing Worker ownership for factory 
 caller deadlines. Physical egress rebuilds headers from explicit URL/body, identity and correlation;
 ambient SDK headers confer no configuration or authority at that boundary. Streaming, server-specific
 framing and broader profile/fidelity qualification remain work; no second Agent loop exists.
+
+The model boundary separates structural response bounds from executable terminal validation. Known
+accepted incomplete text stops the public Agent request before SDK success conversion, with original
+text/status and usage in journal/history and no call manifests. Client outcome reconstruction uses
+its existing bounded authorized hydration for these results, including request-id retries after reopen.
+Cancellation and unknown journal acknowledgments retain their existing meanings. A narrow validated unknown-terminal fallback preserves independently bounded/recorded unknown
+responses rejected by SDK normalization as incomplete evidence; it claims no SDK parity and never
+rewrites captured bytes or grants execution. Audit metadata keeps
+the closed incomplete statuses without exposing text. Provisional delivery remains a separate bounded
+SessionService concern; this checkpoint introduces no second runner or live broker.
