@@ -1,9 +1,12 @@
 """Shared public native SDK composition for egress and offline wire projection."""
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
 import httpx2 as httpx
 from openai import AsyncOpenAI
 from pydantic_ai.messages import ModelResponse
-from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.models import ModelRequestParameters, StreamedResponse
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
 from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -99,3 +102,62 @@ async def request_native(
         return await model.request(
             to_sdk_messages(request.messages, request.system), settings, parameters
         )
+
+
+@asynccontextmanager
+async def request_native_stream(
+    request: ModelRequest,
+    *,
+    base_url: str,
+    model_name: str,
+    output_limit_field: str,
+    transport: httpx.AsyncBaseTransport,
+) -> AsyncGenerator[StreamedResponse, None]:
+    """Open Pydantic AI's native streaming request over the mediated transport."""
+    async with (
+        httpx.AsyncClient(
+            transport=transport,
+            trust_env=False,
+            follow_redirects=False,
+            headers={"Accept-Encoding": "identity"},
+        ) as http,
+        AsyncOpenAI(
+            api_key="-".join(("tether", "transport", "placeholder")),
+            organization="",
+            project="",
+            admin_api_key="",
+            webhook_secret="",
+            base_url=base_url,
+            max_retries=0,
+            http_client=http,
+        ) as client,
+    ):
+        model = OpenAIChatModel(
+            model_name,
+            provider=OpenAIProvider(openai_client=client),
+            profile=OpenAIModelProfile(
+                openai_chat_supports_max_completion_tokens=output_limit_field
+                == "max_completion_tokens",
+                openai_supports_strict_tool_definition=False,
+            ),
+        )
+        parameters = ModelRequestParameters(
+            function_tools=[
+                ToolDefinition(
+                    name=t.name,
+                    description=t.description,
+                    parameters_json_schema=t.input_schema,
+                    strict=False,
+                )
+                for t in request.tools
+            ]
+        )
+        settings = OpenAIChatModelSettings(
+            max_tokens=request.max_output_tokens,
+            extra_body=request.extra,
+            parallel_tool_calls=False,
+        )
+        async with model.request_stream(
+            to_sdk_messages(request.messages, request.system), settings, parameters
+        ) as streamed:
+            yield streamed

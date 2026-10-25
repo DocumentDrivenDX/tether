@@ -246,7 +246,7 @@ def test_explicit_configuration_refuses_invalid_profiles(
         OpenAICompatModel(base_url=url, tiers=tiers, limits=limits, output_limit_field=field)
 
 
-def test_sdk_parse_failures_are_not_retried(
+def test_invalid_native_usage_is_not_retried(
     model_request: ModelRequest, limits: ModelExecutionLimits
 ) -> None:
     async def scenario() -> None:
@@ -255,7 +255,14 @@ def test_sdk_parse_failures_are_not_retried(
         def handler(_: httpx.Request) -> httpx.Response:
             seen.append(True)
             return httpx.Response(
-                200, json=wire_response(usage={"prompt_tokens": 1, "completion_tokens": 1})
+                200,
+                json=wire_response(
+                    usage={
+                        "prompt_tokens": 1,
+                        "completion_tokens": 1,
+                        "prompt_tokens_details": "bad",
+                    }
+                ),
             )
 
         model = adapter(limits, handler)

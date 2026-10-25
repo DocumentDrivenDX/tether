@@ -98,7 +98,12 @@ def expected_body(request, field="max_tokens"):
         if original.tool_call_id:
             message["tool_call_id"] = original.tool_call_id
         messages.append(message)
-    body: dict[str, object] = dict(messages=messages, model="fabricated-native", stream=False)
+    body: dict[str, object] = dict(
+        messages=messages,
+        model="fabricated-native",
+        stream=True,
+        stream_options={"include_usage": True},
+    )
     if request.max_output_tokens is not None:
         body[field] = request.max_output_tokens
     if request.tools:

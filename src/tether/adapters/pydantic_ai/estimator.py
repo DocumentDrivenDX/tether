@@ -16,7 +16,7 @@ from tether.types import JsonValue, ModelRequest
 from tether.types.canonical import canonical, digest
 from tether.types.context import ContextError, TokenEstimate
 
-from .native import NATIVE_CODEC, request_native, validate_payload
+from .native import NATIVE_CODEC, request_native_stream, validate_payload
 from .tokenizer import TokenizerProfile, local_encoding
 
 
@@ -31,21 +31,23 @@ class WireCapture(httpx.AsyncBaseTransport):
         if self.body is not None or len(request.content) > self.maximum:
             raise ContextError("context_unmeasurable")
         self.body = bytes(request.content)
+        body: JsonValue = json.loads(request.content)
+        model_value = body.get("model") if isinstance(body, dict) else None
+        model = model_value if isinstance(model_value, str) else "offline-projection"
+        delta: dict[str, JsonValue] = {"role": "assistant", "content": "projection"}
+        choice: dict[str, JsonValue] = {"index": 0, "delta": delta, "finish_reason": None}
+        choices: list[JsonValue] = [choice]
+        first: dict[str, JsonValue] = {
+            "id": "offline-projection",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": model,
+            "choices": choices,
+        }
         return httpx.Response(
             200,
-            json={
-                "id": "offline-projection",
-                "object": "chat.completion",
-                "created": 0,
-                "model": "offline-projection",
-                "choices": [
-                    {
-                        "index": 0,
-                        "finish_reason": "stop",
-                        "message": {"role": "assistant", "content": "projection"},
-                    }
-                ],
-            },
+            headers={"content-type": "text/event-stream"},
+            content=b"data: " + canonical(first) + b"\n\n",
         )
 
 
@@ -109,13 +111,14 @@ class OpenAIWireEstimator:
             if len(canonical(value.model_dump(mode="json"))) > self._profile.max_request_bytes:
                 raise ContextError("context_unmeasurable")
             capture = WireCapture(self._profile.max_request_bytes)
-            await request_native(
+            async with request_native_stream(
                 value,
                 base_url="https://offline.invalid/v1",
                 model_name=self._tiers[value.model],
                 output_limit_field=self._field,
                 transport=capture,
-            )
+            ):
+                pass
             if capture.body is None:
                 raise ContextError("context_unmeasurable")
             async with semaphore:

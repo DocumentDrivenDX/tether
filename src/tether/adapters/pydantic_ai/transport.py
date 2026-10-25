@@ -24,7 +24,67 @@ from tether.types import (
 )
 
 from .native import NATIVE_CODEC
-from .wire import observed_usage, validate_wire
+from .wire import StreamingWireValidator, observed_usage, validate_wire
+
+
+class CapturedStream(httpx.AsyncByteStream):
+    def __init__(
+        self,
+        response: httpx.Response,
+        transport: AttemptTransport,
+        validator: StreamingWireValidator,
+        identity: AttemptIdentity,
+        receipt: ResponseReceipt,
+        recorder: AttemptRecorder,
+        status_code: int,
+    ) -> None:
+        self.response, self.transport, self.validator = response, transport, validator
+        self.identity, self.receipt, self.recorder = identity, receipt, recorder
+        self.status_code = status_code
+        self.data = bytearray()
+        self.completed = False
+
+    async def __aiter__(self):
+        if self.completed:
+            return
+        try:
+            async for chunk in self.response.aiter_bytes():
+                self.validator.feed(chunk)
+                self.data.extend(chunk)
+                if self.validator.result is not None and not self.completed:
+                    await self._complete(self.validator.result)
+                yield chunk
+            if not self.completed:
+                await self._complete(self.validator.finish())
+        except Exception as error:
+            if self.transport.local_error is None:
+                if isinstance(error, ModelUnavailable):
+                    self.transport.local_error = error
+                elif isinstance(error, httpx.TransportError):
+                    self.transport.local_error = ModelUnavailable("transport_error")
+                else:
+                    self.transport.local_error = ModelUnavailable("invalid_response")
+            raise httpx.StreamError("invalid_stream") from error
+        finally:
+            await self.response.aclose()
+
+    async def aclose(self) -> None:
+        await self.response.aclose()
+
+    async def _complete(self, result: ModelResponse) -> None:
+        try:
+            await self.transport.complete_stream(
+                result,
+                bytes(self.data),
+                self.identity,
+                self.receipt,
+                self.recorder,
+                self.status_code,
+            )
+        except Exception as error:
+            self.transport.local_error = error
+            raise
+        self.completed = True
 
 
 class AttemptTransport(httpx.AsyncBaseTransport):
@@ -47,6 +107,7 @@ class AttemptTransport(httpx.AsyncBaseTransport):
         self.receipt: ResponseReceipt | None = None
         self.attempt_count = 0
         self.identity: AttemptIdentity | None = None
+        self.wire_model: str | None = None
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         try:
@@ -96,7 +157,12 @@ class AttemptTransport(httpx.AsyncBaseTransport):
         if self.request.traceparent:
             request.headers["traceparent"] = self.request.traceparent
         request.headers.pop("authorization", None)
-        body = json.loads(request.content, object_pairs_hook=json_object)
+        body_value: JsonValue = json.loads(request.content, object_pairs_hook=json_object)
+        if not isinstance(body_value, dict):
+            raise ModelUnavailable("invalid_response")
+        body = body_value
+        model_value = body.get("model")
+        self.wire_model = model_value if isinstance(model_value, str) else None
         wire: JsonValue = dict(
             method=request.method,
             url=str(request.url),
@@ -116,6 +182,8 @@ class AttemptTransport(httpx.AsyncBaseTransport):
             request.headers["authorization"] = authorization
         self.attempt_count += 1
         response = await self.inner.handle_async_request(request)
+        if body.get("stream") is True and 200 <= response.status_code < 300:
+            return await self._stream_response(response, request, identity, recorder)
         try:
             data = await self._capture(response, identity, str(request.url), recorder)
             headers = dict(response.headers)
@@ -126,6 +194,80 @@ class AttemptTransport(httpx.AsyncBaseTransport):
             )
         finally:
             await response.aclose()
+
+    async def _stream_response(
+        self,
+        response: httpx.Response,
+        request: httpx.Request,
+        identity: AttemptIdentity,
+        recorder: AttemptRecorder,
+    ) -> httpx.Response:
+        receipt = ResponseReceipt(
+            provider="openai-compatible",
+            endpoint=str(request.url),
+            schema_profile="openai-chat-text-tools-v1",
+            provider_request_id=response.headers.get("x-request-id"),
+            request_id_source=("header" if response.headers.get("x-request-id") else "none"),
+        )
+        self.receipt = receipt
+        self.retry_after = response.headers.get("retry-after")
+        if response.headers.get("content-encoding", "identity").lower().strip() not in {
+            "",
+            "identity",
+        }:
+            await response.aclose()
+            raise ModelUnavailable("unsupported_content_encoding", receipt=receipt)
+        if "text/event-stream" not in response.headers.get("content-type", "").lower():
+            try:
+                await self._capture(response, identity, str(request.url), recorder)
+                if self.response is None:
+                    raise ModelUnavailable("invalid_response", receipt=receipt)
+                payload = synthetic_stream(self.response, self.wire_model or self.request.model)
+                if len(payload) > self.limits.max_response_bytes:
+                    raise ModelUnavailable("response_too_large", receipt=receipt)
+                return httpx.Response(
+                    200,
+                    headers={"content-type": "text/event-stream"},
+                    content=payload,
+                    request=request,
+                )
+            finally:
+                await response.aclose()
+        await recorder.observe(identity, receipt)
+        headers = dict(response.headers)
+        for name in ("content-encoding", "content-length", "transfer-encoding"):
+            headers.pop(name, None)
+        stream = CapturedStream(
+            response,
+            self,
+            StreamingWireValidator(self.request.tools, self.limits),
+            identity,
+            receipt,
+            recorder,
+            response.status_code,
+        )
+        return httpx.Response(response.status_code, headers=headers, stream=stream, request=request)
+
+    async def complete_stream(
+        self,
+        response: ModelResponse,
+        data: bytes,
+        identity: AttemptIdentity,
+        receipt: ResponseReceipt,
+        recorder: AttemptRecorder,
+        status_code: int,
+    ) -> None:
+        receipt = receipt.model_copy(update={"response_id": response.request_id})
+        self.receipt = receipt
+        self.response = response.model_copy(
+            update={"receipt": receipt, "request_id": receipt.provider_request_id}
+        )
+        await recorder.observe(
+            identity,
+            receipt,
+            wire_response=wire_observation(status_code, data),
+            usage=response.usage,
+        )
 
     async def _capture(
         self,
@@ -202,3 +344,82 @@ def wire_observation(status: int, data: bytes) -> JsonValue:
         body = {"raw_base64": b64encode(data).decode("ascii")}
     observation: dict[str, JsonValue] = {"status": status, "body": body}
     return observation
+
+
+def synthetic_stream(response: ModelResponse, model: str) -> bytes:
+    """Adapt a server that ignored stream=true to a single validated SDK frame."""
+    identifier = (
+        response.receipt.response_id
+        if response.receipt is not None and response.receipt.response_id
+        else response.request_id or "tether-stream-fallback"
+    )
+    delta: dict[str, JsonValue] = {"role": "assistant"}
+    if response.content:
+        delta["content"] = response.content
+    if response.tool_calls:
+        delta["tool_calls"] = [
+            {
+                "index": index,
+                "id": call.id,
+                "type": "function",
+                "function": {
+                    "name": call.name,
+                    "arguments": canonical(call.arguments).decode("utf-8"),
+                },
+            }
+            for index, call in enumerate(response.tool_calls)
+        ]
+    finish = {
+        "stop": "stop",
+        "tool_calls": "tool_calls",
+        "length": "length",
+        "filtered": "content_filter",
+        "unknown": "unknown",
+    }[response.finish_reason]
+    chunks: list[JsonValue] = [
+        {
+            "id": identifier,
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": model,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
+        },
+        {
+            "id": identifier,
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": model,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": finish}],
+        },
+    ]
+    if response.usage is not None:
+        usage: dict[str, JsonValue] = {
+            "prompt_tokens": response.usage.input_tokens,
+            "completion_tokens": response.usage.output_tokens,
+            "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+        }
+        prompt_details: dict[str, JsonValue] = {}
+        completion_details: dict[str, JsonValue] = {}
+        if response.usage.cache_read_tokens is not None:
+            prompt_details["cached_tokens"] = response.usage.cache_read_tokens
+        if response.usage.cache_write_tokens is not None:
+            prompt_details["cache_write_tokens"] = response.usage.cache_write_tokens
+        if response.usage.reasoning_tokens is not None:
+            completion_details["reasoning_tokens"] = response.usage.reasoning_tokens
+        if prompt_details:
+            usage["prompt_tokens_details"] = prompt_details
+        if completion_details:
+            usage["completion_tokens_details"] = completion_details
+        chunks.append(
+            {
+                "id": identifier,
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": model,
+                "choices": [],
+                "usage": usage,
+            }
+        )
+    return (
+        b"".join(b"data: " + canonical(chunk) + b"\n\n" for chunk in chunks) + b"data: [DONE]\n\n"
+    )

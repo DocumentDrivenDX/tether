@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import math
 import random
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import aclosing
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
@@ -13,6 +14,7 @@ from urllib.parse import urlsplit
 import httpx2 as httpx
 from openai import APIConnectionError
 from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.messages import PartDeltaEvent, PartStartEvent, TextPart, TextPartDelta
 
 from tether.models.canonical import copy_request
 from tether.runtime.pydantic_ai.messages import from_sdk_response
@@ -28,7 +30,7 @@ from tether.types import (
 )
 
 from .estimator import OpenAIWireEstimator
-from .native import request_native, validate_payload
+from .native import request_native, request_native_stream, validate_payload
 from .tokenizer import TokenizerProfile
 from .transport import AttemptTransport
 
@@ -164,11 +166,117 @@ class OpenAIAdapter:
         )
         try:
             async with asyncio.timeout(seconds):
-                response, identity = await self._retry(request)
-                yield TextDelta(text=response.content, identity=identity)
-                yield response
+                for attempt in range(self._limits.max_attempts):
+                    boundary = AttemptTransport(
+                        self._transport, request, self._limits, self._application_credential
+                    )
+                    emitted = False
+                    try:
+                        async with aclosing(
+                            self._stream_attempt(request, boundary)
+                        ) as attempt_stream:
+                            async for item in attempt_stream:
+                                emitted = emitted or isinstance(item, TextDelta)
+                                yield item
+                        return
+                    except ModelUnavailable as error:
+                        if (
+                            emitted
+                            or error.reason
+                            not in {
+                                "transport_error",
+                                "http 429",
+                                "http 500",
+                                "http 502",
+                                "http 503",
+                                "http 504",
+                            }
+                            or attempt + 1 == self._limits.max_attempts
+                        ):
+                            raise
+                        await asyncio.sleep(
+                            retry_delay(
+                                boundary.retry_after, self._limits.max_retry_delay_seconds, attempt
+                            )
+                        )
+                    except Exception as failure:
+                        if boundary.local_error is not None and not isinstance(
+                            boundary.local_error, ModelUnavailable
+                        ):
+                            raise boundary.local_error from None
+                        error = (
+                            boundary.local_error
+                            if isinstance(boundary.local_error, ModelUnavailable)
+                            else ModelUnavailable(
+                                "transport_error"
+                                if isinstance(failure, APIConnectionError)
+                                else "invalid_response"
+                            )
+                        )
+                        if (
+                            emitted
+                            or error.reason
+                            not in {
+                                "transport_error",
+                                "http 429",
+                                "http 500",
+                                "http 502",
+                                "http 503",
+                                "http 504",
+                            }
+                            or attempt + 1 == self._limits.max_attempts
+                        ):
+                            raise error from None
+                        await asyncio.sleep(
+                            retry_delay(
+                                boundary.retry_after, self._limits.max_retry_delay_seconds, attempt
+                            )
+                        )
+                raise ModelUnavailable("attempts_exhausted")
         except TimeoutError:
             raise ModelUnavailable("timeout") from None
+
+    async def _stream_attempt(
+        self, request: ModelRequest, boundary: AttemptTransport
+    ) -> AsyncGenerator[StreamItem, None]:
+        async with request_native_stream(
+            request,
+            base_url=self._base_url,
+            model_name=self._tiers[request.model],
+            output_limit_field=self._output_limit_field,
+            transport=boundary,
+        ) as streamed:
+            try:
+                async for event in streamed:
+                    if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
+                        text = event.part.content
+                    elif isinstance(event, PartDeltaEvent) and isinstance(
+                        event.delta, TextPartDelta
+                    ):
+                        text = event.delta.content_delta
+                    else:
+                        continue
+                    if not text:
+                        continue
+                    if boundary.identity is None:
+                        raise ModelUnavailable("invalid_response")
+                    yield TextDelta(text=text, identity=boundary.identity)
+                sdk_response = streamed.get()
+            finally:
+                await streamed.cancel()
+        if boundary.local_error is not None:
+            raise boundary.local_error
+        response = boundary.response
+        if response is None or boundary.identity is None:
+            raise ModelUnavailable("invalid_response")
+        normalized = from_sdk_response(sdk_response, response.usage)
+        if (
+            normalized.content,
+            normalized.tool_calls,
+            normalized.finish_reason,
+        ) != (response.content, response.tool_calls, response.finish_reason):
+            raise ModelUnavailable("sdk_projection_changed")
+        yield response
 
     async def _retry(self, request: ModelRequest) -> tuple[ModelResponse, AttemptIdentity]:
         for attempt in range(self._limits.max_attempts):
