@@ -350,11 +350,7 @@ async def test_native_stream_retains_incremental_tool_call_and_terminal_usage(
             "choices": [
                 {
                     "index": 0,
-                    "delta": {
-                        "tool_calls": [
-                            {"index": 0, "function": {"arguments": "1}"}}
-                        ]
-                    },
+                    "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "1}"}}]},
                     "finish_reason": None,
                 }
             ],
@@ -377,9 +373,7 @@ async def test_native_stream_retains_incremental_tool_call_and_terminal_usage(
     ]
 
     def handler(_: httpx.Request):
-        payload = b"".join(
-            b"data: " + json.dumps(frame).encode() + b"\n\n" for frame in frames
-        )
+        payload = b"".join(b"data: " + json.dumps(frame).encode() + b"\n\n" for frame in frames)
         return httpx.Response(
             200,
             headers={"content-type": "text/event-stream"},
