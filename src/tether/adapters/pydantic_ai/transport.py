@@ -46,6 +46,7 @@ class AttemptTransport(httpx.AsyncBaseTransport):
         self.response: ModelResponse | None = None
         self.receipt: ResponseReceipt | None = None
         self.attempt_count = 0
+        self.identity: AttemptIdentity | None = None
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         try:
@@ -110,6 +111,7 @@ class AttemptTransport(httpx.AsyncBaseTransport):
             wire_request=wire,
             codec=NATIVE_CODEC,
         )
+        self.identity = identity.model_copy(deep=True)
         if authorization is not None:
             request.headers["authorization"] = authorization
         self.attempt_count += 1

@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-24
+  updated: 2026-10-25
   authoring:
     home: repo
   links:
@@ -341,3 +341,10 @@ responses rejected by SDK normalization as incomplete evidence; it claims no SDK
 rewrites captured bytes or grants execution. Audit metadata keeps
 the closed incomplete statuses without exposing text. Provisional delivery remains a separate bounded
 SessionService concern; this checkpoint introduces no second runner or live broker.
+
+Model-port version 3 checks strict frame copies, scoped claimed identity, consistent effective
+attempt state and exact delta/terminal text using bounded incremental UTF-8 work. Request scope and
+identity state are immutable scalar snapshots. Scripted and replay doubles preserve explicit text
+boundaries once; the native nonstreaming adapter carries the successful transport identity. No
+frame identity is itself proof of accepted start or permission to disclose live text. The following
+Engine/SessionService integration must own that verification, current access and bounded delivery.

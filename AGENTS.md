@@ -315,3 +315,12 @@ Runtime stop signals confer no authority before known current-call acceptance. C
 results hydrate that text only under current authorization and existing byte/entry limits. Native
 missing finish reasons remain unknown even if SDK defaults suggest stop. Preserve shared cancellation
 and unknown-acknowledgment handling; metadata-only audits retain exact closed incomplete statuses.
+
+Model-port version 3 frames are strict copied values. Nonempty text must concatenate to terminal
+content and keep one identity state; supplied identity is only a scoped claim until Engine verifies
+a successful start. Snapshot request/identity scalars independently of mutable ports or consumers.
+Runtime uses explicit text byte caps with cancellation-responsive incremental UTF-8 accounting.
+Scripted explicit fragments emit once; replay regenerates physical identities and refuses inconsistent
+successful cassette text at load without changing cassette-v1 matching. The selected native adapter
+remains nonstreaming and binds its whole-text delta to its explicit successful transport attempt.
+Do not infer current-policy live disclosure or broker support from frame conformance.

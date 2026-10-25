@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
+from hashlib import sha256
 from typing import Literal
 
 from pydantic import Field, JsonValue, ValidationError
@@ -53,7 +54,22 @@ class Header(Payload):
     provider: str
 
 
+def text_digest(parts: tuple[str, ...]) -> bytes:
+    hasher = sha256()
+    for text in parts:
+        for offset in range(0, len(text), 8192):
+            hasher.update(text[offset : offset + 8192].encode("utf-8", errors="strict"))
+    return hasher.digest()
+
+
 def record_request(record: Record) -> ModelRequest:
+    response = record.outcome.response
+    if (
+        response is not None
+        and any(record.stream)
+        and text_digest(record.stream) != text_digest((response.content,))
+    ):
+        raise ValueError("cassette_text_mismatch")
     try:
         request = ModelRequest.model_validate(record.request)
     except ValidationError:
@@ -194,7 +210,7 @@ class ReplayModel:
         record = self._select(request)
         identity = await prepare_fixture(request)
         for text in record.stream:
-            yield TextDelta(text=text)
+            yield TextDelta(text=text, identity=identity)
         response = record.outcome.response
         if response is not None:
             response = response.model_copy(deep=True)
