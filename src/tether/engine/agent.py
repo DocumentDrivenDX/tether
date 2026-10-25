@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Generator
 from contextlib import contextmanager
+from typing import Literal
 from uuid import uuid4
 
 from tether.ports import ModelPort
@@ -87,7 +88,12 @@ class Engine:
         audit: AuditSink | None = None,
         tracer: Tracer | None = None,
         telemetry_limits: TelemetryLimits | None = None,
-        live_text: Callable[[AttemptIdentity, int, str], Awaitable[None]] | None = None,
+        live_text: Callable[[str, AttemptIdentity, int, str], Awaitable[None]] | None = None,
+        live_done: Callable[
+            [str, AttemptIdentity, Literal["outage", "cancelled", "reconnect"] | None],
+            Awaitable[None],
+        ]
+        | None = None,
     ) -> None:
         self.model, self.history, self.model_limits = model, history, model_limits
         self.history_provider = history_provider
@@ -101,6 +107,7 @@ class Engine:
         )
         self.observers = Observers(audit, tracer, telemetry_limits)
         self.live_text = live_text
+        self.live_done = live_done
         self.observers.steps.register(self.registry.providers)
         self.workers = Workers(
             self.limits.max_workers, operation_capacity=self.limits.max_worker_operations
@@ -241,6 +248,7 @@ class Engine:
             self.history_provider,
             self.context,
             self.live_text,
+            self.live_done,
         )
 
     async def answer(

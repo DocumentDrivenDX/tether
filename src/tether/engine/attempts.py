@@ -31,7 +31,7 @@ class JournalAttemptRecorder:
         recheck: Callable[[], Awaitable[object]] | None = None,
         *,
         admit: Callable[[], None] | None = None,
-        live_text: Callable[[AttemptIdentity, int, str], Awaitable[None]] | None = None,
+        live_text: Callable[[str, AttemptIdentity, int, str], Awaitable[None]] | None = None,
     ) -> None:
         self.gov, self.tags, self.tier, self.history = gov, tags, tier, history
         self.recheck, self.admit = recheck, admit
@@ -116,7 +116,9 @@ class JournalAttemptRecorder:
         except ExecutionDenied as error:
             raise ModelAttemptDenied(error.reason) from None
         offset = self.live_offsets[identity.attempt_id]
-        await self.live_text(identity.model_copy(deep=True), offset, text)
+        await self.live_text(
+            self.gov.log.session.owner, identity.model_copy(deep=True), offset, text
+        )
         self.live_offsets[identity.attempt_id] = offset + len(text)
 
     async def observe(
