@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+from collections.abc import AsyncGenerator
+from typing import cast
 
 import httpx2 as httpx
 import pytest
@@ -138,8 +140,11 @@ async def test_native_retry_streams_text_with_successful_explicit_attempt(limits
         assert seen[0] != seen[1]
         deltas = [value for value in values if isinstance(value, TextDelta)]
         assert [delta.text for delta in deltas] == ["Fabricated ", "answer."]
-        assert all(delta.identity is not None for delta in deltas)
-        assert all(delta.identity.attempt_id == seen[1] for delta in deltas)
+        identities = [delta.identity for delta in deltas]
+        assert all(identity is not None for identity in identities)
+        assert all(
+            identity is not None and identity.attempt_id == seen[1] for identity in identities
+        )
         assert all(delta.identity == model_request.attempts.started[-1][0] for delta in deltas)
         assert model_request.attempts.observed[-1][2]["status"] == 201
         assert isinstance(values[-1], ModelResponse)
@@ -213,7 +218,7 @@ async def test_native_text_is_yielded_before_terminal_transport_chunk(limits, mo
         )
 
     model = adapter(limits, handler)
-    stream = model.stream(model_request)
+    stream = cast(AsyncGenerator, model.stream(model_request))
     try:
         first_item = await asyncio.wait_for(anext(stream), 2)
         assert isinstance(first_item, TextDelta)
@@ -265,7 +270,7 @@ async def test_native_stream_cancellation_closes_the_transport(limits, model_req
         )
 
     model = adapter(limits, handler)
-    stream = model.stream(model_request)
+    stream = cast(AsyncGenerator, model.stream(model_request))
     try:
         first = await asyncio.wait_for(anext(stream), 2)
         assert isinstance(first, TextDelta)
@@ -305,7 +310,7 @@ async def test_native_stream_rejects_unrecognized_delta_before_disclosure(limits
         )
 
     model = adapter(limits, handler)
-    stream = model.stream(model_request)
+    stream = cast(AsyncGenerator, model.stream(model_request))
     try:
         with pytest.raises(ModelUnavailable, match="unsupported_content"):
             await anext(stream)

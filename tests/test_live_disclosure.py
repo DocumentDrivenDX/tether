@@ -3,10 +3,13 @@
 import asyncio
 from contextlib import aclosing
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from pydantic import JsonValue
 
 from tether.engine.attempts import JournalAttemptRecorder
+from tether.engine.governance import Governance
 from tether.sessions.feed import LiveBuffer
 from tether.types import AttemptIdentity, ModelAttemptDenied, ModelResponse, TextDelta
 from tether.types.canonical import digest
@@ -66,16 +69,19 @@ async def test_failed_final_admission_does_not_mark_attempt_started(model_reques
     def fail_admission():
         raise ContextError("context_invalid")
 
-    gov = SimpleNamespace(
-        actor=Actor(id=tags.principal),
-        log=SimpleNamespace(session=SimpleNamespace(id=tags.session_id)),
-        observers=SimpleNamespace(tracer=SimpleNamespace(current_ids=lambda: None)),
-        authorize=authorize,
-        fact=fact,
+    gov = cast(
+        Governance,
+        SimpleNamespace(
+            actor=Actor(id=tags.principal),
+            log=SimpleNamespace(session=SimpleNamespace(id=tags.session_id)),
+            observers=SimpleNamespace(tracer=SimpleNamespace(current_ids=lambda: None)),
+            authorize=authorize,
+            fact=fact,
+        ),
     )
     recorder = JournalAttemptRecorder(gov, tags, "demo", admit=fail_admission, live_text=disclose)
     identity = await recorder.reserve()
-    wire = {"request": "bounded"}
+    wire: JsonValue = {"request": "bounded"}
     with pytest.raises(ContextError, match="context_invalid"):
         await recorder.start(identity, request_digest=digest(wire), wire_request=wire)
     with pytest.raises(ModelAttemptDenied, match="invalid_attempt_identity"):
