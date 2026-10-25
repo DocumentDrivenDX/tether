@@ -8,7 +8,7 @@ from typing import Annotated, Literal, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from pydantic.json_schema import SkipJsonSchema
 
-MODEL_PORT_VERSION = 2
+MODEL_PORT_VERSION = 3
 PositiveInt = Annotated[int, Field(gt=0, strict=True)]
 Count = Annotated[int, Field(ge=0, strict=True)]
 PositiveSeconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
@@ -146,6 +146,7 @@ class ModelResponse(Payload):
 
 class TextDelta(Payload):
     text: str
+    identity: AttemptIdentity | None = None
 
 
 StreamItem = TextDelta | ModelResponse

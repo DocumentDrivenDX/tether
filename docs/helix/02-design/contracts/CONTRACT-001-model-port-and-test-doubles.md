@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-24
+  updated: 2026-10-25
   authoring:
     home: repo
   links:
@@ -33,7 +33,7 @@ ddx:
 
 **Contract ID**: CONTRACT-001
 **Type**: library (Python port)
-**Version**: v1
+**Version**: v3
 **Related**: ADR-001, ADR-002, ADR-011, ADR-012, SPIKE-001, SPIKE-002, CONTRACT-002
 
 ## Purpose
@@ -87,7 +87,9 @@ class ModelResponse(BaseModel):
     request_id: str | None = None; usage: TokenUsage | None = None
     receipt: ResponseReceipt | None = None             # header/request/invocation/body ids kept distinct (CONTRACT-005)
     finish_reason: Literal["stop", "tool_calls", "length", "filtered", "unknown"]
-class TextDelta(BaseModel):  text: str
+class TextDelta(BaseModel):
+    text: str
+    identity: AttemptIdentity | None = None           # an adapter claim; not proof of successful start or permission to disclose
 StreamItem = TextDelta | ModelResponse
 class ModelUnavailable(Exception):  reason: str; request_id: str | None; receipt: ResponseReceipt | None
 class ModelAttemptDenied(Exception):  reason: str  # local authorization refusal; no provider request
@@ -97,11 +99,12 @@ class ModelPort(Protocol):
     def stream(self, request: ModelRequest) -> AsyncIterator[StreamItem]: ...      # the one method an adapter implements
 
 async def complete(port: ModelPort, request: ModelRequest) -> ModelResponse: ...  # helper: consumes `stream`, returns the final response
+async def checked_stream(port: ModelPort, request: ModelRequest, *, max_text_bytes: int | None = None) -> AsyncIterator[StreamItem]: ...
 ```
 
 | Rule | Requirement |
 |------|-------------|
-| Stream shape | `stream` MUST yield zero or more `TextDelta`, then exactly one `ModelResponse` last. An adapter for a provider that does not stream yields one delta with the whole text, then the response. An outage MAY follow some deltas; the engine discards deltas yielded before an outage. |
+| Stream shape | `stream` MUST yield zero or more `TextDelta`, then exactly one `ModelResponse` last. A provider that does not stream yields one delta with the whole text, then the response. Version 3 freshly validates/copies every frame before forwarding, including typed instances. Once any nonempty delta is emitted, the exact concatenated UTF-8 text MUST equal terminal content; zero nonempty deltas remains allowed. Empty strings do not bind an effective text attempt. Nonempty deltas MUST keep one consistent identity state (all unbound, or the same complete identity); a different attempt or mixed bound/unbound text is invalid_response, never a silent retry. A supplied identity MUST match request session/turn/logical-call/purpose and have a nonempty attempt id. Identity is a claim until Engine verifies a successful recorder start; unbound frames are complete-only and confer no live-disclosure authority. Terminal equality MUST be checked before terminal forwarding with incremental byte counts/hashes rather than an accumulated text copy. Runtime text accounting observes explicit byte limits and remains cancellation responsive. `checked_stream.max_text_bytes` is an optional positive integer (not bool), in UTF-8 bytes; invalid values raise ValueError before invoking the port. It independently caps cumulative delta text and terminal text, without counting the same output twice. Engine always supplies its explicit response byte cap; complete-only helper callers choosing None receive no implicit text budget. Original request-scope scalars and effective identity state are copied before mutable port/consumer objects can replace them. Undeclared fields in typed frames or nested identity/call/usage/receipt values are rejected rather than dropped; typed objects inside JSON arguments are not silently converted. An outage MAY follow some deltas; the engine discards deltas yielded before an outage. |
 | Outage | A provider/transport failure to produce a response MUST raise `ModelUnavailable`. Local `ModelAttemptDenied`, `StoreError`, `CommitUnknown`, `LeaseLost`, and cancellation propagate unchanged; they are not provider outages and MUST NOT be retried by the adapter. Its `reason` MUST be a short code (`http 503`, `timeout`, `unconfigured tier`, `incomplete stream`) and MUST NOT contain request or response content, a header value, or the text of an underlying exception. |
 | Cancellation | A cancelled call MUST stop the underlying request and let the cancellation propagate; it MUST NOT be reported as an outage. |
 | Content | Operational logs/errors never carry content. Explicit history capture is a separate content path: the engine/history adapter may persist credential-free requests/responses only through CONTRACT-005. Cassettes remain fabricated-only test fixtures. |
@@ -124,9 +127,9 @@ async def complete(port: ModelPort, request: ModelRequest) -> ModelResponse: ...
 
 | Double | Behavior |
 |--------|----------|
-| `ScriptedModel(script)` | Yields each item of `script` in order as a stream (an `Exception` item is raised; a `ModelResponse` item yields one delta of its text, then the response); records every request in `requests` (without the credential); raises `AssertionError` when the script is exhausted. |
+| `ScriptedModel(script)` | Yields each item of `script` in order as a stream (an `Exception` item is raised; a `ModelResponse` item yields one whole-text delta only when that scripted step supplied no explicit deltas, then the response; missing delta identities are filled from the actual successful fixture start, while supplied claims are preserved for negative tests); records every request in `requests` (without the credential); raises `AssertionError` when the script is exhausted. |
 | `RecordingModel(inner, writer, fabricated=True)` | Calls `inner`, appends one cassette record per call, and returns the result unchanged. `fabricated` MUST be passed as the literal `True`: the caller asserts the prompts hold no real data. A recorder MUST exclude `attempts` and all credential fields and MUST write `RequestTags.principal` as the fixed value `recorded` and MUST NOT write the credential or anything the port does not carry. |
-| `ReplayModel(cassette, mode)` | `mode="sequence"` returns records in order and fails if the request differs from the recorded one. `mode="keyed"` returns the record whose key matches, in any order. An unmatched request raises `AssertionError` naming the first differing field, never the content. |
+| `ReplayModel(cassette, mode)` | `mode="sequence"` returns records in order and fails if the request differs from the recorded one. `mode="keyed"` returns the record whose key matches, in any order. An unmatched request raises `AssertionError` naming the first differing field, never the content. Recorded strings and boundaries replay once with the fresh replay attempt identity; runtime physical identities are not stored in cassette stream strings or matching keys. |
 
 ### 3. Cassette, version 1
 
@@ -164,7 +167,7 @@ Offline estimation uses a separate capture transport and creates no physical att
 
 ## Precedence and Compatibility
 
-The initial pre-release v1 is revised in place; there is no released contract to preserve or compatibility wrapper. Cassettes use the final v1 shapes, including output limits, purpose and terminal reasons. Existing experimental fixtures must be explicitly regenerated rather than guessed.
+Model-port version 3 is the current pre-release rule set; no released interface is being replaced. Version 2 added typed attempt usage, and version 3 adds frame identity claims and text consistency. Cassette layout remains version 1, including output limits, purpose and terminal reasons. Consistent older cassette-v1 records remain readable; successful records with inconsistent nonempty text are refused at load. Existing inconsistent experimental fixtures must be explicitly regenerated rather than guessed.
 
 - Versioning: one integer, `MODEL_PORT_VERSION`, exported by the package.
 - Ordering or precedence: this contract governs the port; CONTRACT-002 governs how the engine uses it.
@@ -215,3 +218,12 @@ callback (CONTRACT-005). Native adapters and scripted/recording/replay doubles M
 TokenUsage without parsing it in the engine. This changes callback implementations, not the stream
 shape or cassette-v1 response format. An old cassette lacking retry observations does not establish
 physical-retry audit equivalence; complete cassette/attempt qualification remains a separate gate.
+
+
+Model-port version 3 adds optional claimed physical identities to text frames and the explicit
+nonempty-delta/terminal equality rule. Cassette layout and matching remain version 1; physical
+identities are regenerated for replay, not recorded as matching authority. Existing inconsistent
+experimental fixtures must be regenerated rather than silently repaired. The selected native
+adapter remains nonstreaming and emits one whole-text delta bound to the successful transport
+attempt, including after a retry before any text. Live disclosure additionally requires Engine-owned
+proof of successful start and current session access; these frame claims alone establish neither.

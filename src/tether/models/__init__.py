@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 from tether.ports import ModelPort
 from tether.types import ModelRequest, ModelResponse, ModelUnavailable, StreamItem
 
+from .frames import StreamFrames, fresh
+
 
 @asynccontextmanager
 async def managed(stream: AsyncIterator[StreamItem]) -> AsyncGenerator[AsyncIterator[StreamItem]]:
@@ -21,15 +23,20 @@ def valid_item(item: object) -> bool:
     return isinstance(item, StreamItem)
 
 
-async def checked_stream(port: ModelPort, request: ModelRequest) -> AsyncIterator[StreamItem]:
+async def checked_stream(
+    port: ModelPort, request: ModelRequest, *, max_text_bytes: int | None = None
+) -> AsyncIterator[StreamItem]:
     """Verify stream framing, including data after a terminal response."""
     final = False
+    frames = StreamFrames(request, max_text_bytes)
     async with managed(port.stream(request)) as stream:
         async for item in stream:
             if final or not valid_item(item):
                 raise ModelUnavailable("invalid_response")
-            final = isinstance(item, ModelResponse)
-            yield item
+            value = fresh(item)
+            await frames.check(value)
+            final = isinstance(value, ModelResponse)
+            yield value
     if not final:
         raise ModelUnavailable("incomplete_stream")
 

@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-24
+  updated: 2026-10-25
   authoring:
     home: repo
   links:
@@ -1115,3 +1115,22 @@ review found no remaining concrete blocker and ran no tests. Four fresh hash-loc
 profiles and 166 matching package sources pass cumulative qualification. This
 checkpoint does not qualify provisional delivery, native incremental streaming, summary fidelity or
 the broader external/hosted matrix.
+
+
+The next slice 9a checkpoint establishes model-port version 3 stream frames before live delivery:
+optional claimed physical identity, copied/validated frames, exact nonempty-delta/terminal text,
+consistent attempt state, cancellation-responsive incremental UTF-8 accounting, and corrected
+scripted/recording/replay boundaries. Native whole-text frames use the successful transport's
+explicit identity. This foundation does not prove a recorder start or disclose live text; the
+following Engine/SessionService checkpoint must verify accepted-start bindings and own bounded
+authorized queues, reset/loss semantics and terminal ordering.
+
+
+The model-port v3 frame checkpoint passes 1605 cases in 51 bounded groups at 92.26%
+branch-inclusive coverage with strict typing 0 and unchanged gates. Its 47 added cases qualify strict
+frame copies, immutable scoped claims, text consistency/bounds/cancellation, exact scripted and replay
+boundaries and native successful retry identity. Independent review findings have exact regressions;
+final review found no remaining concrete blocker and ran no tests. Four fresh hash-locked installed
+profiles and 167 matching package sources repeat cumulative evidence. Successful
+start proof, current-policy live disclosure, bounded broker/reset/loss/reconnect/terminal ordering
+and native incremental streaming remain explicit qualification work.

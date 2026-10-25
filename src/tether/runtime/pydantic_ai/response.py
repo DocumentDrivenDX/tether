@@ -33,7 +33,9 @@ async def bounded_response(
     )
     try:
         async with asyncio.timeout(seconds):
-            async with managed(checked_stream(port, request)) as stream:
+            async with managed(
+                checked_stream(port, request, max_text_bytes=limits.max_response_bytes)
+            ) as stream:
                 async for item in stream:
                     if isinstance(item, TextDelta):
                         size += len(item.text.encode("utf-8"))

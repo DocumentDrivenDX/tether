@@ -17,6 +17,7 @@ from pydantic_ai.exceptions import UnexpectedModelBehavior
 from tether.models.canonical import copy_request
 from tether.runtime.pydantic_ai.messages import from_sdk_response
 from tether.types import (
+    AttemptIdentity,
     Credential,
     ModelExecutionLimits,
     ModelRequest,
@@ -163,19 +164,22 @@ class OpenAIAdapter:
         )
         try:
             async with asyncio.timeout(seconds):
-                response = await self._retry(request)
-                yield TextDelta(text=response.content)
+                response, identity = await self._retry(request)
+                yield TextDelta(text=response.content, identity=identity)
                 yield response
         except TimeoutError:
             raise ModelUnavailable("timeout") from None
 
-    async def _retry(self, request: ModelRequest) -> ModelResponse:
+    async def _retry(self, request: ModelRequest) -> tuple[ModelResponse, AttemptIdentity]:
         for attempt in range(self._limits.max_attempts):
             boundary = AttemptTransport(
                 self._transport, request, self._limits, self._application_credential
             )
             try:
-                return await self._once(request, boundary)
+                response = await self._once(request, boundary)
+                if boundary.identity is None:
+                    raise ModelUnavailable("invalid_response")
+                return response, boundary.identity
             except ModelUnavailable as error:
                 if (
                     error.reason

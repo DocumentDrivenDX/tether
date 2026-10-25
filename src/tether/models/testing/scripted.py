@@ -120,6 +120,7 @@ class ScriptedModel:
         self.requests.append(snapshot(request))
         step = self._next_step()
         identity = await prepare_fixture(request)
+        supplied = any(isinstance(item, TextDelta) for item in step)
         for item in step:
             if isinstance(item, Exception):
                 if (
@@ -131,9 +132,13 @@ class ScriptedModel:
                     await request.attempts.observe(identity, item.receipt)
                 raise item
             if isinstance(item, TextDelta):
-                yield item.model_copy(deep=True)
+                yield item.model_copy(
+                    update={"identity": item.identity if item.identity is not None else identity},
+                    deep=True,
+                )
             else:
                 response = item.model_copy(deep=True)
                 await observe_fixture(request, identity, response, self.provider)
-                yield TextDelta(text=response.content)
+                if not supplied:
+                    yield TextDelta(text=response.content, identity=identity)
                 yield response
