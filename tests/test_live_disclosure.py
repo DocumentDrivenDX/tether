@@ -17,7 +17,6 @@ from tether.types.client import Lagged, ReplyReset, ReplyText
 from tether.types.context import ContextError
 from tether.types.execution import Actor, Answer
 
-pytest_plugins = ("test_client_reads",)
 pytestmark = pytest.mark.anyio
 
 

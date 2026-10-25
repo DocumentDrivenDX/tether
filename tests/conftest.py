@@ -8,6 +8,8 @@ from tether.models.testing import ListAttemptRecorder
 from tether.types import Message, ModelExecutionLimits, ModelRequest, RequestTags, ToolSpec
 from tether.types.client import ClientLimits
 
+pytest_plugins = ("test_client_reads",)
+
 
 @pytest.fixture
 def limits() -> ModelExecutionLimits:
