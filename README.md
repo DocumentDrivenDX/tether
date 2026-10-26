@@ -1,4 +1,6 @@
-# tether
+# Tether
+
+Install the `novirhiza-tether` distribution; the Python import remains `tether`.
 
 A Python library for building agent harnesses. Tether integrates Pydantic AI Agent with
 typed tools, execution policy and durable sessions. Its in-process async Client API exposes
@@ -214,7 +216,7 @@ Reference-preserving restore currently requires compatible original provider/cod
 See [archive conformance](tests/test_archive_ports.py) and [Client journeys](tests/test_client_archive.py).
 
 
-Optional PostgreSQL18 session storage and content history use `tether[postgres]` and
+Optional PostgreSQL18 session storage and content history use `novirhiza-tether[postgres]` and
 `tether.stores.postgres.PostgresSessionStore` and `PostgresHistory`. Supply a `ConnectionSource(actor, session_id)` async
 context manager that borrows an idle psycopg async connection. The application owns its pool,
 credential refresh, roles and RLS. Tether owns each short transaction and refuses ambient ones.
@@ -248,7 +250,7 @@ takeover, stale operations and killed-client recovery; paired SQL Agent/Client c
 restart, safe/unsafe resume, manual resolution and archive/restore. A fabricated application-owned
 unprivileged-role RLS profile demonstrates credential refresh and denied-caller refusal. This does
 not qualify arbitrary deployment roles, downstream exactly-once effects or OS power loss.
-Optional `tether[embedded-postgres]` adds the same pinned PostgreSQL18 binaries used by the
+Optional `novirhiza-tether[embedded-postgres]` adds the same pinned PostgreSQL18 binaries used by the
 qualification suite. `EmbeddedPostgres.start(EmbeddedConfig(...))` requires an explicit bootstrap_user,
 absolute data_dir/runtime_dir, startup_seconds/shutdown_seconds/poll_seconds and max_roots. Its
 endpoint supplies Unix socket connection fields; create your own source, run migrations explicitly,

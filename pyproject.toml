@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27,<2", "uv-dynamic-versioning>=0.7,<1"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tether"
+name = "novirhiza-tether"
 dynamic = ["version"]
 description = "An embedded Python agent harness built on Pydantic AI Agent"
 readme = "README.md"

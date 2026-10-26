@@ -55,7 +55,7 @@ jobs:
         run: |
           python validator/scripts/verify_release_artifacts.py verify-release \
             --release-json release.json --dist-dir dist --tag "$TAG" \
-            --repository "$GITHUB_REPOSITORY" --source-commit "$(cat source-commit.txt)" --package tether
+            --repository "$GITHUB_REPOSITORY" --source-commit "$(cat source-commit.txt)" --package novirhiza-tether
           mkdir upload
           cp dist/*.whl dist/*.tar.gz upload/
           test "$(find upload -maxdepth 1 -type f | wc -l | tr -d ' ')" = 2

@@ -30,7 +30,7 @@ PROVIDER_DISTRIBUTIONS = frozenset(
 
 
 def reachable_dependencies(
-    root: str = "tether",
+    root: str = "novirhiza-tether",
     *,
     extras: frozenset[str] = frozenset(),
     lookup: Callable[[str], Distribution] = distribution,

@@ -7,31 +7,32 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import TestCase
 
-from scripts.verify_release_artifacts import create_manifest, release_version, verify_release
+import pytest
+from verify_release_artifacts import create_manifest, release_version, verify_release
 
 
-class ReleaseArtifactTests(TestCase):
+class TestReleaseArtifacts:
     def test_release_version_accepts_only_stable_three_part_tags(self) -> None:
-        self.assertEqual(release_version("v1.2.3"), "1.2.3")
+        assert release_version("v1.2.3") == "1.2.3"
         for tag in ("1.2.3", "v1.2", "v1.2.3.dev1", "v1.2.3-rc1"):
-            with self.assertRaises(ValueError):
+            with pytest.raises(ValueError, match="stable"):
                 release_version(tag)
 
     def test_manifest_verification_rejects_identity_and_immutable_mismatch(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory) / "dist"
             root.mkdir()
-            wheel = root / "tether-1.2.3-py3-none-any.whl"
+            wheel = root / "novirhiza_tether-1.2.3-py3-none-any.whl"
             with zipfile.ZipFile(wheel, "w") as archive:
                 archive.writestr(
-                    "tether-1.2.3.dist-info/METADATA", "Name: tether\nVersion: 1.2.3\n"
+                    "novirhiza_tether-1.2.3.dist-info/METADATA",
+                    "Name: novirhiza-tether\nVersion: 1.2.3\n",
                 )
-            sdist = root / "tether-1.2.3.tar.gz"
+            sdist = root / "novirhiza_tether-1.2.3.tar.gz"
             with tarfile.open(sdist, "w:gz") as archive:
-                content = b"Name: tether\nVersion: 1.2.3\n"
-                info = tarfile.TarInfo("tether-1.2.3/PKG-INFO")
+                content = b"Name: novirhiza-tether\nVersion: 1.2.3\n"
+                info = tarfile.TarInfo("novirhiza_tether-1.2.3/PKG-INFO")
                 info.size = len(content)
                 archive.addfile(info, BytesIO(content))
 
@@ -42,7 +43,7 @@ class ReleaseArtifactTests(TestCase):
                 tag="v1.2.3",
                 repository="org/tether",
                 source_commit="a" * 40,
-                package="tether",
+                package="novirhiza-tether",
             )
             assets = [wheel, sdist, manifest_path]
             release = {
@@ -61,49 +62,49 @@ class ReleaseArtifactTests(TestCase):
             }
             release_path = Path(directory) / "release.json"
             release_path.write_text(json.dumps(release), encoding="utf-8")
-            self.assertEqual(
+            assert (
                 verify_release(
                     release_path,
                     root,
                     tag="v1.2.3",
                     repository="org/tether",
                     source_commit="a" * 40,
-                    package="tether",
-                )["version"],
-                "1.2.3",
+                    package="novirhiza-tether",
+                )["version"]
+                == "1.2.3"
             )
 
-            with self.assertRaisesRegex(ValueError, "identity mismatch"):
+            with pytest.raises(ValueError, match="identity mismatch"):
                 verify_release(
                     release_path,
                     root,
                     tag="v1.2.3",
                     repository="org/tether",
                     source_commit="b" * 40,
-                    package="tether",
+                    package="novirhiza-tether",
                 )
             release["assets"][0]["digest"] = "sha256:" + "0" * 64
             release_path.write_text(json.dumps(release), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "digests"):
+            with pytest.raises(ValueError, match="digests"):
                 verify_release(
                     release_path,
                     root,
                     tag="v1.2.3",
                     repository="org/tether",
                     source_commit="a" * 40,
-                    package="tether",
+                    package="novirhiza-tether",
                 )
             release["assets"][0]["digest"] = (
                 "sha256:" + hashlib.sha256(assets[0].read_bytes()).hexdigest()
             )
             release["immutable"] = False
             release_path.write_text(json.dumps(release), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "immutable"):
+            with pytest.raises(ValueError, match="immutable"):
                 verify_release(
                     release_path,
                     root,
                     tag="v1.2.3",
                     repository="org/tether",
                     source_commit="a" * 40,
-                    package="tether",
+                    package="novirhiza-tether",
                 )
