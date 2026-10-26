@@ -1,0 +1,5 @@
+# PyPI release path
+
+The `release-candidate.yml` workflow runs the normal release checks for an exact `vMAJOR.MINOR.PATCH` tag, builds one wheel and source distribution, and creates a draft GitHub release with a source-bound SHA256 manifest. A draft does not publish to PyPI. An owner publishes the draft only after the project’s release gates are satisfied. `publish-pypi.yml` then requires the published release to be immutable and verifies its tag, source commit, package metadata, complete asset inventory, and GitHub asset digests before requesting a PyPI OIDC upload. Its manual backfill accepts only an existing immutable release and applies the same checks.
+
+Before enabling uploads, register a PyPI Trusted Publisher for this repository and `.github/workflows/publish-pypi.yml`, using the GitHub environment `pypi`. Enable immutable releases in the GitHub repository settings. The workflow fails closed if either trust or immutability is absent. Package publication remains a human release action; no local publication command is used.
