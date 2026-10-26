@@ -47,7 +47,7 @@ jobs:
         run: |
           mkdir dist
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > release.json
-          gh release download "$TAG" --dir dist
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist
           git -C source rev-parse "refs/tags/$TAG^{commit}" > source-commit.txt
       - name: Verify release identity and all asset digests
         env:
