@@ -48,7 +48,8 @@ async def main() -> None:
         engines=[],
         limits=limits,
     )
-    run = build(h, tool=EffectTool(Path(config["effect_path"])))
+    safe = bool(config.get("safe", False))
+    run = build(h, safe=safe, tool=EffectTool(Path(config["effect_path"]), safe=safe))
     session = await store.create(actor.id, SessionInit(settings={"approval": "auto"}))
     emit({"event": "created", "session_id": session.id})
     async with store.turn(session.id, actor.id, turn_id="killed-turn") as log:
