@@ -19,6 +19,9 @@ from .demo import open_demo
 def parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(prog="tether")
     command.add_argument("--root", type=Path, default=Path.home() / ".local" / "share" / "tether")
+    command.add_argument(
+        "--volatile", action="store_true", help="Use a temporary in-memory UI demo"
+    )
     actions = command.add_subparsers(dest="action")
     actions.add_parser("list")
     show = actions.add_parser("show")
@@ -86,6 +89,8 @@ async def follow_session(client: Client, session_id: str, since: int | None) -> 
 
 
 async def execute(args: argparse.Namespace) -> None:
+    if args.volatile:
+        raise ValueError("volatile_ui_only")
     async with open_demo(args.root, continuation=args.action == "confirm") as (app, actor, _tool):
         client = app.client(actor)
         if args.action == "list":
@@ -118,7 +123,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.action is None:
             from tether.tui import run
 
-            run(args.root)
+            run(args.root, volatile=args.volatile)
         else:
             asyncio.run(execute(args))
     except (OSError, RuntimeError, ValueError) as error:

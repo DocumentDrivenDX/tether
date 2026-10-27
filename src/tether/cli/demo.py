@@ -19,6 +19,7 @@ from tether.history.jsonl import JsonlHistory
 from tether.history.messages import MessageHistoryAdapter
 from tether.models.testing import ScriptedModel
 from tether.stores.jsonl import JsonlRoot, JsonlSessionStore
+from tether.stores.memory import MemoryFiles
 from tether.types import ModelExecutionLimits, ModelResponse, TextDelta, ToolCall
 from tether.types.client import ClientLimits
 from tether.types.execution import Actor, AgentSpec, Effect, Replay, ToolContext
@@ -96,12 +97,15 @@ def client_limits() -> ClientLimits:
 
 @asynccontextmanager
 async def open_demo(
-    path: Path, *, continuation: bool = False
+    path: Path, *, continuation: bool = False, volatile: bool = False
 ) -> AsyncGenerator[tuple[Tether, Actor, DemoTool]]:
-    root = await JsonlRoot.open(path)
+    root = None if volatile else await JsonlRoot.open(path)
+    files = MemoryFiles() if volatile else root
+    if files is None:
+        raise RuntimeError("demo_store_unavailable")
     try:
-        store = await JsonlSessionStore.open(root)
-        history = await JsonlHistory.open(root)
+        store = await JsonlSessionStore.open(files)
+        history = await JsonlHistory.open(files)
         tool = DemoTool()
         engine = Engine(
             **fabricated_context(),
@@ -123,9 +127,10 @@ async def open_demo(
             store=store,
             history=history,
             limits=client_limits(),
-            resume="report",
+            resume="off" if volatile else "report",
             default_spec=DEMO_SPEC.id,
         ) as app:
             yield app, Actor(id="demo"), tool
     finally:
-        await root.aclose()
+        if root is not None:
+            await root.aclose()
