@@ -25,6 +25,8 @@ import sys
 import socket
 import asyncio
 import tempfile
+from contextlib import redirect_stdout
+from io import StringIO
 def deny_network(*args, **kwargs):
     raise AssertionError("base import attempted network I/O")
 socket.socket.connect = deny_network
@@ -230,28 +232,47 @@ asyncio.run(smoke())
 if extra == 'tui':
     from textual.widgets import Button, Input
     from tether.tui import DemoApp
-    async def tui_smoke():
-        with tempfile.TemporaryDirectory(prefix='installed-tui-') as directory:
-            root = Path(directory)
-            app = DemoApp(root)
-            async with app.run_test() as pilot:
-                assert app.session_id is not None
-                assert len(app.sessions) == 1
-                app.query_one('#message', Input).value = 'Fabricated request.'
-                await pilot.click('#send')
-                await pilot.pause()
-                approve = app.query_one('#approve', Button)
-                assert not approve.disabled
-                await pilot.click('#approve')
-                await pilot.pause()
-                assert approve.disabled
-                assert (await app.client.get(app.session_id)).summary.status == 'idle'
-            assert any(root.iterdir()), 'durable demo wrote no local state'
-    asyncio.run(tui_smoke())
+    async def tui_smoke(root):
+        app = DemoApp(root)
+        async with app.run_test() as pilot:
+            assert app.session_id is not None
+            assert len(app.sessions) == 1
+            app.query_one('#message', Input).value = 'Fabricated request.'
+            await pilot.click('#send')
+            await pilot.pause()
+            approve = app.query_one('#approve', Button)
+            assert not approve.disabled
+            await pilot.click('#approve')
+            await pilot.pause()
+            assert approve.disabled
+            assert (await app.client.get(app.session_id)).summary.status == 'idle'
+        return app.session_id
+    with tempfile.TemporaryDirectory(prefix='installed-tui-') as directory:
+        root = Path(directory)
+        session_id = asyncio.run(tui_smoke(root))
+        assert any(root.iterdir()), 'durable demo wrote no local state'
+        from tether.cli.command import main
+        def cli(*args):
+            output = StringIO()
+            with redirect_stdout(output):
+                status = main(['--root', str(root), *args])
+            assert status == 0, output.getvalue()
+            return output.getvalue()
+        assert session_id in cli('list')
+        sent = cli('send', session_id, 'Fabricated second request.')
+        assert 'stop: confirmation_required' in sent
+        approvals = [line for line in sent.splitlines() if line.startswith('approval: ')]
+        assert len(approvals) == 1
+        invocation = approvals[0].split()[-1]
+        confirmed = cli('confirm', session_id, invocation, 'yes')
+        assert 'stop: final' in confirmed
+        assert 'approval already settled' in cli('confirm', session_id, invocation, 'yes')
+        assert '"status": "idle"' in cli('show', session_id)
 print(json.dumps(dict(wheel_version=md.version('novirhiza-tether'),
     agent_runtime=md.version('pydantic-ai-slim'), provider_sdks=len(sdks),
     extra=extra or 'base', offline_agent_and_replay=True, offline_gated_agent=True,
-    offline_durable_client_resume=True, offline_tui=(extra == 'tui'))))
+    offline_durable_client_resume=True, offline_tui=(extra == 'tui'),
+    offline_tui_cli_restart=(extra == 'tui'))))
 """
 
 
