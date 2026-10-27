@@ -163,10 +163,73 @@ async def smoke():
             assert app.drained
         finally:
             assert await root.aclose()
+        root = await JsonlRoot.open(Path(directory))
+        try:
+            store = await JsonlSessionStore.open(root)
+            provider = await JsonlHistory.open(root)
+            interrupted = await store.create(actor.id, SessionInit())
+            source = Engine(**fabricated_context(), model=ScriptedModel([response]),
+                history=MessageHistoryAdapter(provider), history_provider=provider,
+                model_limits=limits, tools=(tool,), specs=(spec,))
+            original_append = store.append
+            interrupted_after_input = False
+            async def fail_after_input(sid, owner, generation, entries):
+                nonlocal interrupted_after_input
+                if not interrupted_after_input and any(e.kind == 'turn_started' for e in entries):
+                    interrupted_after_input = True
+                    await original_append(sid, owner, generation, entries)
+                    raise RuntimeError('fabricated_process_loss')
+                return await original_append(sid, owner, generation, entries)
+            store.append = fail_after_input
+            try:
+                async with store.turn(interrupted.id, actor.id,
+                                      turn_id='installed-interrupted') as durable_log:
+                    await source.run_turn(
+                        actor, durable_log, 'Fabricated resume request', spec=spec)
+            except RuntimeError as error:
+                assert str(error) == 'fabricated_process_loss'
+            else:
+                raise AssertionError('missing_interruption')
+            store.append = original_append
+            assert interrupted_after_input
+            assert (await store.get(interrupted.id, actor.id)).summary.resumable
+            assert await source.aclose()
+        finally:
+            assert await root.aclose()
+        root = await JsonlRoot.open(Path(directory))
+        try:
+            store = await JsonlSessionStore.open(root)
+            provider = await JsonlHistory.open(root)
+            class CurrentCredential:
+                async def authorization(self): return 'fabricated' + '_credential'
+            credential = CurrentCredential()
+            current = Actor(id=actor.id, principal='current-principal', credential=credential)
+            observed = []
+            class CapturingModel(ScriptedModel):
+                async def stream(self, request):
+                    observed.append((request.tags.principal,
+                                     request.credential is credential))
+                    async for item in super().stream(request):
+                        yield item
+            resumed = Engine(**fabricated_context(), model=CapturingModel([response]),
+                history=MessageHistoryAdapter(provider), history_provider=provider,
+                model_limits=limits, tools=(tool,), specs=(spec,))
+            async with Tether(engine=resumed, store=store, history=provider,
+                              limits=client_limits) as app:
+                client = app.client(current)
+                result = await (await client.resume(interrupted.id)).result()
+                assert result.stop_reason == 'final'
+                assert observed == [('current-principal', True)]
+                summary = (await client.get(interrupted.id)).summary
+                assert summary.status == 'idle' and summary.turn_count == 2
+            assert app.drained
+        finally:
+            assert await root.aclose()
 asyncio.run(smoke())
 print(json.dumps(dict(wheel_version=md.version('novirhiza-tether'),
     agent_runtime=md.version('pydantic-ai-slim'), provider_sdks=len(sdks),
-    extra=extra or 'base', offline_agent_and_replay=True, offline_gated_agent=True)))
+    extra=extra or 'base', offline_agent_and_replay=True, offline_gated_agent=True,
+    offline_durable_client_resume=True)))
 """
 
 
