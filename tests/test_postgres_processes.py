@@ -25,7 +25,7 @@ def anyio_backend():
     return "asyncio"
 
 
-async def peer(h, server, session, turn, *, unsafe=False):
+async def peer(h, server, session, turn, *, unsafe=False, effect_path=None):
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-u",
@@ -45,6 +45,7 @@ async def peer(h, server, session, turn, *, unsafe=False):
                     "session": session.id,
                     "turn": turn,
                     "unsafe": unsafe,
+                    "effect_path": str(effect_path) if effect_path is not None else None,
                 }
             )
             + "\n"
@@ -124,13 +125,17 @@ async def test_separate_process_exclusivity_takeover_stale_writes_and_cleanup(
 
 
 async def test_actual_client_kill_preserves_committed_intent_and_recovery_barrier(
-    database, postgres_server
+    database, postgres_server, tmp_path
 ):
     h = database
     session = await Capture(h.root, h.actor).create(SessionInit(), str(uuid4()))
-    process = await peer(h, postgres_server, session, "killed-phase", unsafe=True)
+    effect_path = tmp_path / "fabricated-effects.log"
+    process = await peer(
+        h, postgres_server, session, "killed-phase", unsafe=True, effect_path=effect_path
+    )
     try:
         assert (await receive(process))["entries"] == 2
+        assert effect_path.read_bytes() == b"fabricated-effect\n"
         await stop(process)
         assert process.returncode is not None
         assert process.returncode < 0
@@ -148,5 +153,6 @@ async def test_actual_client_kill_preserves_committed_intent_and_recovery_barrie
             assert any(e.key == "intent:fabricated" for e in log.entries)
             await log.append([NewEntry(kind="message", key="replacement-metadata")])
         assert (await scoped.effects(session.id, h.actor.id)).items[0].invocation_id == "fabricated"
+        assert effect_path.read_bytes() == b"fabricated-effect\n"
     finally:
         await stop(process)
