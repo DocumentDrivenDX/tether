@@ -22,7 +22,7 @@ from tether.models.testing import ScriptedModel
 from tether.stores.postgres import PostgresHistory
 from tether.stores.postgres.store import PostgresSessionStore
 from tether.types import ModelExecutionLimits
-from tether.types.execution import Actor
+from tether.types.execution import Actor, Resolution, ResolutionConflict
 
 pytestmark = pytest.mark.anyio
 
@@ -86,6 +86,27 @@ def recovered_engine(h, root_store, *, safe=False, effect_path: Path | None = No
     return scoped, spy, run
 
 
+async def resolve_sql_barrier(scoped, run, actor, session_id, invocation_id, effect_path):
+    value = Resolution(invocation_id=invocation_id, outcome="completed", reason="operator_checked")
+    async with scoped.turn(session_id, actor.id, turn_id="resolve") as log:
+        await run.engine.resolve(actor, log, value)
+    view = await scoped.get(session_id, actor.id)
+    assert view is not None
+    assert view.summary.unresolved_effect_count == 0
+    entries = (await scoped.entries(session_id, actor.id, start=0, limit=100)).items
+    resolutions = [entry for entry in entries if entry.key == "resolution:" + invocation_id]
+    assert len(resolutions) == 1
+    async with scoped.turn(session_id, actor.id, turn_id="resolve-retry") as log:
+        await run.engine.resolve(actor, log, value)
+    entries = (await scoped.entries(session_id, actor.id, start=0, limit=100)).items
+    assert len([entry for entry in entries if entry.key == "resolution:" + invocation_id]) == 1
+    conflict = value.model_copy(update={"outcome": "not_completed"})
+    with pytest.raises(ResolutionConflict):
+        async with scoped.turn(session_id, actor.id, turn_id="resolve-conflict") as log:
+            await run.engine.resolve(actor, log, conflict)
+    assert effect_path.read_bytes() == b"fabricated-effect\n"
+
+
 async def test_real_engine_sql_effect_keeps_unknown_barrier_after_process_kill(
     database, postgres_server, tmp_path
 ):
@@ -128,6 +149,10 @@ async def test_real_engine_sql_effect_keeps_unknown_barrier_after_process_kill(
         assert effect_path.read_bytes() == b"fabricated-effect\n"
         entries = (await scoped.entries(session_id, h.actor.id, start=0, limit=100)).items
         assert any(entry.facts.get("reason") == "effect_unresolved" for entry in entries)
+        await resolve_sql_barrier(
+            scoped, run, h.actor, session_id, effect["invocation_id"], effect_path
+        )
+        assert spy.calls == []
     finally:
         assert await run.engine.aclose()
 
