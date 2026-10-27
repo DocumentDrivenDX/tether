@@ -24,6 +24,7 @@ from pathlib import Path
 import sys
 import socket
 import asyncio
+import tempfile
 def deny_network(*args, **kwargs):
     raise AssertionError("base import attempted network I/O")
 socket.socket.connect = deny_network
@@ -40,7 +41,7 @@ installed = {d.metadata['Name'].lower().replace('_', '-') for d in md.distributi
 sdks = installed.intersection(json.loads(sys.argv[1]))
 extra = sys.argv[2]
 assert sdks == ({'openai'} if extra == 'openai' else set())
-if extra:
+if extra == 'openai':
     from tether.adapters.openai_compat import OpenAICompatModel
 async def smoke():
     tags = RequestTags(session_id='fabricated-session', turn_id='fabricated-turn',
@@ -226,10 +227,31 @@ async def smoke():
         finally:
             assert await root.aclose()
 asyncio.run(smoke())
+if extra == 'tui':
+    from textual.widgets import Button, Input
+    from tether.tui import DemoApp
+    async def tui_smoke():
+        with tempfile.TemporaryDirectory(prefix='installed-tui-') as directory:
+            root = Path(directory)
+            app = DemoApp(root)
+            async with app.run_test() as pilot:
+                assert app.session_id is not None
+                assert len(app.sessions) == 1
+                app.query_one('#message', Input).value = 'Fabricated request.'
+                await pilot.click('#send')
+                await pilot.pause()
+                approve = app.query_one('#approve', Button)
+                assert not approve.disabled
+                await pilot.click('#approve')
+                await pilot.pause()
+                assert approve.disabled
+                assert (await app.client.get(app.session_id)).summary.status == 'idle'
+            assert any(root.iterdir()), 'durable demo wrote no local state'
+    asyncio.run(tui_smoke())
 print(json.dumps(dict(wheel_version=md.version('novirhiza-tether'),
     agent_runtime=md.version('pydantic-ai-slim'), provider_sdks=len(sdks),
     extra=extra or 'base', offline_agent_and_replay=True, offline_gated_agent=True,
-    offline_durable_client_resume=True)))
+    offline_durable_client_resume=True, offline_tui=(extra == 'tui'))))
 """
 
 
@@ -321,7 +343,7 @@ async def main() -> int:
     directory = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("dist")
     extra = sys.argv[2] if len(sys.argv) > 2 else None
     try:
-        if extra not in (None, "openai"):
+        if extra not in (None, "openai", "tui"):
             raise ValueError("unsupported_extra")
         wheel = inspect_artifacts(directory)
         with tempfile.TemporaryDirectory(prefix="tether-base-") as name:

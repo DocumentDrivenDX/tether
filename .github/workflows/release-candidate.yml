@@ -29,6 +29,10 @@ jobs:
       - run: uv build
       - name: Verify built distributions
         run: uv run --locked python scripts/check_distribution.py dist
+      - name: Verify optional compatible-provider closure
+        run: uv run --locked python scripts/check_distribution.py dist openai
+      - name: Verify optional terminal UI closure
+        run: uv run --locked python scripts/check_distribution.py dist tui
       - name: Bind artifacts to tag and source
         run: >-
           uv run --locked python scripts/verify_release_artifacts.py create-manifest
