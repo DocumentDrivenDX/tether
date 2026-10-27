@@ -393,6 +393,41 @@ def test_real_loopback_stream_close_releases_socket_after_provisional_text(
     asyncio.run(scenario())
 
 
+def test_real_loopback_stream_deadline_closes_stalled_socket_without_replay(
+    model_request: ModelRequest, limits: ModelExecutionLimits
+) -> None:
+    async def scenario() -> None:
+        peer = CancelledStreamPeer()
+        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        model = OpenAICompatModel(
+            base_url=f"http://127.0.0.1:{port}/v1",
+            tiers={"demo": "fabricated-wire-model"},
+            limits=limits,
+            output_limit_field="max_tokens",
+        )
+        request = model_request.model_copy(update={"timeout_seconds": 1.0})
+        stream = cast(AsyncGenerator, model.stream(request))
+        try:
+            first = await asyncio.wait_for(anext(stream), 2)
+            assert isinstance(first, TextDelta)
+            assert first.text == "Fabricated "
+            with pytest.raises(ModelUnavailable, match="timeout"):
+                await asyncio.wait_for(anext(stream), 2)
+            await asyncio.wait_for(peer.closed.wait(), 2)
+        finally:
+            await stream.aclose()
+            await model.aclose()
+            server.close()
+            await server.wait_closed()
+        assert peer.requests == 1
+        recorder = model_request.attempts
+        assert isinstance(recorder, ListAttemptRecorder)
+        assert len(recorder.started) == 1
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("truncated_body", [False, True])
 def test_real_loopback_missing_terminal_never_replays_or_finishes(
     model_request: ModelRequest, limits: ModelExecutionLimits, truncated_body: bool
