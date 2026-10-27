@@ -1117,13 +1117,12 @@ checkpoint does not qualify provisional delivery, native incremental streaming, 
 the broader external/hosted matrix.
 
 
-The next slice 9a checkpoint establishes model-port version 3 stream frames before live delivery:
+The next slice 9a checkpoint established model-port version 3 stream frames before live delivery:
 optional claimed physical identity, copied/validated frames, exact nonempty-delta/terminal text,
 consistent attempt state, cancellation-responsive incremental UTF-8 accounting, and corrected
 scripted/recording/replay boundaries. Native whole-text frames use the successful transport's
-explicit identity. This foundation does not prove a recorder start or disclose live text; the
-following Engine/SessionService checkpoint must verify accepted-start bindings and own bounded
-authorized queues, reset/loss semantics and terminal ordering.
+explicit identity. This foundation did not prove a recorder start or disclose live text; the following
+Engine/SessionService and native producer checkpoints are recorded below.
 
 
 The model-port v3 frame checkpoint passes 1605 cases in 51 bounded groups at 92.26%
@@ -1131,6 +1130,28 @@ branch-inclusive coverage with strict typing 0 and unchanged gates. Its 47 added
 frame copies, immutable scoped claims, text consistency/bounds/cancellation, exact scripted and replay
 boundaries and native successful retry identity. Independent review findings have exact regressions;
 final review found no remaining concrete blocker and ran no tests. Four fresh hash-locked installed
-profiles and 167 matching package sources repeat cumulative evidence. Successful
-start proof, current-policy live disclosure, bounded broker/reset/loss/reconnect/terminal ordering
-and native incremental streaming remain explicit qualification work.
+profiles and 167 matching package sources repeat cumulative evidence. Successful start proof,
+current-policy live disclosure, bounded broker/reset/loss/reconnect/terminal ordering, and native
+incremental streaming were still open at this checkpoint; their later exact-source qualification is
+recorded below.
+
+### Native incremental live-delivery integration (2026-10-25)
+
+The frame baseline from merged PR #37 now feeds a recorder-backed accepted-start gate, current-policy
+per-delta disclosure, bounded SessionService queues with reset/loss/reconnect/terminal ordering, and
+native Pydantic AI incremental SSE production. The native path validates bounded SSE frames before
+SDK projection, binds deltas to the successful physical attempt, preserves retry-before-output,
+cancellation, usage and terminal evidence, and records the actual HTTP response status. The integrated
+source chain and scope for each commit are in the [execution receipt](../evidence/native-stream-execution-20261025.json).
+
+Exact local-source verification passes at `91acbace016b6d44c29a0f7e026eab0f06b68595`:
+`make check CHECK_BASE=HEAD` collected 1,620 cases in 51 bounded groups and passed at 91% branch-inclusive
+coverage with Ruff, formatting, Pyright (zero errors), layer boundaries and dependency checks. A fresh
+wheel and source archive at version `0.0.0.post89.dev0+91acbac` passed the installed base and optional
+OpenAI distribution checks. Their SHA-256 values and smoke scopes are recorded in the receipt.
+
+This evidence qualifies the local macOS/Python 3.11.17 source and the installed base/OpenAI package
+profiles. It does not establish the hosted Ubuntu/macOS or Python 3.13 matrix, and the installed smoke
+does not independently exercise native incremental streaming. No stable release tag or package
+publication is recorded; the source remains a local candidate pending the existing publication
+authority and hosted matrix result.

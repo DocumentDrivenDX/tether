@@ -54,3 +54,8 @@ class CheckedRecorder:
         usage: TokenUsage | None = None,
     ) -> None:
         await self.recorder.observe(identity, receipt, wire_response=wire_response, usage=usage)
+
+    async def disclose_delta(self, identity: AttemptIdentity | None, text: str) -> None:
+        disclose = getattr(self.recorder, "disclose_delta", None)
+        if disclose is not None:
+            await disclose(identity, text)

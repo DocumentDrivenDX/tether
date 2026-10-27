@@ -7,6 +7,7 @@ from contextvars import Context
 from typing import Literal, Self
 
 from tether.engine import Engine
+from tether.types import AttemptIdentity
 from tether.types.archive import ArchiveSink, ArchiveSource
 from tether.types.client import ClientLimits
 from tether.types.execution import Actor, copy_actor
@@ -55,6 +56,32 @@ class SessionService:
         )
         self.archives = ArchiveAccess(self.access, archive, archive_sink)
         self.followers = Followers(self.access)
+        previous_live_text = engine.live_text
+        previous_live_done = engine.live_done
+        self._previous_live_text = previous_live_text
+        self._previous_live_done = previous_live_done
+
+        async def publish_live_text(
+            owner: str, identity: AttemptIdentity, offset: int, text: str
+        ) -> None:
+            await self.followers.publish_live(owner, identity, offset, text)
+            if previous_live_text is not None:
+                await previous_live_text(owner, identity, offset, text)
+
+        self._service_live_text = publish_live_text
+        engine.live_text = self._service_live_text
+
+        async def finish_live_text(
+            owner: str,
+            identity: AttemptIdentity,
+            reason: Literal["outage", "cancelled", "reconnect"] | None,
+        ) -> None:
+            self.followers.finish_live(owner, identity, reason)
+            if previous_live_done is not None:
+                await previous_live_done(owner, identity, reason)
+
+        self._service_live_done = finish_live_text
+        engine.live_done = self._service_live_done
         self.turns = OwnedTurns(self.access, engine, default_spec)
         self.resume_mode = resume
         self.recovered: tuple[RecoveredTurn, ...] = ()
@@ -88,6 +115,12 @@ class SessionService:
         await self.engine.wait_observers_closed()
         self.drained = physical
 
+    def _restore_live_callbacks(self) -> None:
+        if self.engine.live_text is self._service_live_text:
+            self.engine.live_text = self._previous_live_text
+        if self.engine.live_done is self._service_live_done:
+            self.engine.live_done = self._previous_live_done
+
     @staticmethod
     def _observe_cleanup(task: asyncio.Task[None]) -> None:
         if not task.cancelled():
@@ -100,6 +133,7 @@ class SessionService:
         self.access.seal()
         self.turns.seal()
         self.closed = True
+        self._restore_live_callbacks()
         deadline = asyncio.get_running_loop().time() + self.limits.shutdown_timeout_seconds
         try:
             async with asyncio.timeout_at(deadline):

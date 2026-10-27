@@ -31,12 +31,15 @@ class JournalAttemptRecorder:
         recheck: Callable[[], Awaitable[object]] | None = None,
         *,
         admit: Callable[[], None] | None = None,
+        live_text: Callable[[str, AttemptIdentity, int, str], Awaitable[None]] | None = None,
     ) -> None:
         self.gov, self.tags, self.tier, self.history = gov, tags, tier, history
         self.recheck, self.admit = recheck, admit
+        self.live_text = live_text
         self.latest_exchange: HistoryRef | None = None
         self.reserved: dict[str, AttemptIdentity] = {}
         self.started: dict[str, tuple[AttemptIdentity, JsonValue, str]] = {}
+        self.live_offsets: dict[str, int] = {}
 
     async def reserve(self) -> AttemptIdentity:
         if self.tags.session_id != self.gov.log.session.id or self.tags.principal != (
@@ -96,9 +99,27 @@ class JournalAttemptRecorder:
             codec=codec,
             history_ref=ref.model_dump(mode="json") if ref else None,
         )
-        self.started[identity.attempt_id] = (identity, wire_request, codec)
         if self.admit is not None:
             self.admit()
+        self.started[identity.attempt_id] = (identity, wire_request, codec)
+        self.live_offsets[identity.attempt_id] = 0
+
+    async def disclose_delta(self, identity: AttemptIdentity | None, text: str) -> None:
+        """Disclose only text bound to an accepted physical start and current read policy."""
+        if not text or self.live_text is None or identity is None:
+            return
+        value = self.started.get(identity.attempt_id)
+        if value is None or value[0] != identity:
+            raise ModelAttemptDenied("invalid_attempt_identity")
+        try:
+            await self.gov.authorize("read_session", self.gov.log.session.id)
+        except ExecutionDenied as error:
+            raise ModelAttemptDenied(error.reason) from None
+        offset = self.live_offsets[identity.attempt_id]
+        await self.live_text(
+            self.gov.log.session.owner, identity.model_copy(deep=True), offset, text
+        )
+        self.live_offsets[identity.attempt_id] = offset + len(text)
 
     async def observe(
         self,

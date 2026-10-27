@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from typing import Literal
 from uuid import uuid4
 
 from tether.ports import ModelPort
@@ -11,6 +12,7 @@ from tether.runtime.pydantic_ai.attachments import projected
 from tether.runtime.pydantic_ai.gated import GatedAgent
 from tether.runtime.pydantic_ai.response import IncompleteModelResponse
 from tether.types import (
+    AttemptIdentity,
     AttemptRecorder,
     JsonValue,
     Message,
@@ -50,6 +52,12 @@ class Run:
         attempt_factory: Callable[[RequestTags], AttemptRecorder] | None,
         history_provider: HistoryProvider | None,
         context: ContextBoundary,
+        live_text: Callable[[str, AttemptIdentity, int, str], Awaitable[None]] | None = None,
+        live_done: Callable[
+            [str, AttemptIdentity, Literal["outage", "cancelled", "reconnect"] | None],
+            Awaitable[None],
+        ]
+        | None = None,
     ) -> None:
         self.gov, self.executor, self.template = gov, executor, template
         self.model, self.limits = model, limits
@@ -59,6 +67,9 @@ class Run:
         self.attempt_factory = attempt_factory
         self.history_provider = history_provider
         self.context = context
+        self.live_text = live_text
+        self.live_done = live_done
+        self.live_attempts: dict[str, AttemptIdentity] = {}
         self.context_services = ContextServices(model, limits, history_provider, attempt_factory)
         self.preparation: ContextStep | None = None
         self.recorder: AttemptRecorder | None = None
@@ -127,6 +138,7 @@ class Run:
                     self.history_provider,
                     step.recheck,
                     admit=step.check,
+                    live_text=self._live_delta if self.live_text is not None else None,
                 )
             )
             return request.model_copy(
@@ -270,8 +282,11 @@ class Run:
                 ]
             )
         except asyncio.CancelledError:
+            await asyncio.shield(self.finish_live("cancelled"))
             await asyncio.shield(self.gov.fact("turn_ended", stop_reason="cancelled"))
             raise
+        reset = "outage" if stop == "model_unavailable" else None
+        await self.finish_live(reset)
         await self.gov.fact("turn_ended", stop_reason=stop, reason=reason)
         return TurnResult(
             turn_id=self.gov.turn_id,
@@ -280,6 +295,20 @@ class Run:
             pending=tuple(self.executor.pending.values()) if visible else (),
             messages=visible,
         )
+
+    async def _live_delta(
+        self, owner: str, identity: AttemptIdentity, offset: int, text: str
+    ) -> None:
+        self.live_attempts[identity.attempt_id] = identity.model_copy(deep=True)
+        if self.live_text is not None:
+            await self.live_text(owner, identity, offset, text)
+
+    async def finish_live(self, reason: Literal["outage", "cancelled", "reconnect"] | None) -> None:
+        if self.live_done is None:
+            return
+        for identity in tuple(self.live_attempts.values()):
+            await self.live_done(self.gov.log.session.owner, identity, reason)
+        self.live_attempts.clear()
 
     async def outcome(self, continuing: bool) -> tuple[bool, str | None]:
         try:

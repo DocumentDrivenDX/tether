@@ -24,6 +24,11 @@ def anyio_backend():
     return "asyncio"
 
 
+@pytest.fixture
+def restart_limits(limits):
+    return limits.model_copy(update={"request_timeout_seconds": 15})
+
+
 @pytest.mark.parametrize(
     ("wire_reason", "reason"),
     [
@@ -36,16 +41,16 @@ def anyio_backend():
 )
 @pytest.mark.parametrize("calls", [False, True])
 async def test_native_incomplete_survives_actual_root_reopen(
-    tmp_path, limits, wire_reason, reason, calls
+    tmp_path, restart_limits, wire_reason, reason, calls
 ):
     actor, tool = Actor(id="fabricated-owner", credential=CredentialProbe()), DemoTool()
     root = await JsonlRoot.open(tmp_path)
     store = await JsonlSessionStore.open(root)
     provider = await JsonlHistory.open(root)
     session = await store.create(actor.id, SessionInit())
-    first = engine(limits, [final()], tool, provider)
+    first = engine(restart_limits, [final()], tool, provider)
     native = adapter(
-        limits,
+        restart_limits,
         lambda request: httpx.Response(
             200,
             json=wire_response(
@@ -75,7 +80,7 @@ async def test_native_incomplete_survives_actual_root_reopen(
         assert await root.aclose()
     root = await JsonlRoot.open(tmp_path)
     provider = await JsonlHistory.open(root)
-    second = engine(limits, [final()], tool, provider)
+    second = engine(restart_limits, [final()], tool, provider)
     try:
         store = await JsonlSessionStore.open(root)
         entries = (await store.entries(session.id, actor.id, start=0, limit=1000)).items

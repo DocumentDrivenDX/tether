@@ -164,17 +164,17 @@ async def smoke():
         finally:
             assert await root.aclose()
 asyncio.run(smoke())
-print(json.dumps(dict(wheel_version=md.version('tether'),
+print(json.dumps(dict(wheel_version=md.version('novirhiza-tether'),
     agent_runtime=md.version('pydantic-ai-slim'), provider_sdks=len(sdks),
     extra=extra or 'base', offline_agent_and_replay=True, offline_gated_agent=True)))
 """
 
 
 def inspect_artifacts(directory: Path) -> Path:
-    wheels = sorted(directory.glob("tether-*.whl"))
-    sources = sorted(directory.glob("tether-*.tar.gz"))
+    wheels = sorted(directory.glob("novirhiza_tether-*.whl"))
+    sources = sorted(directory.glob("novirhiza_tether-*.tar.gz"))
     if len(wheels) != 1 or len(sources) != 1:
-        raise ValueError("expected one fresh tether wheel and one source archive")
+        raise ValueError("expected one fresh novirhiza-tether wheel and one source archive")
     with zipfile.ZipFile(wheels[0]) as wheel:
         names = wheel.namelist()
         if "tether/py.typed" not in names or not LICENSES.issubset({Path(x).name for x in names}):
@@ -222,7 +222,7 @@ async def clean_import(wheel: Path, root: Path, extra: str | None = None) -> Non
     wheel_hash = hashlib.sha256(wheel_data).hexdigest()
     await asyncio.to_thread(
         requirements.write_text,
-        exported + f"\ntether @ {wheel.as_uri()} --hash=sha256:{wheel_hash}\n",
+        exported + f"\nnovirhiza-tether @ {wheel.as_uri()} --hash=sha256:{wheel_hash}\n",
         encoding="utf-8",
     )
     await run(

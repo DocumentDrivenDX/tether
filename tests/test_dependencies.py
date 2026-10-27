@@ -30,7 +30,7 @@ def metadata(root: Path, specs: dict[str, list[str]]) -> Callable[[str], Distrib
 
 def baseline() -> dict[str, list[str]]:
     return {
-        "tether": ["pydantic-ai-slim", "pydantic", "anyio"],
+        "novirhiza-tether": ["pydantic-ai-slim", "pydantic", "anyio"],
         "pydantic-ai-slim": ["pydantic-graph"],
         "pydantic-graph": [],
         "pydantic": [],
@@ -40,7 +40,7 @@ def baseline() -> dict[str, list[str]]:
 
 def test_unrelated_or_optional_installed_sdk_is_not_in_base(tmp_path: Path) -> None:
     data = baseline()
-    data["tether"].append('openai; extra == "openai"')
+    data["novirhiza-tether"].append('openai; extra == "openai"')
     data["openai"] = []
     lookup = metadata(tmp_path, data)
     base = reachable_dependencies(lookup=lookup)
@@ -70,14 +70,14 @@ def test_child_extra_and_environment_marker(tmp_path: Path) -> None:
 
 def test_missing_or_wrong_version_cannot_pass(tmp_path: Path) -> None:
     data = baseline()
-    data["tether"].append("missing")
+    data["novirhiza-tether"].append("missing")
     with pytest.raises(PackageNotFoundError):
         reachable_dependencies(lookup=metadata(tmp_path, data))
     with pytest.raises(ValueError, match="unsatisfied"):
         reachable_dependencies(
-            lookup=metadata(tmp_path / "versions", {"tether": ["child>=2"], "child": []})
+            lookup=metadata(tmp_path / "versions", {"novirhiza-tether": ["child>=2"], "child": []})
         )
-    assert base_errors({"tether": "1.0"})
+    assert base_errors({"novirhiza-tether": "1.0"})
 
 
 @pytest.mark.parametrize("sdk", sorted(PROVIDER_DISTRIBUTIONS))

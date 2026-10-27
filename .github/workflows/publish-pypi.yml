@@ -1,0 +1,67 @@
+name: Publish immutable release to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing immutable GitHub release tag to backfill
+        required: true
+        type: string
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.release.draft == false
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/checkout@v4
+        with:
+          path: validator
+      - name: Resolve release tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = release ]; then tag="$RELEASE_TAG"; else tag="$INPUT_TAG"; fi
+          test -n "$tag"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          path: source
+          fetch-depth: 0
+      - name: Download exact immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          mkdir dist
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > release.json
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist
+          git -C source rev-parse "refs/tags/$TAG^{commit}" > source-commit.txt
+      - name: Verify release identity and all asset digests
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          python validator/scripts/verify_release_artifacts.py verify-release \
+            --release-json release.json --dist-dir dist --tag "$TAG" \
+            --repository "$GITHUB_REPOSITORY" --source-commit "$(cat source-commit.txt)" --package novirhiza-tether
+          mkdir upload
+          cp dist/*.whl dist/*.tar.gz upload/
+          test "$(find upload -maxdepth 1 -type f | wc -l | tr -d ' ')" = 2
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: upload/
