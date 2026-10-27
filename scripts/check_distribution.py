@@ -358,6 +358,9 @@ async def clean_import(wheel: Path, root: Path, extra: str | None = None) -> Non
             )
         ).strip()
     )
+    if extra == "tui":
+        terminal_check = Path(__file__).with_name("check_terminal_pty.py").resolve()
+        print((await run([str(python), "-I", str(terminal_check)])).strip())
 
 
 async def main() -> int:
