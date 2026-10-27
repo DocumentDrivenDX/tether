@@ -92,6 +92,28 @@ class LoopbackPeer:
             await writer.wait_closed()
 
 
+class RetryAfterPeer:
+    def __init__(self) -> None:
+        self.requests = 0
+
+    async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            await read_request(reader)
+            self.requests += 1
+            payload = b'{"error":"fabricated outage"}'
+            writer.write(
+                b"HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\n"
+                b"Retry-After: 30\r\nContent-Length: "
+                + str(len(payload)).encode()
+                + b"\r\nConnection: close\r\n\r\n"
+                + payload
+            )
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+
 def stream_event(delta: dict, finish: str | None = None) -> bytes:
     frame = {
         "id": "fabricated-stream-id",
@@ -282,6 +304,47 @@ def test_real_loopback_retry_refreshes_identity_and_receipts(
             server.close()
             await server.wait_closed()
         assert_exchange(peer.seen, credential, recorder, response, model_request)
+
+    asyncio.run(scenario())
+
+
+def test_real_loopback_cancelled_retry_delay_never_sends_second_request(
+    model_request: ModelRequest, limits: ModelExecutionLimits
+) -> None:
+    async def scenario() -> None:
+        peer = RetryAfterPeer()
+        observed = asyncio.Event()
+
+        class Recorder(ListAttemptRecorder):
+            async def observe(self, *args, **kwargs):
+                await super().observe(*args, **kwargs)
+                observed.set()
+
+        recorder = Recorder(model_request.tags)
+        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        model = OpenAICompatModel(
+            base_url=f"http://127.0.0.1:{port}/v1",
+            tiers={"demo": "fabricated-wire-model"},
+            limits=limits.model_copy(update={"max_retry_delay_seconds": 30}),
+            output_limit_field="max_tokens",
+        )
+        request = model_request.model_copy(update={"attempts": recorder})
+        task = asyncio.create_task(complete(model, request))
+        try:
+            await asyncio.wait_for(observed.wait(), 2)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            await model.aclose()
+            server.close()
+            await server.wait_closed()
+        assert peer.requests == 1
+        assert len(recorder.started) == 1
 
     asyncio.run(scenario())
 
