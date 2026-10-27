@@ -4,13 +4,26 @@ Install the `novirhiza-tether` distribution; the Python import remains `tether`.
 
 A Python library for building agent harnesses. Tether integrates Pydantic AI Agent with
 typed tools, execution policy and durable sessions. Its in-process async Client API exposes
-session metadata, history, persisted changes and a partial command facade. Telemetry and
-reference CLI/terminal clients are planned in later build slices.
+session metadata, history, persisted changes and a partial command facade. An offline
+reference CLI and terminal UI exercise the local profile.
 
 **Status: gated execution, local durability and partial Client commands (slices 2–4 subset).** Pydantic AI Agent now runs tools through
 Tether's policy, validation, approval and commit gates. Model doubles and shared codecs remain
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
-Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Explicit durable resume is implemented for the qualified local profile. Optional PostgreSQL18 session storage and independent content history are implemented for the qualified database profile. Provisional text production, embedded-server convenience and reference clients remain unfinished. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Explicit durable resume is implemented for the qualified local profile. Optional PostgreSQL18 session storage and independent content history are implemented for the qualified database profile. Native incremental text has a selected local qualification; broader profile and release qualification remain open. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+
+## Offline reference client
+
+From a clone, `uv run tether` starts a Textual terminal UI with a scripted model, a
+fabricated tool call and an approval. It creates a local JSONL store at
+`~/.local/share/tether`. No account, credential or network call is needed for the demo.
+Install the optional `tui` extra when running an installed distribution outside the
+development environment. The terminal UI shows sessions and transcript history and
+supports send, approve/deny and explicit resume. The same local demo profile has CLI
+commands for `list`, `show`, `send`, `follow`, `confirm`, `resume` and fabricated cassette
+`replay`; run `uv run tether --help` for arguments. Use `--root PATH` to select another
+local store. These clients are a reference path; the complete P0 release gate and
+quickstart timing remain to be qualified.
 
 ## Development
 
