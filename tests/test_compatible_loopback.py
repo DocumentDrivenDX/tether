@@ -201,6 +201,32 @@ class FragmentedToolPeer:
             await writer.wait_closed()
 
 
+class CancelledStreamPeer:
+    def __init__(self) -> None:
+        self.closed = asyncio.Event()
+        self.requests = 0
+
+    async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            await read_request(reader)
+            self.requests += 1
+            first = stream_event({"role": "assistant", "content": "Fabricated "})
+            writer.write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+                b"Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+                + hex(len(first))[2:].encode()
+                + b"\r\n"
+                + first
+                + b"\r\n"
+            )
+            await writer.drain()
+            assert await reader.read() == b""
+            self.closed.set()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+
 def assert_exchange(
     seen: list[tuple[str, dict[str, str], dict]],
     credential: FreshCredential,
@@ -327,6 +353,39 @@ def test_real_loopback_fragmented_tool_arguments_finish_once(
         ]
         assert peer.request is not None
         assert peer.request[2]["stream"] is True
+        recorder = model_request.attempts
+        assert isinstance(recorder, ListAttemptRecorder)
+        assert len(recorder.started) == 1
+
+    asyncio.run(scenario())
+
+
+def test_real_loopback_stream_close_releases_socket_after_provisional_text(
+    model_request: ModelRequest, limits: ModelExecutionLimits
+) -> None:
+    async def scenario() -> None:
+        peer = CancelledStreamPeer()
+        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        model = OpenAICompatModel(
+            base_url=f"http://127.0.0.1:{port}/v1",
+            tiers={"demo": "fabricated-wire-model"},
+            limits=limits,
+            output_limit_field="max_tokens",
+        )
+        stream = cast(AsyncGenerator, model.stream(model_request))
+        try:
+            first = await asyncio.wait_for(anext(stream), 2)
+            assert isinstance(first, TextDelta)
+            assert first.text == "Fabricated "
+            await asyncio.wait_for(stream.aclose(), 2)
+            await asyncio.wait_for(peer.closed.wait(), 2)
+        finally:
+            await stream.aclose()
+            await model.aclose()
+            server.close()
+            await server.wait_closed()
+        assert peer.requests == 1
         recorder = model_request.attempts
         assert isinstance(recorder, ListAttemptRecorder)
         assert len(recorder.started) == 1
