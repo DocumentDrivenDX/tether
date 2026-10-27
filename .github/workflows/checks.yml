@@ -33,3 +33,5 @@ jobs:
         run: uv run --locked python scripts/check_distribution.py dist
       - name: Installed optional compatible-provider closure
         run: uv run --locked python scripts/check_distribution.py dist openai
+      - name: Installed optional terminal UI closure
+        run: uv run --locked python scripts/check_distribution.py dist tui
