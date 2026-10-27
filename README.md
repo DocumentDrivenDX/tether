@@ -24,6 +24,8 @@ commands for `list`, `show`, `send`, `follow`, `confirm`, `resume` and fabricate
 `replay`; run `uv run tether --help` for arguments. Use `--root PATH` to select another
 local store. These clients are a reference path; the complete P0 release gate and
 quickstart timing remain to be qualified.
+For a deliberately volatile in-memory UI demo, use `uv run tether --volatile`;
+its sessions disappear when the process exits and resume is disabled.
 
 ## Development
 

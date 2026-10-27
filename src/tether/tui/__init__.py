@@ -28,9 +28,10 @@ class DemoApp(App[None]):
     #body { height: 1fr; }
     """
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, volatile: bool = False) -> None:
         super().__init__()
         self.root = root
+        self.volatile = volatile
         self._demo_context: Any = None
         self.client: Client | None = None
         self.actor: Actor | None = None
@@ -53,7 +54,7 @@ class DemoApp(App[None]):
         yield Footer()
 
     async def on_mount(self) -> None:
-        self._demo_context = open_demo(self.root)
+        self._demo_context = open_demo(self.root, volatile=self.volatile)
         app, actor, _ = await self._demo_context.__aenter__()
         client = app.client(actor)
         self.client, self.actor = client, actor
@@ -152,9 +153,9 @@ class DemoApp(App[None]):
 
     async def _finish(self, handle: Any) -> None:
         result: TurnResult = await handle.result()
-        self.query_one("#transcript", RichLog).write(f"[{result.stop_reason}]")
         await self._refresh_sessions()
         await self._show_session()
+        self.query_one("#transcript", RichLog).write(f"[{result.stop_reason}]")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "message":
@@ -185,5 +186,5 @@ class DemoApp(App[None]):
             await self._show_session()
 
 
-def run(root: Path) -> None:
-    DemoApp(root).run()
+def run(root: Path, *, volatile: bool = False) -> None:
+    DemoApp(root, volatile=volatile).run()
