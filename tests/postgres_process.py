@@ -2,8 +2,10 @@
 
 import asyncio
 import json
+import os
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from psycopg import AsyncConnection
 
@@ -15,6 +17,13 @@ from tether.types.storage import StorageLimits
 
 def emit(value):
     print(json.dumps(value), flush=True)
+
+
+def record_effect(path):
+    with Path(path).open("ab") as target:
+        target.write(b"fabricated-effect\n")
+        target.flush()
+        os.fsync(target.fileno())
 
 
 async def commands(log):
@@ -79,6 +88,8 @@ async def run(config):
                         )
                     ]
                 )
+                if config.get("effect_path"):
+                    await asyncio.to_thread(record_effect, config["effect_path"])
             emit({"event": "acquired", "turn": log.turn_id, "entries": len(log.entries)})
             await commands(log)
     except Exception as error:
