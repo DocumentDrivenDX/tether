@@ -27,6 +27,8 @@ import asyncio
 import tempfile
 from contextlib import redirect_stdout
 from io import StringIO
+original_connect = socket.socket.connect
+original_create_connection = socket.create_connection
 def deny_network(*args, **kwargs):
     raise AssertionError("base import attempted network I/O")
 socket.socket.connect = deny_network
@@ -229,6 +231,66 @@ async def smoke():
         finally:
             assert await root.aclose()
 asyncio.run(smoke())
+if extra == 'openai':
+    def loopback_only(sock, address):
+        if not isinstance(address, tuple) or address[0] != '127.0.0.1':
+            raise AssertionError('installed compatible profile attempted external network I/O')
+        return original_connect(sock, address)
+    socket.socket.connect = loopback_only
+    socket.create_connection = original_create_connection
+    async def compatible_smoke():
+        seen = []
+        async def handle(reader, writer):
+            try:
+                head = await reader.readuntil(b'\\r\\n\\r\\n')
+                lines = head.decode('ascii').split('\\r\\n')
+                headers = dict((name.lower(), value) for name, value in (
+                    line.split(': ', 1) for line in lines[1:] if line))
+                body = json.loads(await reader.readexactly(int(headers['content-length'])))
+                seen.append((lines[0], headers, body))
+                payload = json.dumps(dict(id='fabricated-installed-id',
+                    object='chat.completion', created=1, model='fabricated-wire-model',
+                    choices=[dict(index=0, finish_reason='stop', message=dict(
+                        role='assistant', content='Fabricated installed answer.'))])).encode()
+                writer.write(b'HTTP/1.1 200 OK\\r\\nContent-Type: application/json\\r\\n'
+                    + b'Content-Length: ' + str(len(payload)).encode()
+                    + b'\\r\\nConnection: close\\r\\n'
+                    + b'X-Request-Id: fabricated-installed-header\\r\\n\\r\\n'
+                    + payload)
+                await writer.drain()
+            finally:
+                writer.close()
+                await writer.wait_closed()
+        server = await asyncio.start_server(handle, '127.0.0.1', 0)
+        port = server.sockets[0].getsockname()[1]
+        limits = ModelExecutionLimits(max_response_bytes=8192,
+            max_tool_argument_bytes=512, max_attempts=1,
+            request_timeout_seconds=5, max_retry_delay_seconds=.01)
+        tags = RequestTags(session_id='fabricated-installed-session',
+            turn_id='fabricated-installed-turn', model_call_id='fabricated-installed-call',
+            principal='fabricated', spec_id='demo', spec_version='1')
+        request = ModelRequest(model='demo', tags=tags, system='Fabricated instructions.',
+            messages=(Message(role='user', content='Fabricated request.'),),
+            identity_mode='anonymous', max_output_tokens=64,
+            attempts=ListAttemptRecorder(tags))
+        model = OpenAICompatModel(base_url=f'http://127.0.0.1:{port}/v1',
+            tiers={'demo': 'fabricated-wire-model'}, limits=limits,
+            output_limit_field='max_tokens')
+        try:
+            response = await complete(model, request)
+        finally:
+            await model.aclose()
+            server.close()
+            await server.wait_closed()
+        assert response.content == 'Fabricated installed answer.'
+        assert response.request_id == 'fabricated-installed-header'
+        assert response.receipt.response_id == 'fabricated-installed-id'
+        assert len(seen) == 1
+        assert seen[0][0] == 'POST /v1/chat/completions HTTP/1.1'
+        assert seen[0][1]['accept-encoding'] == 'identity'
+        assert seen[0][1].get('authorization') is None
+        assert seen[0][2]['model'] == 'fabricated-wire-model'
+    asyncio.run(compatible_smoke())
 if extra == 'tui':
     from textual.widgets import Button, Input
     from tether.tui import DemoApp
@@ -272,7 +334,8 @@ print(json.dumps(dict(wheel_version=md.version('novirhiza-tether'),
     agent_runtime=md.version('pydantic-ai-slim'), provider_sdks=len(sdks),
     extra=extra or 'base', offline_agent_and_replay=True, offline_gated_agent=True,
     offline_durable_client_resume=True, offline_tui=(extra == 'tui'),
-    offline_tui_cli_restart=(extra == 'tui'))))
+    offline_tui_cli_restart=(extra == 'tui'),
+    offline_compatible_loopback=(extra == 'openai'))))
 """
 
 
