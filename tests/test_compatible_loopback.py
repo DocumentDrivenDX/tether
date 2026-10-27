@@ -7,10 +7,18 @@ import json
 from collections.abc import AsyncGenerator
 from typing import cast
 
+import pytest
+
 from tether.adapters.openai_compat import OpenAICompatModel
 from tether.models import complete
 from tether.models.testing import ListAttemptRecorder
-from tether.types import ModelExecutionLimits, ModelRequest, ModelResponse, TextDelta
+from tether.types import (
+    ModelExecutionLimits,
+    ModelRequest,
+    ModelResponse,
+    ModelUnavailable,
+    TextDelta,
+)
 
 
 class FreshCredential:
@@ -125,6 +133,29 @@ class StreamingPeer:
             await writer.wait_closed()
 
 
+class IncompleteStreamPeer:
+    def __init__(self, *, truncated_body: bool) -> None:
+        self.truncated_body = truncated_body
+        self.requests = 0
+
+    async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            await read_request(reader)
+            self.requests += 1
+            first = stream_event({"role": "assistant", "content": "Fabricated "})
+            length = len(first) + (20 if self.truncated_body else 0)
+            writer.write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: "
+                + str(length).encode()
+                + b"\r\nConnection: close\r\n\r\n"
+                + first
+            )
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+
 def assert_exchange(
     seen: list[tuple[str, dict[str, str], dict]],
     credential: FreshCredential,
@@ -218,5 +249,42 @@ def test_real_loopback_stream_discloses_text_before_terminal(
             await model.aclose()
             server.close()
             await server.wait_closed()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("truncated_body", [False, True])
+def test_real_loopback_missing_terminal_never_replays_or_finishes(
+    model_request: ModelRequest, limits: ModelExecutionLimits, truncated_body: bool
+) -> None:
+    async def scenario() -> None:
+        peer = IncompleteStreamPeer(truncated_body=truncated_body)
+        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        model = OpenAICompatModel(
+            base_url=f"http://127.0.0.1:{port}/v1",
+            tiers={"demo": "fabricated-wire-model"},
+            limits=limits,
+            output_limit_field="max_tokens",
+        )
+        items = []
+
+        async def collect() -> None:
+            async for item in model.stream(model_request):
+                items.append(item)
+
+        try:
+            with pytest.raises(ModelUnavailable):
+                await collect()
+        finally:
+            await model.aclose()
+            server.close()
+            await server.wait_closed()
+        assert [item.text for item in items if isinstance(item, TextDelta)] == ["Fabricated "]
+        assert not any(isinstance(item, ModelResponse) for item in items)
+        assert peer.requests == 1
+        recorder = model_request.attempts
+        assert isinstance(recorder, ListAttemptRecorder)
+        assert len(recorder.started) == 1
 
     asyncio.run(scenario())
