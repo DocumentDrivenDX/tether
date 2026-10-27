@@ -23,26 +23,33 @@ def emit(value: dict) -> None:
     print(json.dumps(value), flush=True)
 
 
-def record_effect(path: Path) -> None:
+def record_effect(path: Path, invocation_id: str | None = None) -> None:
+    record = (invocation_id.encode() if invocation_id else b"fabricated-effect") + b"\n"
+    if invocation_id and path.exists() and record in path.read_bytes().splitlines(keepends=True):
+        return
     with path.open("ab") as target:
-        target.write(b"fabricated-effect\n")
+        target.write(record)
         target.flush()
         os.fsync(target.fileno())
 
 
 class EffectTool(DemoTool):
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, safe: bool = False, hold: bool = True) -> None:
         super().__init__()
         self.path = path
+        self.safe = safe
+        self.hold = hold
 
     async def run(self, ctx, args) -> str:
-        await asyncio.to_thread(record_effect, self.path)
-        emit({"event": "effect_committed", "invocation_id": ctx.invocation_id})
-        await asyncio.Event().wait()
-        return "unreachable"
+        self.calls.append((ctx.invocation_id, args.model_dump()))
+        await asyncio.to_thread(record_effect, self.path, ctx.invocation_id if self.safe else None)
+        if self.hold:
+            emit({"event": "effect_committed", "invocation_id": ctx.invocation_id})
+            await asyncio.Event().wait()
+        return "Recorded fabricated effect"
 
 
-async def main(root_path: Path, effect_path: Path) -> None:
+async def main(root_path: Path, effect_path: Path, *, safe: bool = False) -> None:
     root = await JsonlRoot.open(root_path)
     store = await JsonlSessionStore.open(root)
     provider = await JsonlHistory.open(root)
@@ -55,7 +62,7 @@ async def main(root_path: Path, effect_path: Path) -> None:
         max_retry_delay_seconds=0.001,
     )
     h = SimpleNamespace(store=store, provider=provider, actor=actor, engines=[], limits=limits)
-    run = build(h, tool=EffectTool(effect_path))
+    run = build(h, safe=safe, tool=EffectTool(effect_path, safe=safe))
     session = await store.create(actor.id, SessionInit(settings={"approval": "auto"}))
     emit({"event": "created", "session_id": session.id})
     async with store.turn(session.id, actor.id, turn_id="killed-turn") as log:
@@ -63,4 +70,4 @@ async def main(root_path: Path, effect_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(Path(sys.argv[1]), Path(sys.argv[2])))
+    asyncio.run(main(Path(sys.argv[1]), Path(sys.argv[2]), safe=len(sys.argv) > 3))
