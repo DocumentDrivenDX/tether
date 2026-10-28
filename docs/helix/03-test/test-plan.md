@@ -124,9 +124,11 @@ Local JSONL file/restart qualification is recorded in SD-001's execution receipt
 
 Full release qualification remains incomplete; executed production subsets and their versions live in SD-001's execution receipts. No accepted performance budget is supplied here. [SPIKE-004](../02-design/spikes/SPIKE-004-pydantic-ai-agent-boundary-integration.md) supplies scoped actual Agent integration evidence for authorization/READ_SESSION, invocation-bound approval, fault/restart recovery, source/runner separation and per-attempt correlation. Its runnable suite uses a custom nonstreaming model, mocked HTTP transport and a bounded fixture store, including five abrupt process exits; it does not certify the production JSONL profile, streaming/native transports, full context coverage or live Gateway joins. Source delivery and feature/story detail remain SD-001 work. Summary fidelity and approximate token estimates require workload/model qualification; no universal recall or server-acceptance guarantee is claimed. Actual OS-crash durability and cross-session business-effect deduplication remain consumer qualification. These limits do not waive any P0 suite.
 
+The [2026-10-28 P0 qualification snapshot](evidence/p0-qualification-20261028.md) records the current main tree, complete local source gate, five fresh installed artifact profiles, and open Q0–Q8 decisions. It is scoped evidence, not a release sign-off.
+
 ## Build Commands
 
-The shared local/pre-commit/CI recipe is executable for the implemented subsets:
+The complete local release recipe is executable for the implemented subsets. Routine pull-request CI runs `make pr-check` and is not a release gate:
 
 ```bash
 uv sync --locked
