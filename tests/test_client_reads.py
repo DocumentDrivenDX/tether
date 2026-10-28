@@ -16,9 +16,17 @@ from tether.models.testing import ScriptedModel
 from tether.stores.jsonl import JsonlRoot, JsonlSessionStore
 from tether.stores.memory import MemoryFiles
 from tether.types.client import ReadLimit, UnknownModelCall
-from tether.types.execution import Actor, AgentSpec, Answer, AuthzRequest, Decision, ExecutionDenied
+from tether.types.execution import (
+    Actor,
+    AgentSpec,
+    Answer,
+    AuthzRequest,
+    Decision,
+    ExecutionDenied,
+    HistoryRef,
+)
 from tether.types.history import HistoryValue
-from tether.types.storage import SessionInit, SessionQuery, UnknownSession
+from tether.types.storage import IntegrityError, SessionInit, SessionQuery, UnknownSession
 
 pytestmark = pytest.mark.anyio
 
@@ -196,7 +204,9 @@ async def test_missing_or_corrupt_sources_are_explicit_not_empty_messages(harnes
     assert (await h.client.entries(sid)).items
 
 
-@pytest.mark.parametrize("status", ["pending", "partial", "ambiguous", "unavailable", "denied"])
+@pytest.mark.parametrize(
+    "status", ["pending", "partial", "ambiguous", "unavailable", "denied", "unsupported"]
+)
 async def test_external_source_readiness_keeps_metadata_without_disclosing_content(
     harness, monkeypatch, status
 ):
@@ -376,6 +386,206 @@ async def test_source_retry_hint_is_finite_before_client_disclosure(
         assert all(slot.value.retry_after_seconds is None for slot in page.items)
     assert (await h.client.entries(sid)) == entries_before
     assert not h.tool.calls
+
+
+async def test_accepted_history_link_uses_replacement_and_never_falls_back(harness, monkeypatch):
+    h, sid = harness, harness.session.id
+    entries = (await h.client.entries(sid)).items
+    source = next(entry for entry in entries if entry.kind == "message" and entry.history_ref)
+    original = source.history_ref
+    assert original is not None
+    value = (await h.history.read((original,), actor=h.actor))[0]
+    assert value.record is not None
+    replacement = await h.history.put(
+        actor=h.actor, session_id=sid, key="fabricated-replacement", record=value.record
+    )
+    linked = await h.client.link_history(
+        sid, source.index, original, replacement, key="fabricated-link"
+    )
+    assert linked.kind == "history_linked"
+    assert (
+        await h.client.link_history(sid, source.index, original, replacement, key="fabricated-link")
+        == linked
+    )
+    page = await h.client.history(sid, start=source.index, limit=1)
+    assert page.items[0].value.ref == replacement
+    assert page.items[0].value.record == value.record
+    read = h.history.read
+
+    async def missing(refs, *, actor):
+        if tuple(refs) == (replacement,):
+            return (HistoryValue(ref=replacement, status="unavailable", reason="source_outage"),)
+        return await read(refs, actor=actor)
+
+    monkeypatch.setattr(h.history, "read", missing)
+    page = await h.client.history(sid, start=source.index, limit=1)
+    assert page.items[0].value.ref == replacement
+    assert page.items[0].value.status == "unavailable"
+    assert page.items[0].value.record is None
+
+
+async def test_history_link_refuses_changed_content_without_a_journal_fact(harness):
+    h, sid = harness, harness.session.id
+    source = next(
+        entry
+        for entry in (await h.client.entries(sid)).items
+        if entry.kind == "message" and entry.history_ref
+    )
+    original = source.history_ref
+    assert original is not None
+    value = (await h.history.read((original,), actor=h.actor))[0]
+    assert value.record is not None
+    assert value.record.message is not None
+    changed = value.record.model_copy(
+        update={"message": value.record.message.model_copy(update={"content": "Changed"})}
+    )
+    replacement = await h.history.put(
+        actor=h.actor, session_id=sid, key="fabricated-changed", record=changed
+    )
+    count = (await h.client.get(sid)).summary.entry_count
+    with pytest.raises(ValueError, match="history_link_equivalence"):
+        await h.client.link_history(
+            sid, source.index, original, replacement, key="fabricated-rejected-link"
+        )
+    assert (await h.client.get(sid)).summary.entry_count == count
+
+
+async def test_history_link_chain_refuses_a_cycle_before_acceptance(harness):
+    h, sid = harness, harness.session.id
+    source = next(
+        entry
+        for entry in (await h.client.entries(sid)).items
+        if entry.kind == "message" and entry.history_ref
+    )
+    original = source.history_ref
+    assert original is not None
+    value = (await h.history.read((original,), actor=h.actor))[0]
+    assert value.record is not None
+    first = await h.history.put(
+        actor=h.actor, session_id=sid, key="fabricated-chain-first", record=value.record
+    )
+    second = await h.history.put(
+        actor=h.actor, session_id=sid, key="fabricated-chain-second", record=value.record
+    )
+    await h.client.link_history(sid, source.index, original, first, key="first-link")
+    await h.client.link_history(sid, source.index, first, second, key="second-link")
+    count = (await h.client.get(sid)).summary.entry_count
+    with pytest.raises(IntegrityError, match="history_link_cycle"):
+        await h.client.link_history(sid, source.index, second, original, key="cycle-link")
+    assert (await h.client.get(sid)).summary.entry_count == count
+    page = await h.client.history(sid, start=source.index, limit=1)
+    assert page.items[0].value.ref == second
+    third = await h.history.put(
+        actor=h.actor, session_id=sid, key="fabricated-chain-third", record=value.record
+    )
+    await h.client.link_history(sid, source.index, original, third, key="third-link")
+    page = await h.client.history(sid, start=source.index, limit=1)
+    assert page.items[0].value.ref == third
+
+
+async def test_history_link_rebinds_call_detail_observation_without_changing_receipt(harness):
+    h, sid = harness, harness.session.id
+    entries = (await h.client.entries(sid)).items
+    call_id = next(e.facts["model_call_id"] for e in entries if e.kind == "model_call")
+    source = next(
+        entry
+        for entry in entries
+        if entry.kind == "model_receipt" and entry.facts.get("history_ref")
+    )
+    original = HistoryRef.model_validate(source.facts["history_ref"])
+    value = (await h.history.read((original,), actor=h.actor))[0]
+    assert value.record is not None
+    replacement = await h.history.put(
+        actor=h.actor, session_id=sid, key="fabricated-call-replacement", record=value.record
+    )
+    before = (await h.client.call_detail(sid, [call_id]))[0]
+    await h.client.link_history(
+        sid, source.index, original, replacement, key="fabricated-call-link"
+    )
+    after = (await h.client.call_detail(sid, [call_id]))[0]
+    assert after.receipts == before.receipts
+    assert after.identity == before.identity
+    assert after.observations[-1].ref == replacement
+    assert after.observations[-1].record == value.record
+
+
+async def test_linked_pending_source_survives_old_content_outage_on_approval(harness, monkeypatch):
+    h, sid = harness, harness.session.id
+    source = next(
+        entry
+        for entry in (await h.client.entries(sid)).items
+        if entry.kind == "message" and entry.call_manifest and entry.history_ref
+    )
+    original = source.history_ref
+    assert original is not None
+    value = (await h.history.read((original,), actor=h.actor))[0]
+    assert value.record is not None
+    replacement = await h.history.put(
+        actor=h.actor, session_id=sid, key="fabricated-pending-replacement", record=value.record
+    )
+    await h.client.link_history(
+        sid, source.index, original, replacement, key="fabricated-pending-link"
+    )
+    read = h.history.read
+
+    async def old_missing(refs, *, actor):
+        if tuple(refs) == (original,):
+            return (HistoryValue(ref=original, status="unavailable", reason="old_source_gone"),)
+        return await read(refs, actor=actor)
+
+    monkeypatch.setattr(h.history, "read", old_missing)
+    pending = await h.client.pending(sid)
+    assert pending is not None
+    assert pending.history_status == "ready"
+    result = await h.client.confirm(sid, pending.invocation_id, Answer(approved=True))
+    assert result is not None
+    assert (await result.result()).stop_reason == "final"
+    assert len(h.tool.calls) == 1
+
+
+async def test_history_page_pins_links_before_a_concurrent_rebinding(harness, monkeypatch):
+    h, sid = harness, harness.session.id
+    messages = [
+        entry
+        for entry in (await h.client.entries(sid)).items
+        if entry.kind == "message" and entry.history_ref
+    ]
+    assert len(messages) >= 2
+    first, second = messages[:2]
+    assert first.history_ref is not None
+    assert second.history_ref is not None
+    value = (await h.history.read((second.history_ref,), actor=h.actor))[0]
+    assert value.record is not None
+    replacement = await h.history.put(
+        actor=h.actor,
+        session_id=sid,
+        key="fabricated-concurrent-replacement",
+        record=value.record,
+    )
+    read = h.history.read
+    linked = False
+
+    async def concurrent(refs, *, actor):
+        nonlocal linked
+        if tuple(refs) == (first.history_ref,) and not linked:
+            linked = True
+            await h.client.link_history(
+                sid,
+                second.index,
+                second.history_ref,
+                replacement,
+                key="fabricated-concurrent-link",
+            )
+        return await read(refs, actor=actor)
+
+    monkeypatch.setattr(h.history, "read", concurrent)
+    page = await h.client.history(sid)
+    assert linked
+    original_slot = next(slot for slot in page.items if slot.entry_index == second.index)
+    assert original_slot.value.ref == second.history_ref
+    later = await h.client.history(sid)
+    replacement_slot = next(slot for slot in later.items if slot.entry_index == second.index)
+    assert replacement_slot.value.ref == replacement
 
 
 async def test_revocation_during_provider_read_never_delivers_cached_content(harness, monkeypatch):

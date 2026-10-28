@@ -63,7 +63,7 @@ async def restore_pending(run: Run, invocation_id: str) -> bool:
         if invocation_id not in ids:
             continue
         run.executor.bind(source)
-        proposal = await run.gov.read(source.history_ref)
+        proposal = await run.gov.read(source.history_ref, source_index=source.index)
         completed = {e.key for e in run.gov.log.entries}
         deferred: set[str] = set()
         for manifest in source.call_manifest:

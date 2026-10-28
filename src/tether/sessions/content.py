@@ -20,6 +20,7 @@ from tether.types.execution import (
 from tether.types.history import HistoryStatus, HistoryValue
 from tether.types.storage import IntegrityError, Page, UnknownSession
 
+from . import links
 from .access import SessionAccess
 
 
@@ -27,11 +28,19 @@ async def history_page(
     access: SessionAccess, actor: Actor, session_id: str, start: int, limit: int
 ) -> HistoryPage:
     page = await access.store_for(actor).entries(session_id, actor.id, start=start, limit=limit)
+    pin = await access.store_for(actor).snapshot(session_id, actor.id)
     items: list[HistorySlot] = []
     used = 0
     for entry in page.items:
         if entry.history_ref is not None:
-            value = await access.hydrate(actor, session_id, entry.history_ref)
+            value = await links.hydrate(
+                access,
+                actor,
+                session_id,
+                entry.index,
+                entry.history_ref,
+                through_index=pin.through_index,
+            )
             slot = HistorySlot(entry_index=entry.index, value=value)
             used += access.size(slot)
             if used > access.limits.max_read_bytes:
@@ -44,6 +53,7 @@ async def call_details(
     access: SessionAccess, actor: Actor, session_id: str, ids: Sequence[str]
 ) -> Page[CallDetail]:
     access.limit(len(ids), maximum=access.limits.max_call_ids)
+    pin = await access.store_for(actor).snapshot(session_id, actor.id)
     groups: list[tuple[Entry, ...]] = []
     used = 0
     for call_id in ids:
@@ -57,6 +67,7 @@ async def call_details(
             limit=access.limits.max_lookup_entries,
             max_bytes=access.limits.max_read_bytes - used,
         )
+        entries = tuple(e for e in entries if e.index <= pin.through_index)
         if not entries:
             raise UnknownModelCall("unknown_model_call")
         used += sum(len(canonical(e.model_dump(mode="json"))) for e in entries)
@@ -68,7 +79,9 @@ async def call_details(
     for entries in groups:
         for prepared in entries:
             if prepared.kind == "model_attempt":
-                value = await attempt_detail(access, actor, session_id, prepared, entries)
+                value = await attempt_detail(
+                    access, actor, session_id, prepared, entries, through_index=pin.through_index
+                )
                 used += access.size(value)
                 if used > access.limits.max_read_bytes:
                     raise ReadLimit("read_bytes")
@@ -82,6 +95,8 @@ async def attempt_detail(
     session_id: str,
     prepared: Entry,
     entries: tuple[Entry, ...],
+    *,
+    through_index: int,
 ) -> CallDetail:
     identity = AttemptIdentity.model_validate(prepared.facts.get("identity"))
     if identity.session_id != session_id:
@@ -103,7 +118,14 @@ async def attempt_detail(
             receipts.append(ResponseReceipt.model_validate(raw))
         raw_ref = entry.facts.get("history_ref")
         if raw_ref is not None:
-            value = await access.hydrate(actor, session_id, HistoryRef.model_validate(raw_ref))
+            value = await links.hydrate(
+                access,
+                actor,
+                session_id,
+                entry.index,
+                HistoryRef.model_validate(raw_ref),
+                through_index=through_index,
+            )
             if raw is not None:
                 value = value.model_copy(
                     update={
@@ -165,7 +187,15 @@ async def pending_view(
     if source is None or source.history_ref is None:
         raise IntegrityError("pending_source_missing")
     pending = view.pending
-    value = await access.hydrate(actor, session_id, source.history_ref)
+    pin = await access.store_for(actor).snapshot(session_id, actor.id)
+    value = await links.hydrate(
+        access,
+        actor,
+        session_id,
+        source.index,
+        source.history_ref,
+        through_index=pin.through_index,
+    )
     if value.status != "ready" or value.record is None or value.record.message is None:
         return pending.model_copy(update={"history_status": value.status, "reason": value.reason})
     state = SessionState.model_validate(

@@ -118,7 +118,7 @@ class ToolExecutor:
             raise ExecutionDenied("invalid_invocation_binding")
         existing = next((e for e in self.gov.log.entries if e.key == "result:" + inv.id), None)
         if existing is not None:
-            return await self.gov.read(existing.history_ref)
+            return await self.gov.read(existing.history_ref, source_index=existing.index)
         try:
             pinned = self.registry.tools[call.name]
             normalized = await self._gates(inv, call, pinned)
@@ -156,7 +156,7 @@ class ToolExecutor:
             or digest(definition(pinned.tool)) != inv.manifest.tool_digest
         ):
             raise ExecutionDenied("definition_changed")
-        source = await self.gov.read(inv.source.history_ref)
+        source = await self.gov.read(inv.source.history_ref, source_index=inv.source.index)
         proposal = source.tool_calls[inv.manifest.position]
         if proposal != call or digest(proposal.arguments) != inv.manifest.args_digest:
             raise ExecutionDenied("raw_proposal_changed")

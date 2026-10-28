@@ -15,7 +15,8 @@ from tether.stores.postgres import DatabaseRoot
 from tether.stores.postgres.journal import Journal
 from tether.stores.postgres.reads import Reads
 from tether.types.canonical import canonical
-from tether.types.execution import Actor, NewEntry
+from tether.types.execution import Actor, HistoryRef, NewEntry
+from tether.types.history import HistoryLink
 from tether.types.storage import (
     IntegrityError,
     SessionInit,
@@ -61,6 +62,35 @@ async def test_owner_metadata_and_snapshot_are_one_committed_frontier(database):
         await foreign.entries(sid, start=0, limit=1)
     with pytest.raises(UnknownSession):
         await foreign.lookup(sid, kind="turn", value="turn")
+
+
+async def test_history_link_group_is_scoped_and_indexed_without_payload_scan(database):
+    h = database
+    sid, _, _, _ = await seed(h)
+    original = HistoryRef(
+        provider="fabricated",
+        key="old",
+        sha256="a" * 64,
+        owner=h.actor.id,
+        session_id=sid,
+        kind="message",
+    )
+    replacement = original.model_copy(update={"key": "new"})
+    link = HistoryLink(
+        message_index=0,
+        previous=original,
+        verified=replacement,
+        canonical_digest=original.sha256,
+    )
+    accepted, _ = await append(
+        Journal(h.root, h.actor),
+        sid,
+        (NewEntry(kind="history_linked", facts=link.model_dump(mode="json")),),
+    )
+    assert await Reads(h.root, h.actor).lookup(sid, kind="history_link", value="0") == accepted
+    assert not await Reads(h.root, h.actor).lookup(sid, kind="history_link", value="1")
+    with pytest.raises(UnknownSession):
+        await Reads(h.root, Actor(id="other")).lookup(sid, kind="history_link", value="0")
 
 
 @pytest.mark.parametrize("reverse", [False, True])

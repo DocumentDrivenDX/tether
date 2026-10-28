@@ -148,6 +148,7 @@ class ExecutionLimits(Payload):
     shutdown_timeout_seconds: PositiveSeconds = 1
     approval_ttl_seconds: PositiveSeconds | None = None
     max_resumes: PositiveInt = 3
+    max_history_link_hops: PositiveInt = 8
 
 
 class ApprovalBinding(Payload):

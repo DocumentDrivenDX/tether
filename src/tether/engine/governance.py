@@ -24,6 +24,8 @@ from tether.types.execution import (
     copy_actor,
 )
 from tether.types.history import HistoryRecord
+from tether.types.history_links import select as select_history_ref
+from tether.types.storage import IntegrityError
 from tether.types.usage import UsageLedger
 
 from .observers.facade import Observers
@@ -211,26 +213,52 @@ class Governance:
 
     async def messages(self) -> tuple[Message, ...]:
         return tuple(
-            [await self.read(e.history_ref) for e in self.log.entries if e.kind == "message"]
+            [
+                await self.read(e.history_ref, source_index=e.index)
+                for e in self.log.entries
+                if e.kind == "message"
+            ]
         )
 
-    async def read(self, ref: object) -> Message:
+    async def read(self, ref: object, *, source_index: int | None = None) -> Message:
         from tether.types.execution import HistoryRef
 
         if not isinstance(ref, HistoryRef):
             raise ExecutionDenied("invalid_source")
         await self.authorize("read_session", self.log.session.id)
-        if not any(e.history_ref == ref for e in self.log.entries):
+        sources = [
+            e
+            for e in self.log.entries
+            if e.history_ref == ref and (source_index is None or e.index == source_index)
+        ]
+        if len(sources) != 1:
             raise ExecutionDenied("unreachable_source")
+        source = sources[0]
         try:
-            message = await self.history.read(ref, actor=self.actor, session_id=self.log.session.id)
+            selected = select_history_ref(
+                ref,
+                source.index,
+                tuple(
+                    e
+                    for e in self.log.entries
+                    if e.kind == "history_linked" and e.facts.get("message_index") == source.index
+                ),
+                through_index=len(self.log.entries) - 1,
+                max_hops=self.limits.max_history_link_hops,
+            )
+        except IntegrityError:
+            raise ExecutionDenied("history_link_integrity") from None
+        try:
+            message = await self.history.read(
+                selected, actor=self.actor, session_id=self.log.session.id
+            )
         except (ValueError, PermissionError):
             raise ExecutionDenied("history_unavailable") from None
         payload = (
             HistoryRecord(kind="message", message=message).model_dump(mode="json")
-            if ref.codec == "tether-history-v1"
+            if selected.codec == "tether-history-v1"
             else message.model_dump(mode="json")
         )
-        if digest(payload) != ref.sha256:
+        if digest(payload) != selected.sha256:
             raise ExecutionDenied("source_integrity")
         return message.model_copy(deep=True)

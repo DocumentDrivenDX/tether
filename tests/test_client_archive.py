@@ -14,7 +14,8 @@ from tether.history.jsonl import JsonlHistory
 from tether.stores.jsonl import JsonlSessionStore
 from tether.stores.memory import MemoryFiles
 from tether.types.archive import ArchiveCapabilities, ArchiveReadError, NotRestorable
-from tether.types.execution import Answer, ExecutionDenied
+from tether.types.execution import Answer, ExecutionDenied, NewEntry
+from tether.types.history import HistoryLink
 from tether.types.storage import SessionInit, StoreError, UnknownSession
 
 pytestmark = pytest.mark.anyio
@@ -30,6 +31,44 @@ async def archived(h, *, manual=False):
     sink = archive()
     await sink.archive(await snapshot(h, session.id))
     return run, session.id, sink
+
+
+async def test_archived_history_follows_accepted_link_without_extra_link_slot(
+    recovery, client_limits
+):
+    h = recovery
+    run = build(h)
+    session = await h.store.create(h.actor.id, SessionInit())
+    async with h.store.turn(session.id, h.actor.id, turn_id="original") as log:
+        await run.engine.run_turn(h.actor, log, "Fabricated", spec=run.spec)
+    entries = (await h.store.entries(session.id, h.actor.id, start=0, limit=100)).items
+    source = next(e for e in entries if e.kind == "message" and e.history_ref)
+    original = source.history_ref
+    assert original is not None
+    value = (await h.provider.read((original,), actor=h.actor))[0]
+    assert value.record is not None
+    replacement = await h.provider.put(
+        actor=h.actor,
+        session_id=session.id,
+        key="fabricated-archive-replacement",
+        record=value.record,
+    )
+    link = HistoryLink(
+        message_index=source.index,
+        previous=original,
+        verified=replacement,
+        canonical_digest=original.sha256,
+    )
+    async with h.store.turn(session.id, h.actor.id, turn_id="accepted-link") as log:
+        await log.append((NewEntry(kind="history_linked", facts=link.model_dump(mode="json")),))
+    sink = archive()
+    await sink.archive(await snapshot(h, session.id))
+    async with target(h, run, sink, client_limits) as (client, _policy, _store):
+        page = await client.history(session.id, tier="archive")
+        selected = next(slot for slot in page.items if slot.entry_index == source.index)
+        assert selected.value.ref == replacement
+        assert selected.value.record == value.record
+        assert not any(slot.entry_index == len(entries) for slot in page.items)
 
 
 @asynccontextmanager

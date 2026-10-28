@@ -9,6 +9,10 @@ from tether.types.storage import IntegrityError
 
 def entry_groups(session_id: str, entry: Entry) -> set[tuple[str, str]]:
     groups: set[tuple[str, str]] = set()
+    if entry.kind == "history_linked":
+        index = entry.facts.get("message_index")
+        if type(index) is int and index >= 0:
+            groups.add(("history_link", str(index)))
     if entry.turn_id is not None:
         groups.add(("turn", entry.turn_id))
     identity = entry.facts.get("identity")

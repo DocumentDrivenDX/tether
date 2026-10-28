@@ -36,6 +36,7 @@ class ClientLimits(Payload):
     max_call_ids: PositiveInt
     max_read_bytes: PositiveInt
     max_lookup_entries: PositiveInt
+    max_history_link_hops: PositiveInt = 8
     read_timeout_seconds: PositiveSeconds
     heartbeat_interval_seconds: PositiveSeconds
     shutdown_timeout_seconds: PositiveSeconds

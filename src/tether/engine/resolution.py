@@ -102,7 +102,7 @@ async def existing_ref(
     ) != ("tool_call", invocation_id, intent.facts.get("tool"), intent.turn_id):
         raise ExecutionDenied("resolution_history_integrity")
     if len(entries) == 1:
-        payload = await gov.read(ref)
+        payload = await gov.read(ref, source_index=entries[0].index)
         if (payload.role, payload.tool_call_id, payload.is_error, payload.tool_calls) != (
             "tool",
             intent.facts.get("call_id"),

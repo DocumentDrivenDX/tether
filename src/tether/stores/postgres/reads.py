@@ -157,13 +157,13 @@ class Reads(Rows):
         self,
         session_id: str,
         *,
-        kind: Literal["key", "invocation", "model_call", "turn"],
+        kind: Literal["key", "invocation", "model_call", "turn", "history_link"],
         value: str,
         limit: int = 1000,
         max_bytes: int | None = None,
     ) -> tuple[Entry, ...]:
         self.limit(limit)
-        if kind not in {"key", "invocation", "model_call", "turn"}:
+        if kind not in {"key", "invocation", "model_call", "turn", "history_link"}:
             raise ValueError("invalid_lookup_kind")
         maximum = self.root.limits.max_batch_bytes if max_bytes is None else max_bytes
         if maximum <= 0:

@@ -82,7 +82,7 @@ async def proposal(gov: Governance, step: ResumeStep) -> tuple[Entry, Message]:
         raise ExecutionDenied("resume_source_invalid")
     source = gov.log.entries[step.call_entry_index]
     manifest = next((m for m in source.call_manifest if m.position == step.call_position), None)
-    message = await gov.read(source.history_ref)
+    message = await gov.read(source.history_ref, source_index=source.index)
     if manifest is None or not 0 <= step.call_position < len(message.tool_calls):
         raise ExecutionDenied("resume_source_invalid")
     call = message.tool_calls[step.call_position]

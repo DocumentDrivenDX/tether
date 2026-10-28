@@ -11,6 +11,7 @@ from tether.types.client import ReadLimit
 from tether.types.execution import Actor, Entry, ExecutionDenied, TurnResult
 from tether.types.storage import IntegrityError, TurnInProgress
 
+from . import links
 from .access import SessionAccess
 from .content import pending_view
 
@@ -48,11 +49,19 @@ async def outcome(
         raise asyncio.CancelledError
     messages: list[Message] = []
     used = 0
+    pin = await access.store_for(actor).snapshot(session_id, actor.id)
     if stop in {"final", "confirmation_required", "model_incomplete"}:
         for entry in entries:
             if entry.kind != "message" or entry.history_ref is None:
                 continue
-            value = await access.hydrate(actor, session_id, entry.history_ref)
+            value = await links.hydrate(
+                access,
+                actor,
+                session_id,
+                entry.index,
+                entry.history_ref,
+                through_index=pin.through_index,
+            )
             if value.status != "ready" or value.record is None or value.record.message is None:
                 raise ExecutionDenied("result_history_unavailable")
             message = value.record.message
