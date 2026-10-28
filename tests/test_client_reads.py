@@ -196,6 +196,80 @@ async def test_missing_or_corrupt_sources_are_explicit_not_empty_messages(harnes
     assert (await h.client.entries(sid)).items
 
 
+@pytest.mark.parametrize("status", ["pending", "partial", "ambiguous", "unavailable", "denied"])
+async def test_external_source_readiness_keeps_metadata_without_disclosing_content(
+    harness, monkeypatch, status
+):
+    h, sid = harness, harness.session.id
+    entries_before = await h.client.entries(sid)
+    calls = [
+        entry.facts["model_call_id"] for entry in entries_before.items if entry.kind == "model_call"
+    ]
+    original = h.history.read
+
+    async def controlled_source(refs, *, actor):
+        values = await original(refs, actor=actor)
+        return tuple(
+            value.model_copy(
+                update={
+                    "status": status,
+                    "reason": "fabricated_source_state",
+                    "source_locator": {"source": "fabricated"},
+                }
+            )
+            for value in values
+        )
+
+    monkeypatch.setattr(h.history, "read", controlled_source)
+    page = await h.client.history(sid)
+    assert page.items
+    assert all(slot.value.status == status and slot.value.record is None for slot in page.items)
+    detail = (await h.client.call_detail(sid, calls))[0]
+    assert detail.status == status
+    assert detail.observations
+    assert all(value.status == status and value.record is None for value in detail.observations)
+    assert detail.receipts
+    assert (await h.client.entries(sid)) == entries_before
+    assert not h.tool.calls
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected"),
+    [("duplicate", "integrity_error"), ("wrong_ref", "integrity_error"), ("outage", "unavailable")],
+)
+async def test_external_source_malformed_results_keep_journal_metadata(
+    harness, monkeypatch, fault, expected
+):
+    h, sid = harness, harness.session.id
+    entries_before = await h.client.entries(sid)
+    calls = [
+        entry.facts["model_call_id"] for entry in entries_before.items if entry.kind == "model_call"
+    ]
+    original = h.history.read
+
+    async def faulty_source(refs, *, actor):
+        if fault == "outage":
+            raise TimeoutError("fabricated outage")
+        values = await original(refs, actor=actor)
+        if fault == "duplicate":
+            return (*values, *values)
+        return tuple(
+            value.model_copy(update={"ref": value.ref.model_copy(update={"key": "wrong"})})
+            for value in values
+        )
+
+    monkeypatch.setattr(h.history, "read", faulty_source)
+    page = await h.client.history(sid)
+    assert page.items
+    assert all(slot.value.status == expected and slot.value.record is None for slot in page.items)
+    detail = (await h.client.call_detail(sid, calls))[0]
+    assert detail.status == expected
+    assert all(value.status == expected and value.record is None for value in detail.observations)
+    assert detail.receipts
+    assert (await h.client.entries(sid)) == entries_before
+    assert not h.tool.calls
+
+
 async def test_revocation_during_provider_read_never_delivers_cached_content(harness, monkeypatch):
     h, sid = harness, harness.session.id
     original = h.history.read
