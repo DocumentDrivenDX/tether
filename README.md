@@ -27,6 +27,23 @@ quickstart timing remain to be qualified.
 For a deliberately volatile in-memory UI demo, use `uv run tether --volatile`;
 its sessions disappear when the process exits and resume is disabled.
 
+## Optional compatible model reference
+
+To use the same CLI or terminal UI with an explicitly selected OpenAI-compatible
+text/tool model, install the `tui` and `openai` extras and run
+`tether --model-config /path/to/model.json`. The JSON profile requires `id`,
+`base_url`, `model_name`, `output_limit_field` (`max_tokens` or
+`max_completion_tokens`), `context_window_tokens`, `output_tokens`,
+`safety_margin_tokens`, a complete `TokenizerProfile` object in
+`tokenizer_profile`, and paths named `vocabulary_path` and
+`authorization_file`. Relative paths resolve beside the JSON file. Keep the
+authorization file outside the checkout; it contains the complete HTTP
+Authorization value and is read afresh for each physical attempt. The profile
+contains no secret. Its tokenizer vocabulary and server framing values must be
+qualified for the chosen model. The offline demo remains the default when
+`--model-config` is absent. A controlled local HTTP peer exercises this path;
+live provider compatibility and semantic summary fidelity are still open.
+
 ## Development
 
 Install [uv](https://docs.astral.sh/uv/), then:

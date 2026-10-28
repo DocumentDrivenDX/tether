@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, JsonValue
 
@@ -22,7 +23,15 @@ from tether.stores.jsonl import JsonlRoot, JsonlSessionStore
 from tether.stores.memory import MemoryFiles
 from tether.types import ModelExecutionLimits, ModelResponse, TextDelta, ToolCall
 from tether.types.client import ClientLimits
+from tether.types.context import ContextConfig, TokenEstimator
 from tether.types.execution import Actor, AgentSpec, Effect, Replay, ToolContext
+
+from .configured import configured_model
+from .profile import ReferenceModelProfile
+from .profile import load_profile as load_profile
+
+if TYPE_CHECKING:
+    from tether.adapters.openai_compat import OpenAICompatModel
 
 
 class DemoArguments(BaseModel):
@@ -97,30 +106,48 @@ def client_limits() -> ClientLimits:
 
 @asynccontextmanager
 async def open_demo(
-    path: Path, *, continuation: bool = False, volatile: bool = False
+    path: Path,
+    *,
+    continuation: bool = False,
+    volatile: bool = False,
+    profile: ReferenceModelProfile | None = None,
 ) -> AsyncGenerator[tuple[Tether, Actor, DemoTool]]:
     root = None if volatile else await JsonlRoot.open(path)
     files = MemoryFiles() if volatile else root
     if files is None:
         raise RuntimeError("demo_store_unavailable")
+    adapter: OpenAICompatModel | None = None
     try:
         store = await JsonlSessionStore.open(files)
         history = await JsonlHistory.open(files)
         tool = DemoTool()
+        model_limits = ModelExecutionLimits(
+            max_response_bytes=8192,
+            max_tool_argument_bytes=512,
+            max_attempts=2,
+            request_timeout_seconds=30 if profile is not None else 5,
+            max_retry_delay_seconds=0.25 if profile is not None else 0.01,
+        )
+        actor = Actor(id="demo")
+        spec = DEMO_SPEC
+        offline_context = fabricated_context()
+        context_config: ContextConfig = offline_context["context_config"]
+        estimator: TokenEstimator = offline_context["estimator"]
+        model: ScriptedModel | OpenAICompatModel = demo_model(continuation=continuation)
+        if profile is not None:
+            adapter, context_config, estimator, actor, spec = await configured_model(
+                profile, model_limits, DemoTool.name
+            )
+            model = adapter
         engine = Engine(
-            **fabricated_context(),
-            model=demo_model(continuation=continuation),
+            context_config=context_config,
+            estimator=estimator,
+            model=model,
             history=MessageHistoryAdapter(history),
             history_provider=history,
-            model_limits=ModelExecutionLimits(
-                max_response_bytes=8192,
-                max_tool_argument_bytes=512,
-                max_attempts=2,
-                request_timeout_seconds=5,
-                max_retry_delay_seconds=0.01,
-            ),
+            model_limits=model_limits,
             tools=(tool,),
-            specs=(DEMO_SPEC,),
+            specs=(spec,),
         )
         async with Tether(
             engine=engine,
@@ -128,9 +155,11 @@ async def open_demo(
             history=history,
             limits=client_limits(),
             resume="off" if volatile else "report",
-            default_spec=DEMO_SPEC.id,
+            default_spec=spec.id,
         ) as app:
-            yield app, Actor(id="demo"), tool
+            yield app, actor, tool
     finally:
+        if adapter is not None:
+            await adapter.aclose()
         if root is not None:
             await root.aclose()
