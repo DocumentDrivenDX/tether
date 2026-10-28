@@ -94,9 +94,10 @@ async def terminal_journey(root: Path) -> tuple[float, float]:
         if reply_seconds > 1:
             raise ValueError("installed terminal UI exceeded first-response target")
         os.write(master, b"\x11")  # Textual's Ctrl+Q quit binding.
-        await asyncio.to_thread(read_until, master, lambda: child.returncode, b"\xff", 5)
-        if await asyncio.wait_for(child.wait(), 5) != 0:
-            raise ValueError("terminal UI did not exit cleanly")
+        farewell = await asyncio.to_thread(read_until, master, lambda: child.returncode, b"\xff", 5)
+        exit_code = await asyncio.wait_for(child.wait(), 5)
+        if exit_code != 0:
+            raise ValueError(f"terminal UI exited {exit_code}: {farewell[-1000:]!r}")
         if not (root / "journal.jsonl").is_file():
             raise ValueError("local demo journal missing")
         return startup_seconds, reply_seconds

@@ -69,11 +69,19 @@ class DemoApp(App[None]):
         self._follower = asyncio.create_task(self._follow())
         self.query_one("#message", Input).focus()
 
-    async def on_unmount(self) -> None:
+    async def _stop_follower(self) -> None:
         if self._follower is not None:
             self._follower.cancel()
             with suppress(asyncio.CancelledError):
                 await self._follower
+            self._follower = None
+
+    async def action_quit(self) -> None:
+        await self._stop_follower()
+        await super().action_quit()
+
+    async def on_unmount(self) -> None:
+        await self._stop_follower()
         if self._demo_context is not None:
             await self._demo_context.__aexit__(None, None, None)
 
