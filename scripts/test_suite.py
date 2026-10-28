@@ -10,6 +10,8 @@ from pathlib import Path
 
 from process import run_command
 
+NATIVE_CASE_PREFIXES = ("tests/test_embedded_", "tests/test_postgres_")
+
 
 async def command(arguments: list[str]) -> int:
     print("+ " + " ".join(arguments), flush=True)
@@ -23,17 +25,21 @@ def groups(values: object) -> list[list[str]]:
     current: list[str] = []
     seen: set[str] = set()
     used = 0
+    native = False
     for value in values:
         if not isinstance(value, str) or not value or value in seen:
             raise ValueError("invalid_test_inventory")
         size = len(value.encode("utf-8")) + 1
         if size > 64 * 1024:
             raise ValueError("test_id_too_large")
-        if current and (len(current) >= 32 or used + size > 64 * 1024):
+        is_native = value.startswith(NATIVE_CASE_PREFIXES)
+        limit = 8 if is_native else 32
+        if current and (native != is_native or len(current) >= limit or used + size > 64 * 1024):
             result.append(current)
             current, used = [], 0
         current.append(value)
         used += size
+        native = is_native
         seen.add(value)
     return [*result, current]
 
