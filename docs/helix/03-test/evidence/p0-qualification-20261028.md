@@ -20,7 +20,7 @@ The wheel SHA-256 is `e927f3e93b1994ac89048d80d6cd9cff8b2e3a80b7fecab2b2322b39ff
 
 | Gate | Evidence now present | Remaining release decision |
 |---|---|---|
-| Q0 runtime/base/extras | Fresh Python 3.11.17 artifact and five installed-profile checks above; base provider SDK count zero. | Confirm selected OS/Python support matrix and stable-version artifact/metadata at the final candidate. |
+| Q0 runtime/base/extras | Fresh Python 3.11.17 artifact and five installed-profile checks above; base provider SDK count zero. | The owner selected Python 3.11 only. State the supported OS/profile subset from actual evidence and confirm stable-version artifact/metadata at the final candidate. |
 | Q1 Agent/tools/gates | Complete local source recipe includes actual Agent, policy, approval, guard, unknown-effect and regression suites. | Trace each required contract path to its executed primary suite; a passing aggregate alone does not close Q1. |
 | Q2 model/transport | Native/compatible controlled HTTP, stream, retry, identity and incomplete-terminal suites are in the complete local recipe; installed `openai` loopback passed. | Finish the selected real-profile/final-wire and server framing qualification and record the exact supported subset. |
 | Q3 context/history | Source-addressed Full/Tail/Summarizing, canonical history, readiness and current-read suites are in the local recipe. | Complete workload-specific summary fidelity and actual server token/framing evidence; unsupported attachment/media codecs remain explicit refusals. |
@@ -47,6 +47,21 @@ The complete 1,674-case source run collected and passed these named tests from t
 | Late observer/worker exit cannot claim an early release or block root closure | `tests/test_worker_observers.py::test_abandoned_wait_and_late_body_exit_are_distinct`; `::test_worker_exit_releases_root_while_observational_sink_is_still_running` |
 
 These are bounded executor/process tests with controlled barriers. They do not simulate an operating-system power cut or qualify arbitrary deployment worker pools.
+
+### Selected executed cases for the other P0 gates
+
+These named cases were collected and passed in the same complete local source run. They anchor the matrix above; they are not a claim that all required subcases have been traced or that an open gate is closed.
+
+| Gate | Executed cases and proven boundary |
+|---|---|
+| Q0 | `tests/test_dependencies.py::test_transitive_sdk_contamination_is_rejected` refuses provider SDK leakage into base; `tests/test_distribution.py::test_good_artifacts_and_ambiguous_outputs` checks artifact metadata; `tests/test_reference_clients.py::test_demo_uses_durable_client_and_requires_exact_approval` covers the offline reference composition. The fresh installed-profile results above supply the independent wheel boundary. |
+| Q1 | `tests/test_gated_execution.py::test_real_agent_normalizes_once_and_commits_before_dispatch` covers real Agent dispatch; `::test_approval_reenters_current_policy_and_is_single_use` covers the approval gate; `::test_unknown_commits_stop_dependent_dispatch` covers uncertain acceptance; `tests/test_confirmation_acceptance.py::test_cached_runner_cannot_answer_after_another_engine_already_won` covers competing continuation. |
+| Q2 | `tests/test_compatible_loopback.py::test_real_loopback_retry_refreshes_identity_and_receipts` crosses a real local HTTP socket; `::test_real_loopback_fragmented_tool_arguments_finish_once` and `::test_real_loopback_missing_terminal_never_replays_or_finishes` cover fragmented/invalid output; `tests/test_adapter_limits.py::test_retry_exhaustion_and_backoff_cancellation` covers finite retry; `tests/test_native_header_boundary.py::test_ambient_sdk_headers_cannot_widen_identity_or_request_metadata` covers actual egress headers. |
+| Q3 | `tests/test_context_group_state_exploration.py::test_every_generated_tool_group_cut_is_atomic_and_accounted` covers generated cut positions; `tests/test_agent_summary_restart.py::test_summary_unknown_ack_requires_reopen_and_only_accepted_provenance_reuses` covers uncertain summary acceptance; `tests/test_history_bindings.py::test_exchange_binding_preserves_component_and_full_record_digests` covers canonical observed content; `tests/test_client_reads.py::test_external_source_readiness_keeps_metadata_without_disclosing_content` covers controlled source states. |
+| Q4 | `tests/test_storage_faults.py::test_actual_process_exit_preserves_intent_and_recovers_interrupted_turn` covers real JSONL process loss; `tests/test_postgres_engine_effect_process.py::test_real_engine_sql_effect_keeps_unknown_barrier_after_process_kill` covers real SQL effect uncertainty; `tests/test_postgres_leases.py::test_independent_roots_compete_and_stale_tokens_cannot_write_or_release` covers multiprocess store fencing. |
+| Q6 | `tests/test_client_follow.py::test_retention_gap_resets_then_continues_from_captured_watermark` covers retained feed loss; `tests/test_client_reads.py::test_delayed_source_and_shared_provider_request_id_keep_attempts_distinct` covers delayed history under distinct attempts; `tests/test_reference_clients.py::test_terminal_ui_keeps_context_failure_visible` covers the reference client failure journey. |
+| Q7 | `tests/test_engine_telemetry.py::test_actual_agent_has_metadata_only_known_events_and_source_gate_context` covers accepted metadata observations; `::test_unacknowledged_or_invalid_commits_emit_no_accepted_event` covers uncertain acceptance; `tests/test_attempt_usage.py::test_uncertain_observation_never_publishes_optimistic_usage` preserves incomplete usage. |
+| Q8 | `tests/test_replay_version_corpus.py::test_locked_sdk_versions_require_explicit_requalification` binds selected runtime pins; `::test_frozen_cassette_refuses_unsupported_version` rejects drift; `::test_frozen_sdk_checkpoint_round_trips_and_refuses_version_drift` and `::test_frozen_jsonl_history_reopens_and_new_writes_match` cover checkpoint/history corpus behavior. |
 
 ## Next gate
 
