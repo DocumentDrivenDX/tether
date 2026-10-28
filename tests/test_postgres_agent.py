@@ -95,6 +95,66 @@ async def test_pending_approval_reconstructs_after_both_roots_reopen(
         assert await database_root.aclose()
 
 
+async def test_accepted_history_link_survives_jsonl_and_postgres_reopen(
+    database,
+    tmp_path,
+    limits,
+    client_limits,
+):
+    h = database
+    tool = DemoTool()
+    spec = AgentSpec(
+        id="demo",
+        version="1",
+        title="Demo",
+        instructions="Fabricated",
+        model="demo",
+        tools=(tool.name,),
+    )
+    root = await JsonlRoot.open(tmp_path)
+    store = await JsonlSessionStore.open(root)
+    first = engine(h.history, limits, tool, spec, [proposal()])
+    async with Tether(engine=first, store=store, history=h.history, limits=client_limits) as app:
+        client = app.client(h.actor)
+        session = await client.create(spec="demo", settings={"approval": "manual"})
+        waiting = await (await client.send(session.id, "Fabricated input")).result()
+        assert waiting.stop_reason == "confirmation_required"
+        entries = (await client.entries(session.id)).items
+        source = next(entry for entry in entries if entry.kind == "message" and entry.history_ref)
+        original = source.history_ref
+        assert original is not None
+        value = (await h.history.read((original,), actor=h.actor))[0]
+        assert value.record is not None
+        replacement = await h.history.put(
+            actor=h.actor,
+            session_id=session.id,
+            key="fabricated-postgres-replacement",
+            record=value.record,
+        )
+        await client.link_history(
+            session.id, source.index, original, replacement, key="fabricated-postgres-link"
+        )
+        page = await client.history(session.id, start=source.index, limit=1)
+        assert page.items[0].value.ref == replacement
+        assert page.items[0].value.record == value.record
+    assert await root.aclose()
+    assert await h.root.aclose()
+
+    database_root = await DatabaseRoot.open(h.source, actor=h.actor, schema=h.schema)
+    history = PostgresHistory(database_root)
+    root = await JsonlRoot.open(tmp_path)
+    store = await JsonlSessionStore.open(root)
+    second = engine(history, limits, tool, spec, [])
+    try:
+        async with Tether(engine=second, store=store, history=history, limits=client_limits) as app:
+            page = await app.client(h.actor).history(session.id, start=source.index, limit=1)
+            assert page.items[0].value.ref == replacement
+            assert page.items[0].value.record == value.record
+    finally:
+        assert await root.aclose()
+        assert await database_root.aclose()
+
+
 async def test_current_same_owner_credentials_are_not_cached_or_replaced(database):
     h = database
     credentials = [FreshCredential(), FreshCredential()]
