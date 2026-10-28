@@ -16,7 +16,7 @@ from tether.models.testing import ScriptedModel
 from tether.stores.jsonl import JsonlRoot, JsonlSessionStore
 from tether.stores.memory import MemoryFiles
 from tether.types.client import ReadLimit, UnknownModelCall
-from tether.types.execution import Actor, AgentSpec, AuthzRequest, Decision, ExecutionDenied
+from tether.types.execution import Actor, AgentSpec, Answer, AuthzRequest, Decision, ExecutionDenied
 from tether.types.history import HistoryValue
 from tether.types.storage import SessionInit, SessionQuery, UnknownSession
 
@@ -268,6 +268,71 @@ async def test_external_source_malformed_results_keep_journal_metadata(
     assert detail.receipts
     assert (await h.client.entries(sid)) == entries_before
     assert not h.tool.calls
+
+
+async def test_delayed_source_and_shared_provider_request_id_keep_attempts_distinct(
+    harness, monkeypatch
+):
+    h, sid = harness, harness.session.id
+    pending = await h.client.pending(sid)
+    handle = await h.client.confirm(sid, pending.invocation_id, Answer(approved=True))
+    assert handle is not None
+    assert (await handle.result()).stop_reason == "final"
+    entries_before = await h.client.entries(sid)
+    call_ids = [
+        entry.facts["model_call_id"] for entry in entries_before.items if entry.kind == "model_call"
+    ]
+    assert len(call_ids) == 2
+    assert len(set(call_ids)) == 2
+    original_details = await h.client.call_detail(sid, call_ids)
+    assert len(original_details) == 2
+    first_refs = {value.ref for value in original_details[0].observations}
+    second_refs = {value.ref for value in original_details[1].observations}
+    assert first_refs
+    assert second_refs
+    assert first_refs.isdisjoint(second_refs)
+    original = h.history.read
+    delayed = True
+
+    async def source(refs, *, actor):
+        values = await original(refs, actor=actor)
+        assert refs[0] in first_refs or refs[0] in second_refs
+        invocation = "first" if refs[0] in first_refs else "second"
+        return tuple(
+            value.model_copy(
+                update={
+                    "status": "pending" if delayed and invocation == "first" else "ready",
+                    "record": None if delayed and invocation == "first" else value.record,
+                    "reason": "fabricated_lag" if delayed and invocation == "first" else None,
+                    "source_locator": {
+                        "request_id": "shared-provider-request",
+                        "invocation_id": invocation,
+                    },
+                }
+            )
+            for value in values
+        )
+
+    monkeypatch.setattr(h.history, "read", source)
+    observed = await h.client.call_detail(sid, call_ids)
+    assert [detail.status for detail in observed] == ["pending", "ready"]
+    assert {
+        value.source_locator["request_id"] for detail in observed for value in detail.observations
+    } == {"shared-provider-request"}
+    assert {value.source_locator["invocation_id"] for value in observed[0].observations} == {
+        "first"
+    }
+    assert {value.source_locator["invocation_id"] for value in observed[1].observations} == {
+        "second"
+    }
+    assert all(value.record is None for value in observed[0].observations)
+    requests_before = len(h.model.requests)
+    delayed = False
+    ready = await h.client.call_detail(sid, call_ids)
+    assert [detail.status for detail in ready] == ["ready", "ready"]
+    assert len(h.model.requests) == requests_before
+    assert (await h.client.entries(sid)) == entries_before
+    assert len(h.tool.calls) == 1
 
 
 async def test_revocation_during_provider_read_never_delivers_cached_content(harness, monkeypatch):
