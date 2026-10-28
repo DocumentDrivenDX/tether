@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import fcntl
+import json
 import os
 import pty
 import select
@@ -52,11 +53,12 @@ def read_until(master: int, poll: Callable[[], int | None], marker: bytes, secon
     return bytes(output)
 
 
-async def terminal_journey(root: Path) -> None:
+async def terminal_journey(root: Path) -> tuple[float, float]:
     master, slave = pty.openpty()
     child: asyncio.subprocess.Process | None = None
     try:
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 110, 0, 0))
+        started = time.monotonic()
         child = await asyncio.create_subprocess_exec(
             sys.executable,
             "-I",
@@ -72,18 +74,32 @@ async def terminal_journey(root: Path) -> None:
         os.close(slave)
         slave = -1
         painted = await asyncio.to_thread(
-            read_until, master, lambda: child.returncode, b"Offline demo", 10
+            read_until, master, lambda: child.returncode, b"Send a fabricated message", 10
         )
-        if b"Offline demo" not in painted:
+        startup_seconds = time.monotonic() - started
+        if b"Send a fabricated message" not in painted:
             raise ValueError("installed terminal UI did not paint")
+        if startup_seconds > 10:
+            raise ValueError("installed terminal UI exceeded warm startup target")
         if child.returncode is not None:
             raise ValueError("installed terminal UI exited before input")
+        reply_started = time.monotonic()
+        os.write(master, b"Fabricated request\r")
+        reply = await asyncio.to_thread(
+            read_until, master, lambda: child.returncode, b"Approval requested", 3
+        )
+        reply_seconds = time.monotonic() - reply_started
+        if b"Approval requested" not in reply:
+            raise ValueError("installed terminal UI did not show first response")
+        if reply_seconds > 1:
+            raise ValueError("installed terminal UI exceeded first-response target")
         os.write(master, b"\x11")  # Textual's Ctrl+Q quit binding.
         await asyncio.to_thread(read_until, master, lambda: child.returncode, b"\xff", 5)
         if await asyncio.wait_for(child.wait(), 5) != 0:
             raise ValueError("terminal UI did not exit cleanly")
         if not (root / "journal.jsonl").is_file():
             raise ValueError("local demo journal missing")
+        return startup_seconds, reply_seconds
     finally:
         if child is not None and child.returncode is None:
             child.kill()
@@ -95,8 +111,12 @@ async def terminal_journey(root: Path) -> None:
 
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="installed-terminal-") as directory:
-        asyncio.run(terminal_journey(Path(directory)))
-    print("offline_installed_terminal_pty=True")
+        startup, reply = asyncio.run(terminal_journey(Path(directory)))
+    print(
+        json.dumps(
+            dict(offline_installed_terminal_pty=True, startup_seconds=startup, reply_seconds=reply)
+        )
+    )
 
 
 if __name__ == "__main__":
