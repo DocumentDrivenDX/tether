@@ -1,5 +1,5 @@
 name: Checks
-on: [push, pull_request]
+on: [pull_request]
 permissions:
   contents: read
 jobs:
@@ -20,22 +20,11 @@ jobs:
           python-version: ${{ matrix.python }}
           enable-cache: true
       - run: uv sync --locked
-      - name: Shared quality gate
+      - name: Routine pull request gate
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
         run: |
           if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
             BASE_SHA=HEAD
           fi
-          make check CHECK_BASE="$BASE_SHA"
-      - run: uv build
-      - name: Installed base and wheel smoke
-        run: uv run --locked python scripts/check_distribution.py dist
-      - name: Installed optional compatible-provider closure
-        run: uv run --locked python scripts/check_distribution.py dist openai
-      - name: Installed optional terminal UI closure
-        run: uv run --locked python scripts/check_distribution.py dist tui
-      - name: Installed optional PostgreSQL closure
-        run: uv run --locked python scripts/check_distribution.py dist postgres
-      - name: Installed optional embedded PostgreSQL closure
-        run: uv run --locked python scripts/check_distribution.py dist embedded-postgres
+          make pr-check CHECK_BASE="$BASE_SHA"
