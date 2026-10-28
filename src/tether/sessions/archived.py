@@ -16,8 +16,16 @@ from tether.types.archive import (
 from tether.types.archive_codec import references, verify_bundle
 from tether.types.archive_cursor import unwrap, wrap
 from tether.types.client import HistoryPage, HistorySlot, ReadLimit
-from tether.types.execution import Actor, ExecutionDenied, HistoryRef, WorkerOutstanding, copy_actor
+from tether.types.execution import (
+    Actor,
+    Entry,
+    ExecutionDenied,
+    HistoryRef,
+    WorkerOutstanding,
+    copy_actor,
+)
 from tether.types.history import HistoryValue
+from tether.types.history_links import select as select_history_ref
 from tether.types.storage import (
     EntryPage,
     IntegrityError,
@@ -181,21 +189,65 @@ class ArchiveAccess:
             return HistoryValue(ref=ref, status="denied", reason="policy_denied")
         return value
 
+    async def _link_entries(self, actor: Actor, sid: str, through_index: int) -> tuple[Entry, ...]:
+        if through_index + 1 > self.access.limits.max_lookup_entries:
+            raise ReadLimit("read_limit")
+        page = await self.selected().entries(
+            sid,
+            actor=copy_actor(actor),
+            start=0,
+            limit=self.access.limits.max_lookup_entries,
+            reverse=False,
+        )
+        if (
+            page.partial
+            or len(page.items) < through_index + 1
+            or any(e.index != pos for pos, e in enumerate(page.items[: through_index + 1]))
+        ):
+            raise ArchiveReadError("unavailable")
+        return tuple(e for e in page.items if e.kind == "history_linked")
+
+    async def _linked_record(
+        self,
+        actor: Actor,
+        sid: str,
+        entry: Entry,
+        ref: HistoryRef,
+        links: tuple[Entry, ...],
+        through_index: int,
+    ) -> HistoryValue:
+        try:
+            active = select_history_ref(
+                ref,
+                entry.index,
+                tuple(e for e in links if e.facts.get("message_index") == entry.index),
+                through_index=through_index,
+                max_hops=self.access.limits.max_history_link_hops,
+            )
+        except IntegrityError:
+            return HistoryValue(ref=ref, status="integrity_error", reason="history_link_integrity")
+        return await self.record(actor, sid, active)
+
     async def history(self, actor: Actor, sid: str, start: int, limit: int) -> HistoryPage:
         self.access.limit(limit)
         self.access.position(start)
 
         async def operation() -> HistoryPage:
             page = await self.page(actor, sid, start, limit, False)
+            view = await self.view(actor, sid)
+            through_index = view.summary.entry_count - 1
+            links = await self._link_entries(actor, sid, through_index)
             slots: list[HistorySlot] = []
             used = 0
             count = 0
             for entry in page.items:
+                if entry.kind == "history_linked":
+                    continue
                 for ref in references(entry.model_dump(mode="json")):
                     count += 1
                     if count > self.access.limits.max_lookup_entries:
                         raise ReadLimit("read_limit")
-                    value = await self.record(actor, sid, ref)
+                    value = await self._linked_record(actor, sid, entry, ref, links, through_index)
                     slot = HistorySlot(entry_index=entry.index, value=value)
                     used += self.access.size(slot)
                     if used > self.access.limits.max_read_bytes:

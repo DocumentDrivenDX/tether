@@ -281,7 +281,7 @@ class SessionStore(CallerStore, Protocol):
         session_id: str,
         owner: str,
         *,
-        kind: Literal["key", "invocation", "model_call", "turn"],
+        kind: Literal["key", "invocation", "model_call", "turn", "history_link"],
         value: str,
         limit: int = 1000,
         max_bytes: int | None = None,

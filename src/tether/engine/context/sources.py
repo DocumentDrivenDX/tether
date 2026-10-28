@@ -118,7 +118,7 @@ async def capture(gov: Governance, capacity: int, turns: frozenset[str]) -> Snap
     for entry in entries:
         used = charge(entry.model_dump(mode="json"), capacity, used)
         try:
-            message = await gov.read(entry.history_ref)
+            message = await gov.read(entry.history_ref, source_index=entry.index)
         except ExecutionDenied as error:
             if error.reason in {"history_unavailable", "history_pending"}:
                 raise ContextError(

@@ -48,6 +48,31 @@ class HistoryValue(Payload):
     source_locator: dict[str, str] = Field(default_factory=dict)
 
 
+class HistoryLink(Payload):
+    """An accepted semantic-equivalent replacement for one committed entry ref."""
+
+    schema_version: Literal[1] = 1
+    message_index: int = Field(ge=0)
+    previous: HistoryRef
+    verified: HistoryRef
+    canonical_digest: str
+
+    @model_validator(mode="after")
+    def equivalent_scope(self) -> Self:
+        first, second = self.previous, self.verified
+        if (
+            first.owner != second.owner
+            or first.session_id != second.session_id
+            or first.kind != second.kind
+            or first.component != second.component
+            or first.codec != second.codec
+            or first.sha256 != second.sha256
+            or first.sha256 != self.canonical_digest
+        ):
+            raise ValueError("history_link_equivalence")
+        return self
+
+
 class HistoryCapabilities(Payload):
     writable: bool
     externally_recorded: bool

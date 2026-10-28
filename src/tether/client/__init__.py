@@ -3,12 +3,12 @@
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Literal
 
-from tether.sessions import closing, content, resolution
+from tether.sessions import closing, content, links, resolution
 from tether.sessions.metadata import MetadataCommands
 from tether.sessions.service import SessionService
 from tether.types import AttachmentRef, JsonValue
 from tether.types.client import UNSET, Change, TurnHandle, Unset
-from tether.types.execution import Actor, Answer, PendingConfirmation, Resolution
+from tether.types.execution import Actor, Answer, Entry, HistoryRef, PendingConfirmation, Resolution
 from tether.types.storage import SessionInit, SessionPatch, SessionSummary
 
 from .reads import ClientReads
@@ -113,6 +113,19 @@ class Client(ClientReads):
             self._actor,
             session_id,
             Resolution(invocation_id=invocation_id, outcome=outcome, reason=reason),
+        )
+
+    async def link_history(
+        self,
+        session_id: str,
+        message_index: int,
+        previous: HistoryRef,
+        verified: HistoryRef,
+        *,
+        key: str,
+    ) -> Entry:
+        return await links.bind(
+            self._access, self._actor, session_id, message_index, previous, verified, key=key
         )
 
     async def resume(self, session_id: str) -> TurnHandle:

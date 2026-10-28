@@ -322,7 +322,7 @@ class Run:
     async def visible_messages(self) -> tuple[Message, ...]:
         return tuple(
             [
-                await self.gov.read(e.history_ref)
+                await self.gov.read(e.history_ref, source_index=e.index)
                 for e in self.gov.log.entries
                 if e.kind == "message" and e.turn_id in self.result_turn_ids
             ]
