@@ -1,0 +1,123 @@
+"""Opt-in reference model configuration crosses the governed local wire boundary."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+
+import pytest
+from test_compatible_loopback import read_request, wire_response
+from test_wire_estimator import profile as tokenizer_profile
+from test_wire_estimator import vocabulary
+
+from tether.cli.command import execute, parser
+from tether.cli.demo import load_profile, open_demo
+from tether.tui import DemoApp
+
+pytestmark = pytest.mark.anyio
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+def write_profile(tmp_path, port: int):
+    vocab = tmp_path / "vocabulary.txt"
+    vocab.write_bytes(vocabulary())
+    authorization = tmp_path / "authorization.txt"
+    authorization.write_text(" ".join(("Bearer", "fabricated")), encoding="utf-8")
+    config = tmp_path / "model.json"
+    config.write_text(
+        json.dumps(
+            dict(
+                id="local-fixture",
+                base_url=f"http://127.0.0.1:{port}/v1",
+                model_name="fabricated-wire-model",
+                authorization_file=authorization.name,
+                output_limit_field="max_tokens",
+                context_window_tokens=100000,
+                output_tokens=256,
+                safety_margin_tokens=128,
+                tokenizer_profile=tokenizer_profile().model_dump(mode="json"),
+                vocabulary_path=vocab.name,
+            )
+        ),
+        encoding="utf-8",
+    )
+    return config
+
+
+class Peer:
+    def __init__(self) -> None:
+        self.seen: list[tuple[str, dict[str, str], dict]] = []
+
+    async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            self.seen.append(await read_request(reader))
+            payload = wire_response()
+            writer.write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                b"X-Request-Id: fabricated-header\r\nContent-Length: "
+                + str(len(payload)).encode()
+                + b"\r\nConnection: close\r\n\r\n"
+                + payload
+            )
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+
+async def test_reference_config_selects_real_adapter_without_changing_offline_default(
+    tmp_path, capsys
+):
+    peer = Peer()
+    server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
+    try:
+        port = server.sockets[0].getsockname()[1]
+        config = write_profile(tmp_path, port)
+        loaded = await load_profile(config)
+        assert loaded.session_ref.startswith("model:local-fixture:")
+        root = tmp_path / "journal"
+        async with open_demo(root, profile=loaded) as (app, actor, _tool):
+            session = await app.client(actor).create(ref=loaded.session_ref)
+            result = await (await app.client(actor).send(session.id, "Fabricated input")).result()
+            assert result.stop_reason == "final"
+            assert result.messages[-1].content == "Fabricated answer."
+        assert len(peer.seen) == 1
+        line, headers, body = peer.seen[0]
+        assert line.startswith("POST /v1/chat/completions ")
+        assert headers["authorization"].startswith("Bearer ")
+        assert body["model"] == "fabricated-wire-model"
+        assert body["max_tokens"] == 256
+        await execute(
+            parser().parse_args(["--root", str(root), "--model-config", str(config), "list"])
+        )
+        assert session.id in capsys.readouterr().out
+        assert len(peer.seen) == 1
+        app = DemoApp(root, model_config=config)
+        async with asyncio.timeout(20), app.run_test():
+            assert app.session_id == session.id
+            assert app.title == "Tether · local-fixture"
+        assert len(peer.seen) == 1
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_reference_config_refuses_missing_authorization_before_egress(tmp_path):
+    peer = Peer()
+    server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
+    try:
+        config = write_profile(tmp_path, server.sockets[0].getsockname()[1])
+        loaded = await load_profile(config)
+        loaded.authorization_file.unlink()
+        async with open_demo(tmp_path / "journal", profile=loaded) as (app, actor, _tool):
+            session = await app.client(actor).create(ref=loaded.session_ref)
+            result = await (await app.client(actor).send(session.id, "Fabricated input")).result()
+            assert result.stop_reason != "final"
+        assert not peer.seen
+    finally:
+        server.close()
+        await server.wait_closed()

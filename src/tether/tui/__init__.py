@@ -11,7 +11,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Footer, Header, Input, Label, ListItem, ListView, RichLog
 
-from tether.cli.demo import open_demo
+from tether.cli.demo import load_profile, open_demo
 from tether.client import Client
 from tether.types.client import ReplyReset, ReplyText, SessionUpdated
 from tether.types.execution import Actor, Answer, TurnResult
@@ -28,10 +28,13 @@ class DemoApp(App[None]):
     #body { height: 1fr; }
     """
 
-    def __init__(self, root: Path, *, volatile: bool = False) -> None:
+    def __init__(
+        self, root: Path, *, volatile: bool = False, model_config: Path | None = None
+    ) -> None:
         super().__init__()
         self.root = root
         self.volatile = volatile
+        self.model_config = model_config
         self._demo_context: Any = None
         self.client: Client | None = None
         self.actor: Actor | None = None
@@ -54,14 +57,21 @@ class DemoApp(App[None]):
         yield Footer()
 
     async def on_mount(self) -> None:
-        self._demo_context = open_demo(self.root, volatile=self.volatile)
+        profile = await load_profile(self.model_config) if self.model_config is not None else None
+        if profile is not None:
+            self.title = "Tether · " + profile.id
+            self.query_one("#message", Input).placeholder = "Send a message"
+        self._demo_context = open_demo(self.root, volatile=self.volatile, profile=profile)
         app, actor, _ = await self._demo_context.__aenter__()
         client = app.client(actor)
         self.client, self.actor = client, actor
-        demo = await client.find("demo")
+        session_ref = profile.session_ref if profile is not None else "demo"
+        demo = await client.find(session_ref)
         if demo is None:
             demo = await client.create(
-                ref="demo", title="Offline demo", settings={"approval": "manual"}
+                ref=session_ref,
+                title="Model · " + profile.id if profile is not None else "Offline demo",
+                settings={"approval": "manual"},
             )
         self.session_id = demo.id
         await self._refresh_sessions()
@@ -194,5 +204,5 @@ class DemoApp(App[None]):
             await self._show_session()
 
 
-def run(root: Path, *, volatile: bool = False) -> None:
-    DemoApp(root, volatile=volatile).run()
+def run(root: Path, *, volatile: bool = False, model_config: Path | None = None) -> None:
+    DemoApp(root, volatile=volatile, model_config=model_config).run()

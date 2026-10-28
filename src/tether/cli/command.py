@@ -14,11 +14,15 @@ from tether.types.client import ReplyReset, ReplyText
 from tether.types.execution import Answer, TurnResult
 
 from .demo import open_demo
+from .profile import load_profile
 
 
 def parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(prog="tether")
     command.add_argument("--root", type=Path, default=Path.home() / ".local" / "share" / "tether")
+    command.add_argument(
+        "--model-config", type=Path, help="Opt into an explicit compatible model profile"
+    )
     command.add_argument(
         "--volatile", action="store_true", help="Use a temporary in-memory UI demo"
     )
@@ -91,7 +95,12 @@ async def follow_session(client: Client, session_id: str, since: int | None) -> 
 async def execute(args: argparse.Namespace) -> None:
     if args.volatile:
         raise ValueError("volatile_ui_only")
-    async with open_demo(args.root, continuation=args.action == "confirm") as (app, actor, _tool):
+    profile = await load_profile(args.model_config) if args.model_config is not None else None
+    async with open_demo(args.root, continuation=args.action == "confirm", profile=profile) as (
+        app,
+        actor,
+        _tool,
+    ):
         client = app.client(actor)
         if args.action == "list":
             await list_sessions(client)
@@ -123,7 +132,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.action is None:
             from tether.tui import run
 
-            run(args.root, volatile=args.volatile)
+            run(args.root, volatile=args.volatile, model_config=args.model_config)
         else:
             asyncio.run(execute(args))
     except (OSError, RuntimeError, ValueError) as error:
