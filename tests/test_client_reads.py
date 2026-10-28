@@ -335,6 +335,49 @@ async def test_delayed_source_and_shared_provider_request_id_keep_attempts_disti
     assert len(h.tool.calls) == 1
 
 
+@pytest.mark.parametrize(
+    ("retry_hint", "expected"),
+    [
+        (0.25, "pending"),
+        (-0.25, "unavailable"),
+        (float("nan"), "unavailable"),
+        (float("inf"), "unavailable"),
+    ],
+)
+async def test_source_retry_hint_is_finite_before_client_disclosure(
+    harness, monkeypatch, retry_hint, expected
+):
+    h, sid = harness, harness.session.id
+    entries_before = await h.client.entries(sid)
+    call_ids = [
+        entry.facts["model_call_id"] for entry in entries_before.items if entry.kind == "model_call"
+    ]
+    original = h.history.read
+
+    async def source(refs, *, actor):
+        values = await original(refs, actor=actor)
+        return tuple(
+            value.model_copy(
+                update={"status": "pending", "record": None, "retry_after_seconds": retry_hint}
+            )
+            for value in values
+        )
+
+    monkeypatch.setattr(h.history, "read", source)
+    page = await h.client.history(sid)
+    assert page.items
+    assert all(slot.value.status == expected and slot.value.record is None for slot in page.items)
+    detail = (await h.client.call_detail(sid, call_ids))[0]
+    assert detail.status == expected
+    assert all(value.status == expected and value.record is None for value in detail.observations)
+    if expected == "pending":
+        assert all(slot.value.retry_after_seconds == retry_hint for slot in page.items)
+    else:
+        assert all(slot.value.retry_after_seconds is None for slot in page.items)
+    assert (await h.client.entries(sid)) == entries_before
+    assert not h.tool.calls
+
+
 async def test_revocation_during_provider_read_never_delivers_cached_content(harness, monkeypatch):
     h, sid = harness, harness.session.id
     original = h.history.read

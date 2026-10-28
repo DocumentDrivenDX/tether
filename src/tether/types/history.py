@@ -44,7 +44,7 @@ class HistoryValue(Payload):
     status: HistoryStatus
     record: HistoryRecord | None = None
     reason: str | None = None
-    retry_after_seconds: float | None = None
+    retry_after_seconds: float | None = Field(default=None, ge=0)
     source_locator: dict[str, str] = Field(default_factory=dict)
 
 
