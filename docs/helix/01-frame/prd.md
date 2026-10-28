@@ -390,12 +390,12 @@ This section records decisions; the rationale is in the ADRs.
 - The reference local default is the specified JSONL history/journal pair (ADR-020); its crash/atomicity/index behavior needs qualification. Embedded Postgres remains optional, separately measured.
 - Authoritative content by reference is selected: CONTRACT-005 and ADR-018/019 separate history from execution facts and archives; JSONL is the local default and Gateway model exchanges use exact correlation plus writable supplemental history.
 - Inference rows own observed model content, not Tether session metadata or effect/approval state. Their retention and availability cannot authorize journal eviction; a complete archive requires reference closure (CONTRACT-003/005).
-- CI service and packaging automation are implementation/deployment choices. They must run the same required conformance and acceptance gates; they do not change the behavioral requirements.
+- CI service and packaging automation are implementation/deployment choices. Routine pull-request CI may run a smaller gate to conserve hosted capacity. The complete required conformance, acceptance, installed-profile and artifact gates must run on the selected release source before tagging; the execution route does not change the behavioral requirements.
 - Python 3.11 is the recorded compatibility target; the implementation must qualify its selected dependencies and interpreter matrix. A consumer requiring another floor triggers an explicit compatibility change.
 
 ## Success Criteria
 
-- Every P0 acceptance sketch passes in CI.
+- Every P0 acceptance sketch passes the complete release qualification gate on the selected source commit before tagging. Routine pull-request CI is a subset and does not qualify a release.
 - A developer completes the quickstart with the terminal UI against the demo model, then a real provider, then an optional qualified Postgres journal, changing only configuration; local JSONL sessions remain the reference default.
 - On the declared durable journal/history profile, interruption preserves accepted steps exactly once and explicit resume reports completed, blocked or unknown state without duplicating an unqualified external effect.
 - The first downstream platform replaces its in-house loop with a tether release and keeps its session, policy, and audit behavior.
