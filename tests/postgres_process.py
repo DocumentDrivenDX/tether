@@ -58,7 +58,10 @@ async def run(config):
             yield connection
 
     root = await DatabaseRoot.open(
-        source, actor=actor, schema=config["schema"], limits=StorageLimits(lease_seconds=5)
+        source,
+        actor=actor,
+        schema=config["schema"],
+        limits=StorageLimits(lease_seconds=config.get("lease_seconds", 5)),
     )
     store = PostgresSessionStore(root).for_actor(actor)
     try:

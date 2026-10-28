@@ -25,7 +25,7 @@ def anyio_backend():
     return "asyncio"
 
 
-async def peer(h, server, session, turn, *, unsafe=False, effect_path=None):
+async def peer(h, server, session, turn, *, unsafe=False, effect_path=None, lease_seconds=5):
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-u",
@@ -46,6 +46,7 @@ async def peer(h, server, session, turn, *, unsafe=False, effect_path=None):
                     "turn": turn,
                     "unsafe": unsafe,
                     "effect_path": str(effect_path) if effect_path is not None else None,
+                    "lease_seconds": lease_seconds,
                 }
             )
             + "\n"
@@ -91,12 +92,25 @@ async def expired(h, session):
             await asyncio.sleep(0.02)
 
 
+async def force_expiry(h, session):
+    """Expire a live peer's lease at a controlled point in the takeover test."""
+    async with h.pool.connection() as connection:
+        cursor = await connection.execute(
+            sql.SQL(
+                "UPDATE {}.sessions SET lease_until=clock_timestamp()-interval '1 second' "
+                "WHERE owner=%s AND id=%s AND lease_until>clock_timestamp()"
+            ).format(sql.Identifier(h.schema)),
+            (h.actor.id.encode(), session.id.encode()),
+        )
+        assert cursor.rowcount == 1, "the original lease must still be live"
+
+
 async def test_separate_process_exclusivity_takeover_stale_writes_and_cleanup(
     database, postgres_server
 ):
     h = database
     session = await Capture(h.root, h.actor).create(SessionInit(), str(uuid4()))
-    original = await peer(h, postgres_server, session, "old-phase")
+    original = await peer(h, postgres_server, session, "old-phase", lease_seconds=120)
     peers = [original]
     try:
         assert (await receive(original))["event"] == "acquired"
@@ -104,6 +118,7 @@ async def test_separate_process_exclusivity_takeover_stale_writes_and_cleanup(
         peers.append(blocked)
         assert await receive(blocked) == {"event": "refused", "error": "TurnInProgress"}
         await asyncio.wait_for(blocked.wait(), 10)
+        await force_expiry(h, session)
         await expired(h, session)
         replacement = await peer(h, postgres_server, session, "new-phase")
         peers.append(replacement)

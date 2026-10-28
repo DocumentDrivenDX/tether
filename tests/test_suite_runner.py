@@ -16,9 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_groups_preserve_case_order_and_finite_argument_budget():
     nodes = [f"tests/test_fake.py::test_case[{i}]" for i in range(70)]
+    nodes += [f"tests/test_embedded_lifetime.py::test_case[{i}]" for i in range(19)]
+    nodes += [f"tests/test_postgres_processes.py::test_case[{i}]" for i in range(9)]
+    nodes += ["tests/test_fake.py::test_last"]
     batches = test_suite.groups(nodes)
     assert [node for batch in batches for node in batch] == nodes
     assert all(len(batch) <= 32 for batch in batches)
+    assert all(
+        len(batch) <= 8 and all(node.startswith(test_suite.NATIVE_CASE_PREFIXES) for node in batch)
+        for batch in batches
+        if batch[0].startswith(test_suite.NATIVE_CASE_PREFIXES)
+    )
     assert all(sum(len(node.encode()) + 1 for node in batch) <= 64 * 1024 for batch in batches)
     assert len(test_suite.groups(["a" * 40000, "b" * 40000])) == 2
 
