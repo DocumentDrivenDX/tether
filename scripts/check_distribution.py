@@ -47,6 +47,16 @@ extra = sys.argv[2]
 assert sdks == ({'openai'} if extra == 'openai' else set())
 if extra == 'openai':
     from tether.adapters.openai_compat import OpenAICompatModel
+if extra in ('postgres', 'embedded-postgres'):
+    from tether.stores.postgres import DatabaseRoot, PostgresHistory, PostgresSessionStore
+    assert md.version('psycopg') == '3.3.6'
+    assert md.version('psycopg-binary') == '3.3.6'
+    assert md.version('psycopg-pool') == '3.3.3'
+if extra == 'embedded-postgres':
+    from tether.stores.postgres.embedded import EmbeddedPostgres
+    from tether.stores.postgres.embedded.files import binaries
+    assert md.version('pgserver-pg18') == '18.6.1'
+    assert binaries().is_dir()
 async def smoke():
     tags = RequestTags(session_id='fabricated-session', turn_id='fabricated-turn',
         model_call_id='fabricated-call', principal='fabricated', spec_id='demo', spec_version='1')
@@ -335,7 +345,9 @@ print(json.dumps(dict(wheel_version=md.version('novirhiza-tether'),
     extra=extra or 'base', offline_agent_and_replay=True, offline_gated_agent=True,
     offline_durable_client_resume=True, offline_tui=(extra == 'tui'),
     offline_tui_cli_restart=(extra == 'tui'),
-    offline_compatible_loopback=(extra == 'openai'))))
+    offline_compatible_loopback=(extra == 'openai'),
+    postgres_import=(extra in ('postgres', 'embedded-postgres')),
+    embedded_binaries=(extra == 'embedded-postgres'))))
 """
 
 
@@ -430,7 +442,7 @@ async def main() -> int:
     directory = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("dist")
     extra = sys.argv[2] if len(sys.argv) > 2 else None
     try:
-        if extra not in (None, "openai", "tui"):
+        if extra not in (None, "openai", "tui", "postgres", "embedded-postgres"):
             raise ValueError("unsupported_extra")
         wheel = inspect_artifacts(directory)
         with tempfile.TemporaryDirectory(prefix="tether-base-") as name:

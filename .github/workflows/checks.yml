@@ -35,3 +35,7 @@ jobs:
         run: uv run --locked python scripts/check_distribution.py dist openai
       - name: Installed optional terminal UI closure
         run: uv run --locked python scripts/check_distribution.py dist tui
+      - name: Installed optional PostgreSQL closure
+        run: uv run --locked python scripts/check_distribution.py dist postgres
+      - name: Installed optional embedded PostgreSQL closure
+        run: uv run --locked python scripts/check_distribution.py dist embedded-postgres
