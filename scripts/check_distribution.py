@@ -44,8 +44,8 @@ assert resources.files('tether').joinpath('py.typed').is_file()
 installed = {d.metadata['Name'].lower().replace('_', '-') for d in md.distributions()}
 sdks = installed.intersection(json.loads(sys.argv[1]))
 extra = sys.argv[2]
-assert sdks == ({'openai'} if extra == 'openai' else set())
-if extra == 'openai':
+assert sdks == ({'openai'} if extra in ('openai', 'tui-openai') else set())
+if extra in ('openai', 'tui-openai'):
     from tether.adapters.openai_compat import OpenAICompatModel
 if extra in ('postgres', 'embedded-postgres'):
     from tether.stores.postgres import DatabaseRoot, PostgresHistory, PostgresSessionStore
@@ -241,7 +241,7 @@ async def smoke():
         finally:
             assert await root.aclose()
 asyncio.run(smoke())
-if extra == 'openai':
+if extra in ('openai', 'tui-openai'):
     def loopback_only(sock, address):
         if not isinstance(address, tuple) or address[0] != '127.0.0.1':
             raise AssertionError('installed compatible profile attempted external network I/O')
@@ -301,7 +301,7 @@ if extra == 'openai':
         assert seen[0][1].get('authorization') is None
         assert seen[0][2]['model'] == 'fabricated-wire-model'
     asyncio.run(compatible_smoke())
-if extra == 'tui':
+if extra in ('tui', 'tui-openai'):
     from textual.widgets import Button, Input
     from tether.tui import DemoApp
     async def tui_smoke(root):
@@ -343,9 +343,9 @@ if extra == 'tui':
 print(json.dumps(dict(wheel_version=md.version('novirhiza-tether'),
     agent_runtime=md.version('pydantic-ai-slim'), provider_sdks=len(sdks),
     extra=extra or 'base', offline_agent_and_replay=True, offline_gated_agent=True,
-    offline_durable_client_resume=True, offline_tui=(extra == 'tui'),
-    offline_tui_cli_restart=(extra == 'tui'),
-    offline_compatible_loopback=(extra == 'openai'),
+    offline_durable_client_resume=True, offline_tui=(extra in ('tui', 'tui-openai')),
+    offline_tui_cli_restart=(extra in ('tui', 'tui-openai')),
+    offline_compatible_loopback=(extra in ('openai', 'tui-openai')),
     postgres_import=(extra in ('postgres', 'embedded-postgres')),
     embedded_binaries=(extra == 'embedded-postgres'))))
 """
@@ -397,7 +397,8 @@ async def clean_import(wheel: Path, root: Path, extra: str | None = None) -> Non
         "requirements-txt",
     ]
     if extra:
-        export.extend(["--extra", extra])
+        for name in ("tui", "openai") if extra == "tui-openai" else (extra,):
+            export.extend(["--extra", name])
     exported = await run(export)
     wheel_data = await asyncio.to_thread(wheel.read_bytes)
     wheel_hash = hashlib.sha256(wheel_data).hexdigest()
@@ -433,7 +434,7 @@ async def clean_import(wheel: Path, root: Path, extra: str | None = None) -> Non
             )
         ).strip()
     )
-    if extra == "tui":
+    if extra in ("tui", "tui-openai"):
         terminal_check = Path(__file__).with_name("check_terminal_pty.py").resolve()
         print((await run([str(python), "-I", str(terminal_check)])).strip())
 
@@ -442,7 +443,7 @@ async def main() -> int:
     directory = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("dist")
     extra = sys.argv[2] if len(sys.argv) > 2 else None
     try:
-        if extra not in (None, "openai", "tui", "postgres", "embedded-postgres"):
+        if extra not in (None, "openai", "tui", "tui-openai", "postgres", "embedded-postgres"):
             raise ValueError("unsupported_extra")
         wheel = inspect_artifacts(directory)
         with tempfile.TemporaryDirectory(prefix="tether-base-") as name:
