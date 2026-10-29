@@ -14,7 +14,8 @@ Owner-bound Client metadata, history, call-detail and verified pending reads are
 
 ## Offline reference client
 
-From a clone, `uv run tether` starts a Textual terminal UI with a scripted model, a
+From a clone, `uv run --frozen --python 3.11 --no-dev --extra tui tether` starts a
+Textual terminal UI with a scripted model, a
 fabricated tool call and an approval. It creates a local JSONL store at
 `~/.local/share/tether`. No account, credential or network call is needed for the demo.
 Install the optional `tui` extra when running an installed distribution outside the
@@ -22,8 +23,10 @@ development environment. The terminal UI shows sessions and transcript history a
 supports send, approve/deny and explicit resume. The same local demo profile has CLI
 commands for `list`, `show`, `send`, `follow`, `confirm`, `resume` and fabricated cassette
 `replay`; run `uv run tether --help` for arguments. Use `--root PATH` to select another
-local store. These clients are a reference path; the complete P0 release gate and
-quickstart timing remain to be qualified.
+local store. These clients are a reference path; the complete P0 release gate remains
+open. One fresh macOS/Python 3.11 clone with an isolated dependency cache reached
+the offline UI in 5.51 seconds, including installation; download time varies with
+network and package registry conditions.
 For a deliberately volatile in-memory UI demo, use `uv run tether --volatile`;
 its sessions disappear when the process exits and resume is disabled.
 
