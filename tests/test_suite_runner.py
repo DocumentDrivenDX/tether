@@ -64,7 +64,10 @@ def test_each_stage_failure_prevents_a_successful_gate(monkeypatch, failure):
 
 
 @pytest.mark.parametrize("both_branches", [False, True])
-def test_real_inventory_and_aggregate_branch_coverage_gate(tmp_path, both_branches):
+def test_real_inventory_and_aggregate_branch_coverage_gate(tmp_path, both_branches, monkeypatch):
+    shared_temporary_root = tmp_path / "shared-pytest-root"
+    shared_temporary_root.mkdir()
+    monkeypatch.setenv("PYTEST_DEBUG_TEMPROOT", str(shared_temporary_root))
     (tmp_path / "pyproject.toml").write_text(
         '[tool.pytest.ini_options]\ntestpaths=["tests"]\npythonpath=["."]\n'
         'addopts="--cov=sample --cov-branch"\n'
@@ -75,7 +78,7 @@ def test_real_inventory_and_aggregate_branch_coverage_gate(tmp_path, both_branch
         "def choose(flag):\n    if flag:\n        return 1\n    return 2\n"
     )
     (tmp_path / "tests").mkdir()
-    case = "from sample import choose\ndef test_yes():\n    assert choose(True) == 1\n"
+    case = "from sample import choose\ndef test_yes(tmp_path):\n    assert choose(True) == 1\n"
     if both_branches:
         case += "def test_no():\n    assert choose(False) == 2\n"
     (tmp_path / "tests/test_sample.py").write_text(case)
@@ -83,6 +86,7 @@ def test_real_inventory_and_aggregate_branch_coverage_gate(tmp_path, both_branch
         run_command([sys.executable, str(ROOT / "scripts/test_suite.py")], cwd=tmp_path)
     )
     assert result.returncode == (0 if both_branches else 2)
+    assert not list(shared_temporary_root.iterdir())
     assert "bounded groups" in result.stdout
     if both_branches:
         assert "100%" in result.stdout
