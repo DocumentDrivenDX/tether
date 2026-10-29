@@ -62,6 +62,8 @@ class OpenAIAdapter:
         limits: ModelExecutionLimits,
         output_limit_field: str,
         application_credential: Credential | None = None,
+        supports_parallel_tool_calls: bool = True,
+        request_tags_header: str = "X-Tether-Request-Tags",
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         parsed = urlsplit(base_url)
@@ -82,6 +84,13 @@ class OpenAIAdapter:
             getattr(application_credential, "authorization", None)
         ):
             raise ValueError("invalid_application_credential")
+        if request_tags_header not in {
+            "X-Tether-Request-Tags",
+            "Databricks-Ai-Gateway-Request-Tags",
+        }:
+            raise ValueError("unsupported_request_tags_header")
+        self._supports_parallel_tool_calls = supports_parallel_tool_calls
+        self._request_tags_header = request_tags_header
         self._base_url = base_url
         self._tiers = dict(tiers)
         self._limits = limits.model_copy(deep=True)
@@ -109,6 +118,7 @@ class OpenAIAdapter:
         return OpenAIWireEstimator(
             tiers=self._tiers,
             output_limit_field=self._output_limit_field,
+            supports_parallel_tool_calls=self._supports_parallel_tool_calls,
             profile=profile,
             vocabulary=vocabulary,
         )
@@ -122,6 +132,7 @@ class OpenAIAdapter:
                 base_url=self._base_url,
                 model_name=self._tiers[request.model],
                 output_limit_field=self._output_limit_field,
+                supports_parallel_tool_calls=self._supports_parallel_tool_calls,
                 transport=boundary,
             )
             normalized = from_sdk_response(
@@ -168,7 +179,11 @@ class OpenAIAdapter:
             async with asyncio.timeout(seconds):
                 for attempt in range(self._limits.max_attempts):
                     boundary = AttemptTransport(
-                        self._transport, request, self._limits, self._application_credential
+                        self._transport,
+                        request,
+                        self._limits,
+                        self._application_credential,
+                        request_tags_header=self._request_tags_header,
                     )
                     emitted = False
                     try:
@@ -244,6 +259,7 @@ class OpenAIAdapter:
             base_url=self._base_url,
             model_name=self._tiers[request.model],
             output_limit_field=self._output_limit_field,
+            supports_parallel_tool_calls=self._supports_parallel_tool_calls,
             transport=boundary,
         ) as streamed:
             try:
@@ -281,7 +297,11 @@ class OpenAIAdapter:
     async def _retry(self, request: ModelRequest) -> tuple[ModelResponse, AttemptIdentity]:
         for attempt in range(self._limits.max_attempts):
             boundary = AttemptTransport(
-                self._transport, request, self._limits, self._application_credential
+                self._transport,
+                request,
+                self._limits,
+                self._application_credential,
+                request_tags_header=self._request_tags_header,
             )
             try:
                 response = await self._once(request, boundary)

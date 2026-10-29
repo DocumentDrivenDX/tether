@@ -55,6 +55,7 @@ async def request_native(
     model_name: str,
     output_limit_field: str,
     transport: httpx.AsyncBaseTransport,
+    supports_parallel_tool_calls: bool = True,
 ) -> ModelResponse:
     async with (
         httpx.AsyncClient(
@@ -81,6 +82,9 @@ async def request_native(
                 openai_chat_supports_max_completion_tokens=output_limit_field
                 == "max_completion_tokens",
                 openai_supports_strict_tool_definition=False,
+                openai_unsupported_model_settings=[]
+                if supports_parallel_tool_calls
+                else ["parallel_tool_calls"],
             ),
         )
         parameters = ModelRequestParameters(
@@ -97,8 +101,9 @@ async def request_native(
         settings = OpenAIChatModelSettings(
             max_tokens=request.max_output_tokens,
             extra_body=request.extra,
-            parallel_tool_calls=False,
         )
+        if supports_parallel_tool_calls:
+            settings["parallel_tool_calls"] = False
         return await model.request(
             to_sdk_messages(request.messages, request.system), settings, parameters
         )
@@ -112,6 +117,7 @@ async def request_native_stream(
     model_name: str,
     output_limit_field: str,
     transport: httpx.AsyncBaseTransport,
+    supports_parallel_tool_calls: bool = True,
 ) -> AsyncGenerator[StreamedResponse, None]:
     """Open Pydantic AI's native streaming request over the mediated transport."""
     async with (
@@ -139,6 +145,9 @@ async def request_native_stream(
                 openai_chat_supports_max_completion_tokens=output_limit_field
                 == "max_completion_tokens",
                 openai_supports_strict_tool_definition=False,
+                openai_unsupported_model_settings=[]
+                if supports_parallel_tool_calls
+                else ["parallel_tool_calls"],
             ),
         )
         parameters = ModelRequestParameters(
@@ -155,8 +164,9 @@ async def request_native_stream(
         settings = OpenAIChatModelSettings(
             max_tokens=request.max_output_tokens,
             extra_body=request.extra,
-            parallel_tool_calls=False,
         )
+        if supports_parallel_tool_calls:
+            settings["parallel_tool_calls"] = False
         async with model.request_stream(
             to_sdk_messages(request.messages, request.system), settings, parameters
         ) as streamed:

@@ -95,3 +95,79 @@ async def test_terminal_ui_keeps_context_failure_visible(tmp_path):
         await pilot.pause()
         lines = [str(line) for line in app.query_one("#transcript", RichLog).lines]
         assert any("[context_unavailable]" in line for line in lines)
+
+
+async def test_new_session_button_and_shortcut_create_select_and_persist(tmp_path):
+    from textual.widgets import ListView
+
+    app = DemoApp(tmp_path)
+    async with asyncio.timeout(20), app.run_test() as pilot:
+        client = app.client
+        assert client is not None
+        original = app.session_id
+        field = app.query_one("#message", Input)
+        field.value = "Unsent draft"
+        await pilot.click("#new-session")
+        await pilot.pause()
+        created = app.session_id
+        assert created is not None
+        assert created != original
+        assert len(app.sessions) == 2
+        assert field.value == ""
+        assert app.focused is field
+        assert (await client.history(created)).items == ()
+        assert (await client.get(created)).settings["approval"] == "manual"
+        listing = app.query_one("#sessions", ListView)
+        assert listing.index is not None
+        assert app.sessions[listing.index].id == created
+        assert app.query_one("#approve", Button).disabled
+        assert app.query_one("#deny", Button).disabled
+        assert app.query_one("#resume", Button).disabled
+        await pilot.press("ctrl+n")
+        await pilot.pause()
+        assert app.session_id not in {original, created}
+        assert len(app.sessions) == 3
+    reopened = DemoApp(tmp_path)
+    async with asyncio.timeout(20), reopened.run_test():
+        assert created in {item.id for item in reopened.sessions}
+        assert len(reopened.sessions) == 3
+
+
+async def test_new_session_keeps_original_pending_and_routes_input_to_new_session(tmp_path):
+    from textual.widgets import ListView
+
+    app = DemoApp(tmp_path, volatile=True)
+    async with asyncio.timeout(20), app.run_test() as pilot:
+        client, original = app.client, app.session_id
+        assert client is not None
+        assert original is not None
+        app.query_one("#message", Input).value = "Original fabricated request"
+        await pilot.click("#send")
+        await pilot.pause()
+        pending = await client.pending(original)
+        assert pending is not None
+        await pilot.press("ctrl+n")
+        await pilot.pause()
+        created = app.session_id
+        assert created is not None
+        assert created != original
+        assert await client.pending(created) is None
+        assert (await client.pending(original)) == pending
+        app.query_one("#message", Input).value = "New fabricated request"
+        await pilot.click("#send")
+        await pilot.pause()
+        page = await client.history(created)
+        contents = [
+            slot.value.record.message.content
+            for slot in page.items
+            if slot.value.record is not None and slot.value.record.message is not None
+        ]
+        assert "New fabricated request" in contents
+        assert "Original fabricated request" not in contents
+        listing = app.query_one("#sessions", ListView)
+        listing.index = next(i for i, item in enumerate(app.sessions) if item.id == original)
+        listing.focus()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.session_id == original
+        assert not app.query_one("#approve", Button).disabled

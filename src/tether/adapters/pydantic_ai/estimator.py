@@ -61,6 +61,7 @@ class OpenAIWireEstimator:
         output_limit_field: str,
         profile: TokenizerProfile,
         vocabulary: bytes,
+        supports_parallel_tool_calls: bool = True,
     ) -> None:
         if (
             not tiers
@@ -68,6 +69,7 @@ class OpenAIWireEstimator:
             or output_limit_field not in {"max_tokens", "max_completion_tokens"}
         ):
             raise ValueError("invalid_estimator_profile")
+        self._supports_parallel_tool_calls = supports_parallel_tool_calls
         self._profile = TokenizerProfile.model_validate(profile.model_dump(mode="json"))
         self._encoding = local_encoding(vocabulary, self._profile)
         self._tiers, self._field = dict(tiers), output_limit_field
@@ -85,6 +87,8 @@ class OpenAIWireEstimator:
             "attachment_codec": ATTACHMENT_CODEC,
             "method": "native-json-bpe-v1",
         }
+        if not supports_parallel_tool_calls:
+            binding["supports_parallel_tool_calls"] = False
         self._revision = digest(binding)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._semaphore: asyncio.Semaphore | None = None
@@ -116,6 +120,7 @@ class OpenAIWireEstimator:
                 base_url="https://offline.invalid/v1",
                 model_name=self._tiers[value.model],
                 output_limit_field=self._field,
+                supports_parallel_tool_calls=self._supports_parallel_tool_calls,
                 transport=capture,
             ):
                 pass

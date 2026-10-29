@@ -45,6 +45,43 @@ python docs/capture/capture_local_qwen.py /operator/path/model.json
 
 Recorded successfully against the already-running DS4 `qwen3.8-flash-next-chat` endpoint with 384 output tokens, 128 KiB response cap and 32,768-token safety margin. `docs/media/qwen-capture-receipt.json` lists the assertions and all three asset hashes. No server restart or hosted inference was used. Model responses are nondeterministic; the assertions must pass before replacing published captures. This selected scenario does not establish general model compatibility or summary fidelity.
 
+### Common file-tool approval (working tree)
+
+`docs/capture/capture_common_tools.py` drives the actual Textual UI with a
+fabricated scripted model and the real `write_file` implementation. The pending
+screenshot shows executable arguments and verifies no file exists; approval then
+writes the exact fabricated content and settles the approval. A third frame
+verifies New Session selects a distinct empty session and focuses the composer. Reproduce with
+`.venv/bin/python docs/capture/capture_common_tools.py`.
+`docs/media/common-tools-receipt.json` records platform, assertions and hashes.
+This captures unreleased source, not a released model/search profile. It does not
+qualify live search, remote web loading or a filesystem security sandbox.
+
+### URL-only local model startup and all common tools
+
+Run `.venv/bin/python docs/capture/capture_local_startup.py http://localhost:18001/v1`
+against an already running compatible local server. It uses the actual CLI option
+parser, discovers the advertised chat model and context capacity, then runs real
+local inference through the Textual UI with a temporary workspace. Assertions
+separately inspect assistant replies and tool results, require exact pending
+arguments before each approval, and verify all five actual tools settle idle.
+`docs/media/local-startup-receipt.json` records the working-tree Qwen profile,
+assertions and five real pending-state SVG hashes. This is a scoped local-server
+journey, not general model, tokenizer-framing or sandbox qualification.
+
+### Profile-only Databricks startup
+
+`docs/capture/capture_databricks_startup.py PROFILE MODEL` uses an existing signed-in
+CLI profile, derives the workspace host and OAuth authentication, discovers the
+`system.ai` Chat Completions subset, selects a public model through the actual TUI
+picker and verifies an accepted `READY` response to a fabricated prompt.
+`docs/media/databricks-startup-receipt.json` records 59 discovered chat models and
+the selected public model, assertions and SVG hashes. The profile name, workspace
+host and credentials are excluded from published assets. Captures qualify this
+unreleased macOS/Python 3.11.17 CLI-user profile only; other models, schemas, CLI
+authentication modes, cache accounting and full gateway history/correlation remain
+separate qualification work. The starter context budget is not server-capacity evidence.
+
 ### Updating reply area (development source preview)
 
 The TUI streaming regression uses a fabricated paused provider through the real Client feed. Its two captures show one updating Assistant area, then assert that terminal completion clears the provisional widget. The transcript is reconstructed from committed history. These are development-source captures, not the released 0.1.0 interface or live-model inference. The receipt records the exact TUI source hash.
@@ -56,3 +93,5 @@ uv run --locked python docs/capture/capture_streaming_reply.py
 ```
 
 Assets: `docs/media/streaming-01-partial.svg`, `docs/media/streaming-02-updated.svg`, and `docs/media/streaming-capture-receipt.json`.
+
+The install selector includes URL-only local and profile-only Databricks commands for the unreleased checkout. Their sections show the short `uv run` commands and selectable screenshot reels: all five local tools, and Databricks model selection followed by the accepted response. These are verified UI state captures, not videos or terminal-launch recordings. Library and offline-demo tabs retain released 0.1.0 commands.

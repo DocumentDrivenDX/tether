@@ -1,0 +1,27 @@
+{
+  "scenario": "Profile-only Databricks startup, model choice and fabricated READY response",
+  "source": "unreleased working tree",
+  "python": "3.11.17",
+  "platform": "Darwin",
+  "discovered_chat_models": 59,
+  "model": "system.ai.claude-haiku-4-5",
+  "assertions": [
+    "No URL supplied",
+    "Profile host and auth derived by installed CLI",
+    "Model picker shown before session opened",
+    "Selected model answered READY",
+    "Session idle after accepted response",
+    "Profile and workspace host excluded from capture"
+  ],
+  "limits": "system.ai metadata subset; no invocation guarantee for other listed models; starter context budget",
+  "frames": [
+    {
+      "file": "databricks-model-picker.svg",
+      "sha256": "0175466aa448a003ca7d497c9de41609822539182162de2c8612c5059b98b799"
+    },
+    {
+      "file": "databricks-startup-ready.svg",
+      "sha256": "29fdd092ff01c195dfc4246d0b067dfe090403d402bfdf7dbaba16a7a51fd178"
+    }
+  ]
+}

@@ -14,7 +14,7 @@ from tether.types.client import ReplyReset, ReplyText
 from tether.types.execution import Answer, TurnResult
 
 from .demo import open_demo
-from .profile import load_profile
+from .local import options, resolve_profile
 
 
 def parser() -> argparse.ArgumentParser:
@@ -26,6 +26,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument(
         "--volatile", action="store_true", help="Use a temporary in-memory UI demo"
     )
+    local_arguments(command)
     actions = command.add_subparsers(dest="action")
     actions.add_parser("list")
     show = actions.add_parser("show")
@@ -47,6 +48,26 @@ def parser() -> argparse.ArgumentParser:
     replay.add_argument("session_id")
     replay.add_argument("text")
     return command
+
+
+def local_arguments(command: argparse.ArgumentParser) -> None:
+    command.add_argument(
+        "--openai-api-baseurl", "--base-url", "--gateway", help="OpenAI-compatible API base URL"
+    )
+    command.add_argument(
+        "--databricks-profile", help="Use a Databricks CLI profile; derive its gateway URL"
+    )
+    command.add_argument(
+        "--model", help="Model id (otherwise discover /models, preferring a -chat id)"
+    )
+    command.add_argument(
+        "--workspace", type=Path, help="Tool workspace (default: current directory)"
+    )
+    command.add_argument("--context-window", type=int, help="Override the local context budget")
+    command.add_argument("--output-tokens", type=int, help="Output budget (default: 1024)")
+    command.add_argument(
+        "--authorization-file", type=Path, help="Optional file with full Authorization value"
+    )
 
 
 def display_result(result: TurnResult) -> None:
@@ -95,7 +116,7 @@ async def follow_session(client: Client, session_id: str, since: int | None) -> 
 async def execute(args: argparse.Namespace) -> None:
     if args.volatile:
         raise ValueError("volatile_ui_only")
-    profile = await load_profile(args.model_config) if args.model_config is not None else None
+    profile = await resolve_profile(args.model_config, options(args))
     async with open_demo(args.root, continuation=args.action == "confirm", profile=profile) as (
         app,
         actor,
@@ -130,9 +151,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         if args.action is None:
-            from tether.tui import run
-
-            run(args.root, volatile=args.volatile, model_config=args.model_config)
+            try:
+                from tether.tui import run
+            except ImportError:
+                raise RuntimeError(
+                    "Install novirhiza-tether[tui,openai] to run the local-model TUI"
+                ) from None
+            run(
+                args.root,
+                volatile=args.volatile,
+                model_config=args.model_config,
+                local_options=options(args),
+            )
         else:
             asyncio.run(execute(args))
     except (OSError, RuntimeError, ValueError) as error:

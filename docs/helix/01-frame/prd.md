@@ -252,7 +252,7 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 ### Subsystem: Reference Clients
 
 - **FR-29** — A command-line client lists sessions, shows a session, sends a message, follows a session, answers a confirmation, resumes an interrupted turn, and replays a cassette.
-- **FR-30** — A terminal UI shows the session list and a live transcript and handles approvals and resume.
+- **FR-30** — A terminal UI shows the session list and a live transcript and handles approvals, new conversations and resume. An explicitly selected local compatible endpoint starts without a hand-authored model profile, tokenizer file or fabricated credential; model selection, workspace, context-budget provenance and approval requirements remain visible. A selected Databricks CLI profile alone must derive its gateway URL and authenticate, discover the declared chat-model subset, and offer model selection; an explicit gateway URL must not mean a Databricks profile name.
 - **FR-33** — After cloning the repository, one command starts the terminal UI against a built-in scripted demo model and a local store, with no configuration, no network access, and no credential, and the demo exercises streaming, a tool call, and an approval.
 
 ### Subsystem: Databricks Profile
@@ -281,7 +281,7 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 
 ### Subsystem: Packaging and Licensing
 
-- **FR-62** — P1 next compatibility slice: documented conservative configuration defaults and owner overrides reduce first-turn setup; deterministic estimator/Full or Tail composition remains explicit about estimate quality and obtains per-tier capacities only from a selected model profile.
+- **FR-62** — P1 next compatibility slice: documented conservative configuration defaults and owner overrides reduce first-turn setup; deterministic estimator/Full or Tail composition remains explicit about estimate quality and obtains per-tier capacities only from a selected model profile. The opt-in local starter profile may select a finite request budget when server capacity is absent, visibly marking that capacity as unverified and permitting an owner override.
 - **FR-63** — P1 next compatibility slice: published dependency compatibility is stated from executed version evidence. Metadata ranges widen only after their boundary versions pass the relevant suites; the lock retains exact qualified versions.
 
 - **FR-31** — Installation has a small typed base, deterministic offline testing and explicit optional provider/model, telemetry and reference-client integrations. Pydantic types and asynchronous operation remain selected. The base includes pydantic-ai-slim for the selected Agent runner under ADR-002/003. Release pins and its exact transitive closure require qualification; foundation-model SDKs remain optional adapter dependencies. Provider SDK isolation follows NFR-8.
