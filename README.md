@@ -36,7 +36,9 @@ text/tool model, install the `tui` and `openai` extras and run
 `max_completion_tokens`), `context_window_tokens`, `output_tokens`,
 `safety_margin_tokens`, a complete `TokenizerProfile` object in
 `tokenizer_profile`, and paths named `vocabulary_path` and
-`authorization_file`. Relative paths resolve beside the JSON file. Keep the
+`authorization_file`. The optional `max_response_bytes` defaults to 8 KiB and
+may be set up to 1 MiB for a measured streaming profile. Relative paths resolve
+beside the JSON file. Keep the
 authorization file outside the checkout; it contains the complete HTTP
 Authorization value and is read afresh for each physical attempt. The profile
 contains no secret. Its tokenizer vocabulary and server framing values must be
