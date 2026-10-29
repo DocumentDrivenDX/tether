@@ -10,6 +10,7 @@ from typing import cast
 import pytest
 
 from tether.adapters.openai_compat import OpenAICompatModel
+from tether.adapters.pydantic_ai.wire import StreamingWireValidator
 from tether.models import complete
 from tether.models.testing import ListAttemptRecorder
 from tether.types import (
@@ -114,15 +115,30 @@ class RetryAfterPeer:
             await writer.wait_closed()
 
 
-def stream_event(delta: dict, finish: str | None = None) -> bytes:
+def stream_event(delta: dict, finish: str | None = None, *, created: int = 1) -> bytes:
     frame = {
         "id": "fabricated-stream-id",
         "object": "chat.completion.chunk",
-        "created": 1,
+        "created": created,
         "model": "fabricated-wire-model",
         "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
     }
     return b"data: " + json.dumps(frame).encode() + b"\n\n"
+
+
+def test_stream_timestamp_may_advance_but_cannot_move_backward(
+    limits: ModelExecutionLimits,
+) -> None:
+    accepted = StreamingWireValidator((), limits)
+    accepted.feed(stream_event({"role": "assistant", "content": "A"}, created=1))
+    accepted.feed(stream_event({"content": "B"}, "stop", created=2))
+    accepted.feed(b"data: [DONE]\n\n")
+    assert accepted.finish().content == "AB"
+
+    reversed_time = StreamingWireValidator((), limits)
+    reversed_time.feed(stream_event({"role": "assistant", "content": "A"}, created=2))
+    with pytest.raises(ModelUnavailable, match="invalid_response"):
+        reversed_time.feed(stream_event({"content": "B"}, "stop", created=1))
 
 
 class StreamingPeer:
@@ -203,6 +219,7 @@ class FragmentedToolPeer:
                 stream_event(
                     {"tool_calls": [{"index": 0, "function": {"arguments": "2}"}}]},
                     "tool_calls",
+                    created=2,
                 ),
                 b"data: [DONE]\n\n",
             ]

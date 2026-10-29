@@ -205,8 +205,13 @@ class StreamingWireValidator:
             raise ModelUnavailable("invalid_response")
         if self.response_id is None:
             self.response_id, self.model, self.created = response_id, model, created
-        elif (response_id, model, created) != (self.response_id, self.model, self.created):
+        elif (
+            (response_id, model) != (self.response_id, self.model)
+            or self.created is None
+            or created < self.created
+        ):
             raise ModelUnavailable("invalid_response")
+        self.created = created
         choices = value.get("choices")
         if not isinstance(choices, list) or len(choices) > 1:
             raise ModelUnavailable("invalid_response")
