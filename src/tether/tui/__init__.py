@@ -9,11 +9,21 @@ from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Footer, Header, Input, Label, ListItem, ListView, RichLog
+from textual.widgets import (
+    Button,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    RichLog,
+    Static,
+)
 
 from tether.cli.demo import load_profile, open_demo
 from tether.client import Client
-from tether.types.client import ReplyReset, ReplyText, SessionUpdated
+from tether.types.client import Lagged, ReplyReset, ReplyText, ResyncRequired, SessionUpdated
 from tether.types.execution import Actor, Answer, TurnResult
 from tether.types.storage import SessionSummary
 
@@ -22,7 +32,10 @@ class DemoApp(App[None]):
     TITLE = "Tether · offline demo"
     CSS = """
     #sessions { width: 28; border: solid $primary; }
-    #transcript { width: 1fr; border: solid $primary; }
+    #conversation { width: 1fr; border: solid $primary; }
+    #transcript { height: 1fr; }
+    #reply { height: auto; max-height: 50%; padding: 0 1;
+             border-top: solid $primary; overflow-y: auto; display: none; }
     #message { width: 1fr; }
     #controls { height: 3; }
     #body { height: 1fr; }
@@ -41,13 +54,17 @@ class DemoApp(App[None]):
         self.session_id: str | None = None
         self.sessions: tuple[SessionSummary, ...] = ()
         self._follower: asyncio.Task[None] | None = None
-        self._provisional: dict[str, str] = {}
+        self._reply_turn: str | None = None
+        self._reply_attempt: str | None = None
+        self._reply_text = ""
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="body"):
             yield ListView(id="sessions")
-            yield RichLog(id="transcript", wrap=True, markup=False)
+            with Vertical(id="conversation"):
+                yield RichLog(id="transcript", wrap=True, markup=False)
+                yield Static(id="reply", markup=False)
         with Vertical(id="controls"), Horizontal():
             yield Input(placeholder="Send a fabricated message", id="message")
             yield Button("Send", id="send")
@@ -108,6 +125,8 @@ class DemoApp(App[None]):
     async def _show_session(self) -> None:
         if self.client is None or self.session_id is None:
             return
+        self._reply_turn = None
+        self._reset_reply()
         log = self.query_one("#transcript", RichLog)
         log.clear()
         start = 0
@@ -139,22 +158,46 @@ class DemoApp(App[None]):
                 f"Approval requested: {pending.description or pending.tool}"
             )
 
+    def _reset_reply(self) -> None:
+        self._reply_attempt = None
+        self._reply_text = ""
+        reply = self.query_one("#reply", Static)
+        reply.update("")
+        reply.display = False
+
+    def _update_reply(self, change: ReplyText) -> None:
+        if change.session_id != self.session_id or change.turn_id != self._reply_turn:
+            return
+        if change.attempt_id != self._reply_attempt:
+            self._reset_reply()
+            if change.offset != 0:
+                return
+            self._reply_attempt = change.attempt_id
+        if len(self._reply_text) != change.offset:
+            self._reset_reply()
+            return
+        self._reply_text += change.text
+        reply = self.query_one("#reply", Static)
+        reply.border_title = "Assistant · responding"
+        reply.update(self._reply_text + " ▍")
+        reply.display = True
+        reply.call_after_refresh(reply.scroll_end, animate=False)
+
     async def _follow(self) -> None:
         if self.client is None:
             return
         async for change in self.client.follow():
             if isinstance(change, ReplyText):
-                if change.session_id != self.session_id:
-                    continue
-                previous = self._provisional.get(change.attempt_id, "")
-                if len(previous) == change.offset:
-                    self._provisional[change.attempt_id] = previous + change.text
-                    self.query_one("#transcript", RichLog).write(f"live: {change.text}")
+                self._update_reply(change)
             elif isinstance(change, ReplyReset):
-                if change.session_id != self.session_id:
-                    continue
-                self._provisional.pop(change.attempt_id, None)
-                self.query_one("#transcript", RichLog).write("[live reply reset]")
+                if (
+                    change.session_id == self.session_id
+                    and change.turn_id == self._reply_turn
+                    and change.attempt_id == self._reply_attempt
+                ):
+                    self._reset_reply()
+            elif isinstance(change, (Lagged, ResyncRequired)):
+                self._reset_reply()
             elif isinstance(change, SessionUpdated):
                 await self._refresh_sessions()
 
@@ -170,10 +213,17 @@ class DemoApp(App[None]):
         await self._finish(await self.client.send(self.session_id, value))
 
     async def _finish(self, handle: Any) -> None:
-        result: TurnResult = await handle.result()
+        selected = self.session_id
+        self._reply_turn = handle.turn_id
+        try:
+            result: TurnResult = await handle.result()
+        finally:
+            self._reply_turn = None
+            self._reset_reply()
         await self._refresh_sessions()
-        await self._show_session()
-        self.query_one("#transcript", RichLog).write(f"[{result.stop_reason}]")
+        if self.session_id == selected:
+            await self._show_session()
+            self.query_one("#transcript", RichLog).write(f"[{result.stop_reason}]")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "message":
