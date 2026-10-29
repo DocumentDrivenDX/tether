@@ -1,0 +1,39 @@
+{
+  "scenario": "offline-approval-reopen",
+  "package": "novirhiza-tether",
+  "version": "0.1.0",
+  "python": "3.11.17",
+  "platform": "macOS arm64",
+  "capture": "Real Textual headless UI export, 110 \u00d7 30 cells",
+  "data": "fabricated",
+  "network": "denied",
+  "assertions": [
+    "pending approval before confirmation",
+    "same session after reopen",
+    "completed history restored",
+    "explicit approve settles pending state",
+    "idle after approval"
+  ],
+  "frames": [
+    {
+      "file": "01-ready.svg",
+      "description": "A fresh durable offline demo session.",
+      "sha256": "5242c0100ac4673b081f9471ca05d90a1e7e75caa3bf520106709b7ea9238487"
+    },
+    {
+      "file": "02-approval.svg",
+      "description": "The tool call waits for explicit approval.",
+      "sha256": "69a7b8aa5809bb968407f067fad44da0f006393359c6ad0d48aa23e3c1796733"
+    },
+    {
+      "file": "03-approved.svg",
+      "description": "Explicit approval completes the fabricated tool journey.",
+      "sha256": "c3780d26ca0dfa5ac75fb9b190fa7c21dde0233d3e3b63612f18a1d32312a224"
+    },
+    {
+      "file": "04-reopened.svg",
+      "description": "Reopening the same store restores the completed conversation.",
+      "sha256": "142b2956998092bf2653e5ce02069e5674aa8306b8a19a7b5c4d87b5520abe24"
+    }
+  ]
+}
