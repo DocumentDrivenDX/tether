@@ -5,7 +5,7 @@ ddx:
   activity: build
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-28
+  updated: 2026-10-29
   authoring:
     home: repo
   links:
@@ -14,6 +14,10 @@ ddx:
     - id: SD-001
       kind: informed_by
     - id: CONTRACT-002
+      kind: informed_by
+    - id: CONTRACT-001
+      kind: informed_by
+    - id: CONTRACT-004
       kind: informed_by
     - id: CONTRACT-003
       kind: informed_by
@@ -27,7 +31,7 @@ ddx:
 
 ## Scope
 
-This is the immediately next work after 0.1 publication, before consumer adoption or other P1 enhancement work. FR-54 to FR-61 cover the eight requested consumer seams; FR-62 to FR-64 cover configuration, dependency and telemetry compatibility. The governing PRD, SD-001, CONTRACT-002/003/005 and TP-001 remain authoritative. The proposed paragraphs are not current API claims and do not reopen 0.1 P0 qualification.
+This is the immediately next work after 0.1 publication, before consumer adoption or other P1 enhancement work. FR-54 to FR-61 cover the eight requested consumer seams; FR-62 to FR-64 cover configuration, dependency and telemetry compatibility. The governing PRD, SD-001, CONTRACT-001 to CONTRACT-005 and TP-001 remain authoritative. CONTRACT-002/003/005 own the primary seam paragraphs; CONTRACT-001/004 add the required purpose/profile and context-transition bindings. The proposed paragraphs are not current API claims and do not reopen 0.1 P0 qualification.
 
 Deliver one coherent contract/design proposal and its acceptance packet before implementing a seam. Erik LaBianca must accept the affected paragraph before dependent source work. Technical design must resolve concrete transaction/operation state and versioning before implementation; this plan does not invent a missing accepted design.
 

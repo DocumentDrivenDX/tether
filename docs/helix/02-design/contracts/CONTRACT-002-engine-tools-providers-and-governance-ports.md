@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-28
+  updated: 2026-10-29
   authoring:
     home: repo
   links:
@@ -412,7 +412,9 @@ These paragraphs propose the next contract revision after 0.1. They are required
 
 ### Client-origin tool invocation
 
-A Client-origin invocation MUST acquire the same owner-scoped turn lease and actual-worker lifetime as a model-origin invocation. Its accepted command records `origin="client"`, a caller-supplied idempotency key, tool name, registry generation, specification digest and canonical arguments. Equal-key equal-input retries return the accepted operation; conflicting input refuses. It MUST run source verification, schema normalization, current policy, guards, immutable invocation/argument/definition binding, intent and result commits through the existing tool pipeline. It MUST NOT create a model request, model-call identity or model provenance. A call requiring approval MUST refuse before intent or dispatch; this command does not fabricate an approval. Unknown-effect barriers and replay declarations apply unchanged.
+A Client-origin invocation MUST acquire the same owner-scoped turn lease and actual-worker lifetime as a model-origin invocation. Its accepted journal command records `origin="client"`, a caller-supplied idempotency key, tool name, registry generation, specification digest and verified argument history reference/digest; canonical argument content remains in HistoryProvider. Equal-key equal-input retries return the accepted operation; conflicting input refuses. Its invocation id derives from the session and accepted command-entry identity, with a Client-origin manifest pointing to that source rather than a fabricated assistant entry.
+
+It MUST run source verification, schema normalization, current policy, guards, immutable invocation/argument/definition binding, intent and result commits through the existing tool pipeline. It MUST NOT create a model request, model-call identity or model provenance. A call requiring approval MUST refuse before intent or dispatch; this command does not fabricate an approval. Unknown-effect barriers and replay declarations apply unchanged.
 
 Acceptance MUST cover current authorization denial, normalized arguments, missing/changed source, duplicate and conflicting requests, registry replacement, approval-required refusal with zero dispatch, and process loss before intent, after observable effect and before result commit. A new command cannot clear an unresolved effect by choosing a different invocation key.
 

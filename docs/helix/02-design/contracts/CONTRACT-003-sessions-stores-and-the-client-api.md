@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-28
+  updated: 2026-10-29
   authoring:
     home: repo
   links:
@@ -480,7 +480,9 @@ This is the proposed post-0.1 contract revision for the immediately next consume
 
 ### Client-origin invocation and preparation
 
-The proposed `Client.invoke_tool` command takes `session_id`, `tool_name`, canonical JSON arguments and a required `request_id`, plus an optional requested specification. It returns a task-owned operation handle whose result is derived from accepted journal facts. Its fingerprint includes owner, command origin, tool/arguments and requested specification; equal retries share the accepted operation and conflicting retries refuse. `origin="client"` is persisted independently of model-call provenance. The command acquires the ordinary session lease, honors active-turn/actual-worker/unknown-effect/closed-session refusals and executes CONTRACT-002's full tool pipeline. Approval-required calls refuse before dispatch, and no model request or model-call row is synthesized.
+The proposed `Client.invoke_tool` command takes `session_id`, `tool_name`, canonical JSON arguments and a required `request_id`, plus an optional requested specification. It returns a task-owned operation handle whose result is derived from accepted journal facts. Its fingerprint includes owner, command origin, tool/arguments and requested specification; equal retries share the accepted operation and conflicting retries refuse. Canonical argument content is accepted through HistoryProvider and bound by a verified ref/digest in the command journal entry. `origin="client"` and the accepted command-entry identity are persisted independently of model-call provenance. A retry retains that operation's pinned definition/generation rather than rebinding it to a replacement tool.
+
+The command acquires the ordinary session lease, honors active-turn/actual-worker/unknown-effect/closed-session refusals and executes CONTRACT-002's full tool pipeline. Approval-required calls refuse before dispatch, and no model request, assistant-source entry or model-call row is synthesized.
 
 The proposed leased-preparation participant attaches to accepted `send` input after idempotent admission. It receives the immutable accepted request identity and current actor under the same lease, returns ready/needs-input/refused, and may attach separately authorized preparation references without replacing text or attachment identity. Cancellation, deadline, source denial or lease loss ends preparation explicitly. Reopening an uncertain acknowledgment resolves by the accepted request/preparation key before another attempt. Client snapshots expose the waiting/refused state through committed metadata rather than claiming a model has started.
 
