@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-25
+  updated: 2026-10-28
   authoring:
     home: repo
   links:
@@ -289,7 +289,7 @@ Each slice leaves a buildable/tested subset. Support claims name the actual qual
 | 9. Recovery and actual workers | Journal-derived interrupted-state planner feeding Agent, immutable intent reuse, unknown barrier/manual resolution, bounded resume chains and actual executor lifetime | Q4/Q5: unsafe non-idempotent effects never replay automatically, safe attempts reuse original id/digests, worker exit retains capacity/session busy, bounded shutdown and no stale callbacks |
 | 9a. Context and stream/outcome qualification | Full/Tail/SummarizingContext through source-addressed validation, estimators and governed summary model calls; selected streaming profile | Q2/Q3: complete/protected coverage, no altered raw proposals, full payload fit, summary failure/commit/restart matrix, provisional reset and terminal fragmentation/cancellation |
 | 9b. History and attempt qualification | Production JSONL file fault tests, immutable codecs/hashes/links, physical recorder, controlled external-source delay/denial/partial/ambiguity | Q2/Q3/Q4: content-before-ref, torn/unknown writes, index rebuild, multiple invocations/receipts, owner/current read checks and unavailable-source restart behavior. Live Gateway delivery stays slice 11 |
-| 10. Release 0.1 | Installed artifact/docs, license/contribution metadata, consumer parity and declared support matrix | All P0 gates below pass; profile/version/subset evidence retained. No unsupported native/optional integration is implied by the Agent choice |
+| 10. Release 0.1 | Installed artifact/docs, license/contribution metadata, public consumer-shaped journeys and declared support matrix | All P0 gates below pass on the selected release source; profile/version/subset evidence retained. First downstream adoption follows publication and does not gate 0.1. No unsupported native/optional integration is implied by the Agent choice |
 | 11. Gateway profile (P1) | Databricks route/tier/current identity, exact tag/header/invocation mapping, caller-authorized GatewayHistory plus writable supplement | Q9 live fabricated evidence, bounded SQL/retention/access/readiness behavior; no denied caller fallback and no row-derived execution authority |
 | 12. Target reconcilers (P1) | Optional read-only tool-specific evidence adapters over existing manual resolve | Q4 target-specific proof; reconciliation never dispatches a tool or bypasses the effect barrier |
 
@@ -456,7 +456,7 @@ The owner has selected Agent. The entries below qualify production behavior and 
 | Q3: Context/history codecs | Context/history/runtime; 3, 7, 9a, 9b | Full source coverage/order/protection, all history readiness states, canonical digests/links, source access/revocation, versioned SDK conversion preserving supported provider extension/reasoning/cache/media content or explicitly refusing unsupported codecs, source-bounded summaries through governed ModelPort, final complete-payload estimates and crash/failed-summary behavior | Source/cache binding and basic compaction separation exercised; primitive converter is not full context/media coverage. P0 |
 | Q4: Durable stores/recovery | Sessions/stores/history; 3, 5, 9, 9b | Local JSONL and required multiprocess Postgres suites: atomic entries/summary/feed, content-before-ref, rejected/unknown/torn writes, fencing/index rebuild, lifecycle/archive closure, lost checkpoint reconstruction, mixed call groups, resolve races and unsafe/safe process/storage faults | Five process exits on the fixture are not production store or all-frontier recovery proof. Auto-resume/reconcilers retain P1 extensions. Core durability/manual resolve P0 |
 | Q5: Actual worker lifetime | Execution/offload; 2, 9 | Real blocking sync tool, cancellation/timeout/lease loss, queued cancellation, permits/session-busy until actual exit, stale writes/completion and finite shutdown | Slice 2 exercises blocking sync cancellation, retained capacity/session-busy, queued cancellation, copied context and finite shutdown. Lease loss, process faults and production lifecycle remain unqualified. P0 |
-| Q6: Client and reference journeys | Sessions/Client/CLI/TUI; 4, 8, 10 | Owner-scoped lists without content scans, bounded pages/detail, atomic snapshot/watermark, reconnect/reset/retention/backpressure, close/confirm/resolve races, revocation-safe preview, durable installed demo and consumer parity | Not a complete Client implementation in the spike. Functional journeys P0; measured performance commitment P1 |
+| Q6: Client and reference journeys | Sessions/Client/CLI/TUI; 4, 8, 10 | Owner-scoped lists without content scans, bounded pages/detail, atomic snapshot/watermark, reconnect/reset/retention/backpressure, close/confirm/resolve races, revocation-safe preview, durable installed demo and public consumer-shaped journeys | Not a complete Client implementation in the spike. Functional journeys P0; downstream adoption is a separate post-release outcome; measured performance commitment P1 |
 | Q7: Telemetry/usage | Runtime/telemetry; 6 | Metadata-only errors/spans/gate audit, credentials absent from every content/cassette/diagnostic record, real trace context, no default content instrumentation, known/incomplete usage once per attempt/purpose | Mock credential isolation/usage observations are partial. Base behavior P0; optional exporter needs separate real receiver proof (P1) |
 | Q8: Upgrade/replay regression | Runtime/test kit; 0, 1, 10 | Versioned checkpoint/message codecs; unsupported versions explicit; fabricated cassette/response drift; rerun gate/source/effect/attempt tests for each SDK/Graph/Pydantic pin change; no private graph imports | 2.59.0 baseline only; no general upgrade guarantee. Release-selected version P0 |
 | Q9: Gateway source profile | Gateway model/history integration; 11 | Live fabricated header/tag/body/request/invocation correspondence, distinct component/full-record hashes, bounded current-caller reads, retention/lag/duplicates/partial/revocation, supplement and no guessed effects | No live Gateway join qualified. P1; cannot claim the optional extra supported until passed |
@@ -520,14 +520,14 @@ The functional mapping above is the release-scope index for all 53 stable FRs; q
 ## Constraints & Assumptions
 
 - **Constraints**: Python 3.11 floor with an explicitly qualified interpreter matrix; async I/O only; Pydantic/AnyIO and selected pydantic-ai-slim in the base, with new dependencies requiring their governing decision; no credential, private data, or reference to a private repository in the repository, fixtures, or cassettes.
-- **Assumptions**: A hosted CI service is available; the first downstream platform will adopt a library release. The existing Apps deployment is context, not proof that every proposed library contract is implemented.
+- **Assumptions**: A hosted CI service is available; the first downstream platform may adopt after a library release. Its adoption is not release evidence. The existing Apps deployment is context, not proof that every proposed library contract is implemented.
 - **Dependencies**: pydantic-ai-slim is the selected Agent dependency. Release pins and optional provider closures require Q0/Q2/Q8 qualification. AgentKit remains excluded; no default owned loop/client is planned.
 
 ## Risks
 
 | Risk | Prob | Impact | Mitigation |
 |------|------|--------|------------|
-| The ports or the provider surface are too narrow or too wide | M | H | Port the first downstream platform's scenarios in slice 2; amend the contracts before slice 10 |
+| The ports or the provider surface are too narrow or too wide | M | H | Exercise public consumer-shaped scenarios before slice 10; evaluate concrete downstream mismatches during post-release adoption |
 | Per-step commits cost too much latency | M | M | One commit per step with its entries batched; benchmarks in slices 4 and 5 before the budgets are set |
 | Local durable startup exceeds the quickstart budget | M | M | Measure/optimize the JSONL reference profile; embedded Postgres is separate and volatility is never a silent fallback |
 | A derived archive is mistaken for a complete record | M | H | Capability flags and the pending, denied, unavailable results; the suite checks them (ADR-019) |

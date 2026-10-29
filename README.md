@@ -7,10 +7,19 @@ typed tools, execution policy and durable sessions. Its in-process async Client 
 session metadata, history, persisted changes and a partial command facade. An offline
 reference CLI and terminal UI exercise the local profile.
 
-**Status: gated execution, local durability and partial Client commands (slices 2–4 subset).** Pydantic AI Agent now runs tools through
+**Status: qualified local runtime and Client profiles.** Pydantic AI Agent runs tools through
 Tether's policy, validation, approval and commit gates. Model doubles and shared codecs remain
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
-Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Explicit durable resume is implemented for the qualified local profile. Optional PostgreSQL18 session storage and independent content history are implemented for the qualified database profile. Native incremental text has a selected local qualification; broader profile and release qualification remain open. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Explicit durable resume is implemented for the qualified local profile. Optional PostgreSQL18 session storage and independent content history are implemented for the qualified database profile. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
+
+The declared support profile is macOS arm64, Python 3.11.17, the locked dependency versions,
+local POSIX JSONL storage and PostgreSQL 18, including the optional embedded helper. Live
+compatible-model evidence covers the recorded local DS4/Qwen text/function-tool profile,
+with explicit response caps, approximate token estimates and configured safety margins.
+The [P0 qualification receipt](docs/helix/03-test/evidence/p0-qualification-20261028.md)
+names exact versions, workloads, boundary refusals and process-fault evidence. Additional
+operating systems, Python versions, model servers, native media/reasoning, Gateway joins
+and the OpenTelemetry exporter require separate qualification.
 
 ## Offline reference client
 
@@ -23,8 +32,7 @@ development environment. The terminal UI shows sessions and transcript history a
 supports send, approve/deny and explicit resume. The same local demo profile has CLI
 commands for `list`, `show`, `send`, `follow`, `confirm`, `resume` and fabricated cassette
 `replay`; run `uv run tether --help` for arguments. Use `--root PATH` to select another
-local store. These clients are a reference path; the complete P0 release gate remains
-open. One fresh macOS/Python 3.11 clone with an isolated dependency cache reached
+local store. These clients are a reference path. One fresh macOS/Python 3.11 clone with an isolated dependency cache reached
 the offline UI in 5.51 seconds, including installation; download time varies with
 network and package registry conditions.
 For a deliberately volatile in-memory UI demo, use `uv run tether --volatile`;
@@ -91,10 +99,10 @@ limits and an attempt recorder. Identity is per request. The current profile use
 native chat model, disables SDK retries/redirects, and owns bounded transport retries.
 It requests identity encoding and refuses compressed bodies before decoding; decompression
 resource limits require separate qualification.
-Text/function-tool responses are checked over fabricated HTTPX2 peers. Empty stop completions
+Text/function-tool responses are checked over fabricated HTTPX2 peers and the selected live DS4 profile. Empty stop completions
 produce a typed `empty_response` failure; they never trigger an unmediated correction. Provisional network
-streaming, media/reasoning content, effort selection, SDK validation feedback, structured output
-and live server compatibility remain unqualified or explicitly refused. A supplied custom
+streaming has controlled local and selected DS4 evidence. Media/reasoning content, effort selection,
+SDK validation feedback, structured output and additional server profiles require separate qualification or are explicitly refused. A supplied custom
 transport is trusted and must not add hidden retries or redirects.
 
 ## Gated execution subset
@@ -124,8 +132,9 @@ refresh, connection pools, database roles and RLS. The optional PostgreSQL store
 The POSIX single-writer profile stores checksummed batches and accepted-prefix witnesses,
 fences leased writes, and reconstructs pending approval from journal/source facts with the
 original supplied specs. Unknown writes require reopening; close retains ownership while
-actual I/O remains. Process-exit evidence does not prove power-cut behavior. Broader recovery fault qualification, scope/spec resolver integration and telemetry
-remain unfinished. User and guarded tool-result attachment refs are supported as metadata rendered
+actual I/O remains. Process-exit evidence does not prove power-cut behavior. The qualification receipt
+records the selected recovery faults, scope/spec resolver integration and metadata-only telemetry.
+User and guarded tool-result attachment refs are supported as metadata rendered
 into text; the original refs remain in history and model requests. Artifact bytes, native media,
 non-JSON executable argument leaves and lossy argument serializers remain outside this subset.
 The fabricated examples and faults are in [the execution tests](tests/test_gated_execution.py)

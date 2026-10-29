@@ -31,7 +31,7 @@ ddx:
 - **Plan reviewed**: the complete TP-001 P0 gate and every selected release profile have passing evidence at the chosen source commit. Record remaining limits and versions; a passing subset does not close the release gate. Do not create a tag while any required gate is open.
 - **Order of operations**: merge the no-Actions release workflow change before pushing any tag or publishing any GitHub release. `.github/workflows/checks.yml` then runs on pull requests only; the former tag-triggered candidate and release-triggered PyPI workflows are removed. Confirm the default branch has those exact trigger changes before proceeding.
 - **Config is complete**: `uv.lock` is committed; Python 3.11 and the selected `uv` version are available. The GitHub repository and package name are `DocumentDrivenDX/tether` and `novirhiza-tether`. Check the PyPI name again before creating the tag; a pending trusted publisher does not reserve it.
-- **Access verified**: the operator can create the tag and draft GitHub release. GitHub release immutability must report `enabled: true`. GitHub Actions OIDC cannot authenticate a local upload, and no pending publisher for this package has been verified. Direct first upload requires a PyPI **account-scoped** API token supplied securely to `UV_PUBLISH_TOKEN` at upload time. A project-scoped token can replace it after the project exists. Never put the token in Git, a command argument, a log, or this checklist.
+- **Access verified**: the operator can create the tag and draft GitHub release. GitHub release immutability must report `enabled: true`. Local publication uses the operator-provisioned PyPI account token in macOS Keychain, service `https://upload.pypi.org/legacy/`, account `__token__`. The local uploader reads it into memory and supplies it to Twine without printing it or placing it in a command argument or checkout file. The pending GitHub trusted-publisher binding does not authenticate this local upload. A project-scoped token can replace the account token after the project exists.
 
 ## Validation Gates
 
@@ -49,7 +49,7 @@ ddx:
 |-------|---------------|----------------|
 | Local candidate | Qualify the selected commit, create its annotated stable tag locally, build once, check all selected extras, and generate the manifest | Every P0 gate passes and wheel/source archive metadata says `novirhiza-tether` at the tag's version |
 | GitHub release | Push the tag only after automatic tag/release workflows are absent from main; create a draft release with the exact three assets, inspect it, then publish it | The release is immutable, non-prerelease, and `verify-release` accepts fresh downloads and GitHub asset digests |
-| PyPI | Supply the account-scoped token through the operator's secure environment; run `uv publish` with `UV_PUBLISH_TOKEN` against only the verified wheel and source archive | Both published file hashes match the manifest and a clean Python 3.11 install passes the release smoke |
+| PyPI | Read the account token securely from Keychain and run local Twine against only the verified wheel and source archive | Both published file hashes match the manifest and a clean Python 3.11 install passes the release smoke |
 
 After the P0 decision and workflow-trigger change are complete, the operator uses this sequence from a clean checkout of the selected main commit. Stop on any failed command; use a fresh staging directory for each candidate.
 
@@ -90,8 +90,7 @@ uv run --locked python scripts/verify_release_artifacts.py verify-release \
   --release-json "$verified_stage/release.json" --dist-dir "$verified_stage/dist" \
   --tag "$release_tag" --repository DocumentDrivenDX/tether \
   --source-commit "$source_commit" --package novirhiza-tether
-# Only after the operator securely supplies UV_PUBLISH_TOKEN:
-uv publish "$verified_stage/dist/"*.whl "$verified_stage/dist/"*.tar.gz
+# The local Keychain-backed uploader passes only these two verified files to Twine.
 ```
 
 Compare both PyPI file SHA-256 values with `release-manifest.json` and perform the fresh Python 3.11 install smoke before claiming support. Do not put the token in a shell command, transcript, or file in the checkout.
