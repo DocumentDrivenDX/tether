@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: proposed
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-28
   authoring:
     home: repo
   links:
@@ -39,6 +39,8 @@ We will carry identity as an explicit `Credential` on the `Actor` for each call,
 - **Nothing runs for an absent user.** Because the credential is not stored, the engine cannot act for a user who is not present; resume is an explicit act by a present caller (ADR-010) unless the application opts in and supplies an identity.
 
 ## Why We Chose This
+
+The next consumer contract proposal applies this same identity rule to application-scheduled auxiliary model work: the scheduling application supplies the current Actor and live credential provider, each physical attempt refreshes it, and a missing/revoked caller credential refuses without application fallback. The application owns scheduling; a completed answer turn is not reusable execution authority. CONTRACT-002/003 propose the lease, purpose and usage bindings; implementation waits for their acceptance.
 
 ### Over an ambient context variable
 It needs no argument passing, but it hides the dependency, fails silently when unset or lost across a boundary, and cannot express "this resume is by this person". An explicit argument is visible in every signature and every test.

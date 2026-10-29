@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: proposed
   owner: Erik LaBianca
-  updated: 2026-10-22
+  updated: 2026-10-28
   authoring:
     home: repo
   links:
@@ -50,6 +50,8 @@ We will make authoritative history a replaceable interface, defaulting to local 
 - Source codecs, provider bindings and correlation are versioned. A history migration appends new verified bindings and preserves the original source identity. Unknown content remains an explicit hole, not an empty message.
 
 ## Why We Chose This
+
+The next consumer proposal coordinates commits when PostgreSQL history and journal share one verified root. Shared transaction becomes that paired profile's default only after CONTRACT-003/005 acceptance and qualification; independent backends retain content-before-reference. This changes commit coordination without changing which port owns content or execution facts. A bounded staged-write participant may join the fenced transaction, while business records and reconciliation remain application-owned. Generic ToolContext gains no raw connection, and independent settlement retains explicit uncertainty. Current 0.1 behavior makes no combined-transaction claim.
 
 ### Over requiring all conversation content in the runtime journal
 

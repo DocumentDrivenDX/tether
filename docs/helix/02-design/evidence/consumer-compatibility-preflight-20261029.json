@@ -1,0 +1,110 @@
+{
+  "client_fields": {
+    "follower_queue_size": "required",
+    "heartbeat_interval_seconds": "required",
+    "max_active_turns": "required",
+    "max_call_ids": "required",
+    "max_followers": "required",
+    "max_history_link_hops": 8,
+    "max_lookup_entries": "required",
+    "max_mutation_receipt_bytes": 4194304,
+    "max_page_size": "required",
+    "max_read_bytes": "required",
+    "max_request_bytes": "required",
+    "read_timeout_seconds": "required",
+    "shutdown_timeout_seconds": "required"
+  },
+  "context": {
+    "configuration_and_estimator": "omission/unknown tier refuses context_unconfigured",
+    "current_planner_fallback": "FullContext",
+    "fabricated_estimator": "fixture/demo only; no production token-capacity evidence"
+  },
+  "date": "2026-10-29",
+  "dependencies": {
+    "compatible_input": "pydantic>=2.11",
+    "consumer_public_subset_output_sha256": "32c4187c05b310319a78b44c04c9871af22afbd55bc7aaf9b649189447c7c713",
+    "consumer_public_subset_resolution": "passed; resolver only",
+    "consumer_public_subset_selected_versions": {
+      "fastapi": "0.162.0",
+      "mcp": "2.3.0",
+      "pydantic": "2.14.1",
+      "pydantic-ai-slim": "2.59.0",
+      "pydantic-settings": "2.16.2"
+    },
+    "consumer_runtime_scope": {
+      "public_subset_count": 12,
+      "python": "3.11",
+      "runtime_requirement_count": 13,
+      "scope": "public-index subset only; selected separate-index dependency not resolved",
+      "separate_index_requirement_count": 1
+    },
+    "negative_input": "pydantic<2.12",
+    "negative_outcome": "unsatisfiable due to release pydantic==2.14.1",
+    "published_package": "novirhiza-tether==0.1.0",
+    "resolved_agent": "2.59.0",
+    "resolved_pydantic": "2.14.1",
+    "resolver_only": true,
+    "runtime_range_widened": false
+  },
+  "kind": "source-and-resolver-characterization; not new API implementation",
+  "limits": [
+    "Consumer runtime manifest inspected read-only: 12 public-index requirements resolve together with released Tether; one separately indexed requirement and full selected-source/runtime composition remain unqualified",
+    "No wider Pydantic runtime range or new codecs qualified",
+    "Configurable telemetry/default surface remains proposed",
+    "Eight consumer seams and six owner decisions remain unaccepted"
+  ],
+  "public_install_evidence": {
+    "all_four_passed": true,
+    "platforms": [
+      "macOS arm64",
+      "Debian 12 Linux arm64"
+    ],
+    "profiles": [
+      "base",
+      "tui-openai"
+    ],
+    "python": "3.11.17",
+    "source": "P0 qualification receipt final addendum; retained public-install logs"
+  },
+  "reference_client_composition": {
+    "follower_queue_size": 32,
+    "heartbeat_interval_seconds": 1,
+    "max_active_turns": 8,
+    "max_call_ids": 8,
+    "max_followers": 8,
+    "max_lookup_entries": 1000,
+    "max_page_size": 100,
+    "max_read_bytes": 1048576,
+    "max_request_bytes": 65536,
+    "read_timeout_seconds": 5,
+    "shutdown_timeout_seconds": 5
+  },
+  "release": "0.1.0",
+  "source_commit": "e0996bd2c7d7453752c3441f99c8a68a97bb1043",
+  "source_sha256": {
+    "pyproject.toml": "f271c3dd50d821cdb405a7856dce916e44257526c7f43261c296e58ca36005a4",
+    "src/tether/cli/demo.py": "9454cc09b63f7690cd557f5ba1267a9768acade756c9ef3320f15d028399ddeb",
+    "src/tether/context/testing.py": "500dd707583358de10732df59b8a29d9e297d43400d35e4a7c657647f58eba14",
+    "src/tether/engine/agent.py": "7b977fd02aafff89307cf69cfcf3cb09ca1dd2ac927935520c9ba73dcba868a3",
+    "src/tether/engine/context/__init__.py": "0d15a1496b59dfebf3c5f9b5d3bff737d558fd47fc2f38a1d64b95d1bdeb6c25",
+    "src/tether/engine/observers/client.py": "915c11fb9730113acafca0a1cd433fac9b7902839c8c0d6d85b6d2322c2a5ad6",
+    "src/tether/engine/observers/steps.py": "9d0dda5fe0e5fe91ad605d027b22beef74c7fdb15aa5a64bbbfe6d3bb536d342",
+    "src/tether/engine/observers/worker.py": "96230708f7f9b657dedb9921b8aacd716af2895638dc31d3bbf9286b36a51b89",
+    "src/tether/types/client.py": "b4173bf69d084e85aa26830f15a5a78e78670884a5e7c4c406136c252a8f3105"
+  },
+  "telemetry": {
+    "current_span_and_attribute_prefix": "tether",
+    "engine_attribute_namespace_setting": false,
+    "engine_span_prefix_setting": false,
+    "exporter_receiver_qualification": "not claimed",
+    "observed_span_families": [
+      "tether.client.<operation>",
+      "tether.gate",
+      "tether.tool_call",
+      "tether.executor_function",
+      "tether.async_body",
+      "tether.retrieval",
+      "tether.provider_hook"
+    ]
+  }
+}

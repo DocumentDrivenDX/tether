@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-24
+  updated: 2026-10-29
   authoring:
     home: repo
   links:
@@ -299,7 +299,7 @@ class Tracer(Protocol):
 | Rule | Requirement |
 |------|-------------|
 | Audit kinds | Context preparation uses namespaced `x.context.prepared`, `x.context.failed`, and `x.context.compaction` facts with identifiers/counts only. Resolution is an `authorization` plus namespaced `x.effects.resolved` fact; worker abandonment/exit uses `x.executor.outstanding`/`x.executor.exited` with ids and counts. The closed core set `session_started`, `user_message`, `assistant_message`, `model_call`, `tool_call`, `authorization`, `confirmation`, `retrieval`, `turn_ended`, `turn_cancelled`, `turn_interrupted`, `turn_resumed`, `session_settings`, `session_closed`, plus `x.<provider id>.<kind>`. One entry per step and one per gate decision. |
-| Spans | `tether.turn` (root), `tether.model_call`, `tether.tool_call`, `tether.gate`, and `tether.retrieval`, with attributes in the `tether.` namespace carrying identifiers, sizes, tiers, token counts, and reasons. The prefix MAY be configured; a deployment keeps it stable. Spans carry across awaits through context variables. |
+| Spans | The current qualified implementation fixes `tether.turn` (root), `tether.model_call`, `tether.tool_call`, `tether.gate`, and `tether.retrieval`, with `tether.` attributes carrying identifiers, sizes, tiers, token counts and reasons. Configurable span prefix/attribute namespace is proposed in FR-64, not an existing setting. Spans carry across awaits through context variables. |
 | Content | Spans and audit entries MUST NOT carry message or tool content, argument values of a denied or invalid call, or a credential. Content capture is a separate, opt-in provider and is off by default. |
 | Usage | A model call's token usage is recorded on the span, the audit entry, and the session log (CONTRACT-003). |
 | Written by the engine | Only the engine writes audit entries and spans for engine decisions; an extension's own audit entries use its namespace. |
@@ -405,6 +405,56 @@ async def drive(client: Client, session_id: str, text: str, interaction: Interac
 ### 12. Conformance suites
 
 The package ships `tether.testing.conformance`, as asynchronous tests run with the `anyio` pytest plugin: `policy_suite(factory)` (fail closed, one decision per action, a budget denial from `usage`), `audit_sink_suite`, `tracer_suite`, `provider_suite(factory)` (ordering, output validation, reason normalization, fail closed, registry conflicts, a plain `def` hook does not block the loop), `guard_suite(factory)`, `resume_planner_suite` (every derived state, and the prefix property over every log prefix), and `approval_suite` (binding, single use, concurrent answers, supersession, expiry, gate re-entry). An implementation of a port is conformant when it passes its suite. The model port and store suites are in CONTRACT-001 and CONTRACT-003; history/correlation suites are in CONTRACT-005. The live store, history provider and model context have separate authorities. SDK history/conversation usage/deferred requests, if selected, are versioned derived runner state, not a second transcript or approval/effect authority. Add `context_strategy_suite`, `token_estimator_suite` and `context_executor_suite` (CONTRACT-004), unresolved-effect barriers across new model ids and different tools, actual worker-lifetime capacity, queued cancellation, bounded shutdown, and read-only reconciliation/one-winner resolution. TP-001 allocates these cases.
+
+## Proposed next consumer contract slice
+
+These paragraphs propose the next contract revision after 0.1. They are required before the next consumer adoption, are not implemented API claims, and require Erik LaBianca's acceptance before dependent source changes. They preserve the current runner, policy, history and execution authorities. The six product decisions in the PRD remain open; proposed defaults are not accepted answers.
+
+### Client-origin tool invocation
+
+A Client-origin invocation MUST acquire the same owner-scoped turn lease and actual-worker lifetime as a model-origin invocation. Its accepted journal command records `origin="client"`, a caller-supplied idempotency key, tool name, registry generation, specification digest and verified argument history reference/digest; canonical argument content remains in HistoryProvider. Equal-key equal-input retries return the accepted operation; conflicting input refuses. Its invocation id derives from the session and accepted command-entry identity, with a Client-origin manifest pointing to that source rather than a fabricated assistant entry.
+
+It MUST run source verification, schema normalization, current policy, guards, immutable invocation/argument/definition binding, intent and result commits through the existing tool pipeline. It MUST NOT create a model request, model-call identity or model provenance. A call requiring approval MUST refuse before intent or dispatch; this command does not fabricate an approval. Unknown-effect barriers and replay declarations apply unchanged.
+
+Acceptance MUST cover current authorization denial, normalized arguments, missing/changed source, duplicate and conflicting requests, registry replacement, approval-required refusal with zero dispatch, and process loss before intent, after observable effect and before result commit. A new command cannot clear an unresolved effect by choosing a different invocation key.
+
+### Leased preparation
+
+An optional bounded asynchronous preparation participant runs after accepted-input deduplication and lease acquisition, before the first model request. Its result is `ready`, `needs_input` or `refused`, with a typed content-free reason and separately authorized derived references where needed. It MAY await application-owned ingestion. It MUST retain the lease while waiting, obey the caller's deadline/cancellation and current read policy, and preserve the accepted text, attachment identities and request fingerprint exactly. A changed input is a new request, never an in-place preparation edit. Refusal, cancellation, lease loss or uncertain preparation commit forbids model egress. Any underlying offloaded work retains actual-worker ownership until physical exit.
+
+Acceptance MUST race duplicate input against preparation, cancel and expire the lease at each await, revoke source access, return a changed input, lose the preparation acknowledgment and reopen. Only a known accepted `ready` result may reach the first model request; an application ingestion job remains an application adapter responsibility.
+
+### Staged application writes and settlement
+
+A staged participant MUST use a durable `settlement_id` bound to the invocation, accepted result digest and current actor/specification. A clean result means the result guards permit the delivered value and its journal decision is accepted; browser/network delivery is not a database commit boundary. A withheld result selects rollback. The engine records a durable commit or rollback decision and exposes settlement as pending, committed, rolled back or uncertain. Commit, rollback and reconciliation MUST be idempotent under that same id. Unknown acknowledgment or participant outcome MUST block dependent effectful actions until authorized reconciliation or resolution; it never becomes an inferred success, rollback or automatic new invocation.
+
+The shared-PostgreSQL profile enlists a bounded application participant in the same lease-fenced transaction as its settlement decision and accepted journal result. The participant uses an adapter-owned transaction capability restricted to its declared operations and actor; generic `ToolContext` MUST NOT expose a raw database connection. The independent-backend profile records the decision before issuing its idempotent participant action and retains explicit uncertainty across the two commits. It does not claim atomicity across systems. Applications own stage contents, retention, remote idempotency and business reconciliation.
+
+Acceptance MUST kill a process before staging, after staging, before/after the durable decision, during participant commit/rollback, after observable application write and before acknowledgment, and before result visibility. Include guard withholding, duplicate reconciliation, lease loss, participant failure, conflicting decisions and a changed actor. Shared-transaction cases prove rollback and atomic publication; independent cases prove the uncertainty barrier and same-id reconciliation. Neither profile claims exactly-once external effects.
+
+### Specification transition between completed call groups
+
+An application MAY request an explicit transition after a completed call group. The engine MUST authorize it under current policy, pin the new specification id/version/digest and registry generation, and atomically record the expected old and accepted new bindings. Outstanding old-spec calls MUST be closed by their existing semantics or cause refusal; unresolved effects cannot be discarded. Incompatible pending approvals become invalid. Only the next completed step boundary may select the new tools, instructions and stage; one call manifest cannot mix specifications. The application owns engagement/routing logic.
+
+Acceptance MUST cover a transition racing approval, a changed specification between proposal and acceptance, old-spec unsettled calls, revocation, lost acknowledgment, restart and cancellation at the boundary. Reopening uses the accepted transition or refuses explicitly; it never reconstructs a new binding from current mutable application state.
+
+### Runtime registry publication
+
+Registry updates MUST validate a complete immutable generation before atomic publication. Every admitted invocation pins its generation and tool definition digest through physical completion, including abandoned workers. Replacement/removal affects subsequent admission; it cannot mutate a running tool object or its manifest. A pending approval whose current tool is removed or has a different digest MUST refuse as invalid. Generation retention and publication have explicit finite bounds; capacity exhaustion refuses publication rather than evicting an active binding. Current policy and revocation are rechecked despite a pinned definition.
+
+Acceptance MUST publish add/replace/remove generations during admission, execution, approval and recovery; reject duplicate definitions and invalid generations; and retain an old generation until its last actual worker exits. Verify atomic visibility, stale approval refusal, bounded retention and current-policy denial against both old and new generations.
+
+### Mediated auxiliary model calls
+
+An application-scheduled auxiliary call MUST select an explicitly configured purpose/profile, source watermark, model limits and caller Actor. It uses the same current read/model policy, physical attempt recorder, identity binding, bounded retries and usage journal as answer/summary calls. Naming and suggestion profiles offer no tools. The caller credential is supplied at scheduling as a live credential provider and refreshed for every attempt; absence or revocation refuses egress and MUST NOT fall back to application authority. A fresh session lease/operation binding is required when the answer turn has ended. No credential is persisted. The application schedules work and decides how to use its authorized result; no mandatory suggestion field or background job service is added to core.
+
+Acceptance MUST revoke or remove the credential while queued and between retries, change source permission, lose an attempt acknowledgment, cancel the call, and reopen its recorded result. Purpose-specific usage remains distinct, incomplete observations stay incomplete, and content/credentials remain absent from operational telemetry.
+
+### Edited approval
+
+An optional trusted argument-transform participant MAY propose executable values from the immutable model proposal and the person's requested edit. The engine MUST preserve the original proposal, the exact shown values and the final executable values under independent canonical digests, together with the tool/specification/generation bindings. Tool-defined semantic restriction is authoritative; a structural subset comparison is not a safety proof. The edited values MUST pass schema normalization, current policy, source checks and guards again before intent. Approval binds the shown and executable digests; a later change invalidates it. Once intent exists, arguments cannot be edited.
+
+Acceptance MUST cover list narrowing, rejected expansion under the tool's semantic rule, mutation or exception in the transform, normalization drift, duplicate/conflicting edits, changed tool/specification, permission revocation and restart between approval and intent. No failing or stale edit may dispatch; same-invocation recovery retains the accepted executable digest.
 
 ## Precedence and Compatibility
 

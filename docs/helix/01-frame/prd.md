@@ -148,6 +148,8 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 
 ### Should Have (P1)
 
+The immediately next slice after 0.1 publication is the consumer contract and compatibility work in FR-54 to FR-64. It precedes consumer integration and the other P1 enhancements below. The proposed contract paragraphs require owner acceptance before dependent implementation; this sequencing does not reopen 0.1 P0 qualification.
+
 1. Measured performance budgets for the client API, protected in CI (FR-21).
 2. The OpenTelemetry adapter (FR-24).
 3. Opt-in automatic resume for applications that supply an identity (FR-37).
@@ -171,7 +173,7 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 | Priority | Functional requirement IDs |
 |----------|---------------------------|
 | P0 | FR-1 to FR-14; FR-16 to FR-20; FR-22 to FR-23; FR-25 to FR-36; FR-38; FR-40 to FR-42; FR-44 to FR-50; FR-52 to FR-53 |
-| P1 | FR-21; FR-24; FR-37; FR-39; FR-43; FR-51; target-specific reconciliation portion of FR-44 |
+| P1 | FR-21; FR-24; FR-37; FR-39; FR-43; FR-51; FR-54 to FR-64 (immediately next consumer slice); target-specific reconciliation portion of FR-44 |
 | P2 | FR-15; the separately listed P2 extensions |
 
 ## Functional Requirements
@@ -187,6 +189,10 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 
 ### Subsystem: Tools
 
+- **FR-56** — P1 next consumer slice: a tool may stage application writes for durable commit/rollback settlement after result guards. Shared-PostgreSQL and independent-backend profiles retain explicit decisions, same-id reconciliation and uncertainty barriers; generic tool context exposes no raw connection.
+- **FR-58** — P1 next consumer slice: applications can atomically publish immutable tool-registry generations while active invocations retain their pinned definitions; changed pending approvals invalidate and current policy revocation still applies.
+- **FR-60** — P1 next consumer slice: an optional trusted approval transform preserves original, shown and executable arguments under separate digests, enforces tool-owned semantic restriction and re-enters every applicable gate before intent.
+
 - **FR-6** — A tool is a plain `def` or `async def` function with typed arguments. Its schema is derived from the types, arguments are validated before the call, and a plain function never blocks the event loop.
 - **FR-7** — Tools are registered by name, uniqueness is enforced, and a client can list the tools a session offers.
 - **FR-8** — A tool can require approval before it runs. The turn ends with a pending confirmation that a later call answers, and the answer resumes the turn. A new send to the session supersedes a pending approval.
@@ -195,6 +201,8 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 - **FR-42** — Before an effectful tool runs, including a replay-safe writer, the log records an intent entry carrying a stable invocation id derived from the session, the assistant entry, and the call position, so recovery can tell not-started, started, finished, and resolved calls apart. An approval binds to one invocation, its arguments digest, and its tool-definition digest, satisfies only the approval gate, and every gate applies again when it is used. The library does not claim exactly-once external effects. Effect-free and replay-safe are separate tool declarations; effectful calls receive an intent even when safe to repeat under the same invocation key.
 
 ### Subsystem: Sessions
+
+- **FR-55** — P1 next consumer slice: bounded asynchronous preparation runs under the accepted turn lease after input deduplication, may wait/refuse/request input, preserves accepted text/attachment identity and forbids model egress on failure.
 
 - **FR-11** — A session has an append-only execution journal of facts and immutable content refs. Each step commits atomically at the store's declared durability before the next step; volatile stores declare no restart guarantee. Original content is retained through a separately selected HistoryProvider with qualified durability/readiness.
 - **FR-12** — A session can be created, closed, titled, tagged, and given settings, and each of these is recorded in the log.
@@ -212,6 +220,8 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 
 ### Subsystem: Client API
 
+- **FR-54** — P1 next consumer slice: a Client-origin tool command uses the same lease, source, validation, policy and intent/result pipeline without a model call. It records its origin and refuses approval-required calls before dispatch.
+
 - **FR-17** — A client lists sessions for an owner with filters and ordering, in pages, from summaries the store keeps current, without reading transcripts.
 - **FR-18** — A client reads one session's view and pages through its entries in either direction.
 - **FR-19** — A client follows changes (session updates, appended entries, reply text, pending confirmations) from a position it can resume, receives a resync signal when its position is too old, and cannot slow the loop.
@@ -220,12 +230,17 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 
 ### Subsystem: Telemetry
 
+- **FR-64** — P1 next compatibility slice: Engine composition can select a stable span prefix and attribute namespace while preserving canonical metadata semantics and content exclusion. The current qualified implementation uses fixed `tether` names; configurable naming remains proposed.
+
 - **FR-22** — The loop emits spans for each turn, model call, and tool call, carrying trace context across awaits.
 - **FR-23** — The loop emits one audit entry per step and one per gate decision, carrying identifiers, sizes, and reasons.
 - **FR-24** — Tracing is a port with a no-op default and an OpenTelemetry (OTel) adapter as an optional extra.
 - **FR-25** — Token usage is recorded per model call and totaled per session in the summaries.
 
 ### Subsystem: Governance
+
+- **FR-57** — P1 next consumer slice: an authorized specification transition between completed call groups pins the new id/version/digest, closes or refuses outstanding old-spec calls and invalidates incompatible approvals before the next step.
+- **FR-59** — P1 next consumer slice: application-scheduled auxiliary model calls select an explicit purpose/profile, use current caller identity/read/model policy and per-attempt usage, and refuse missing caller credentials without application fallback.
 
 - **FR-26** — A policy port decides every model call, tool call, data read, and resume, defaults to allow-all, and fails closed when it errors.
 - **FR-27** — Scope keys, result guards, and providers extend the loop. A provider can refuse, hide, or redact and can never widen a decision, and a provider that errors is treated as a refusal.
@@ -257,6 +272,8 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 
 ### Subsystem: Authoritative History
 
+- **FR-61** — P1 next consumer slice: Postgres history and journal sharing one verified root use the qualified shared-transaction profile by default, atomically accepting content and references with recoverable operation keys. Independent backends retain explicit put-before-reference semantics.
+
 - **FR-50** — P0: authoritative original content/model exchanges are accessed through a replaceable HistoryProvider, default local JSONL, independently of the execution journal and derived model/SDK context. Reference clients retain local session metadata/journal across restart. Provider capabilities qualify durability and coverage.
 - **FR-51** — P1: GatewayHistory resolves externally logged model exchanges by exact per-attempt correlation and uses a writable supplement for source content the gateway never receives. The journal keeps only facts/refs plus explicitly bounded derived interaction state; no default full shadow payload store is required.
 - **FR-52** — P0: each physical model attempt is identified and journaled before egress with stable session/turn/logical-call ids, a unique attempt id and purpose. Provider header request id, provider invocation id, response-body id, real trace/span ids and selected endpoint/schema remain distinct and are preserved on errors/streams where observed. Unqualified joins never become ready history.
@@ -264,11 +281,16 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 
 ### Subsystem: Packaging and Licensing
 
+- **FR-62** — P1 next compatibility slice: documented conservative configuration defaults and owner overrides reduce first-turn setup; deterministic estimator/Full or Tail composition remains explicit about estimate quality and obtains per-tier capacities only from a selected model profile.
+- **FR-63** — P1 next compatibility slice: published dependency compatibility is stated from executed version evidence. Metadata ranges widen only after their boundary versions pass the relevant suites; the lock retains exact qualified versions.
+
 - **FR-31** — Installation has a small typed base, deterministic offline testing and explicit optional provider/model, telemetry and reference-client integrations. Pydantic types and asynchronous operation remain selected. The base includes pydantic-ai-slim for the selected Agent runner under ADR-002/003. Release pins and its exact transitive closure require qualification; foundation-model SDKs remain optional adapter dependencies. Provider SDK isolation follows NFR-8.
 - **FR-32** — The library is dual licensed MIT OR Apache-2.0, copyright FocusedDiversity LLC, with both license texts in the package and a history that starts in this repository.
 - **FR-36** — The repository states how to contribute: contributions are welcome directly with no contributor license agreement, are accepted as prompts that the maintainers implement, and are licensed as the project is.
 
 ### Feature Map
+
+The next consumer requirements map FR-54 to Client API, FR-55/57/59 to Agent/Governance, FR-56/58/60 to Tools/Governance, FR-61 to Sessions/Authoritative History, FR-62/63 to Reference Clients/Packaging and FR-64 to Telemetry. CONTRACT-002/003/005 contain the proposed interface obligations; the implementation plan sequences acceptance before source changes.
 
 Authoritative history and correlation (FR-50 to FR-53) belong to the Sessions and Context Management features and the Databricks adapter where selected; CONTRACT-005 fixes their boundary. Local/Gateway readiness, identity modes and replay-safe effectful writers receive distinct acceptance coverage in TP-001.
 
@@ -337,6 +359,24 @@ Each subsystem becomes one feature specification: FEAT-001 Agent Loop and Model 
 | FR-34, FR-42 | Same-invocation recovery | Resume a replay-safe call under a new turn with its original committed intent | Fresh gates run, original intent is reused without a changed-payload key conflict, and accepted results are not duplicated |
 | FR-18, FR-52, FR-53 | Call detail and source bindings | One logical call with two attempts, repeated provider ids/multiple invocations; append a verified link then revoke access | Results retain every accepted attempt/typed hole; link resolution is deterministic and digest-checked; no fallback bypasses revocation |
 
+### Next consumer slice acceptance sketches (P1)
+
+These are required future acceptance cases, not executed 0.1 results.
+
+| Requirement | Acceptance sketch |
+|---|---|
+| FR-54 direct invocation | Invoke without a model; race equal/conflicting commands and close; refuse approval-required/denied calls before dispatch; kill after intent/effect and preserve the uncertainty barrier. |
+| FR-55 preparation | Deduplicate accepted input, wait under its lease, then cancel/revoke/expire or return changed attachment identity; only accepted ready input reaches a model. |
+| FR-56 settlement | Withhold a staged result and roll back; crash at each stage/decision/participant/result frontier under both transaction profiles; reconcile the same id without inferring an external effect. |
+| FR-57 specification transition | Transition between completed groups while an approval/specification changes; pin accepted bindings, refuse unsettled calls and invalidate incompatible approvals across restart. |
+| FR-58 registry publication | Add/replace/remove while calls and approvals run; snapshots publish atomically, old actual workers retain their generation and current revocation still denies. |
+| FR-59 auxiliary models | Schedule as a caller, remove its credential before egress/retry, revoke source access and cancel; no broader identity fallback, hidden retry or lost purpose-specific usage. |
+| FR-60 edited approval | Narrow a list through a tool-owned semantic transform; preserve proposal/shown/executable digests; reject stale, invalid, mutated or conflicting edits before intent. |
+| FR-61 shared transaction | Observe from another connection after each injected process/commit fault; content/reference/journal/summary/feed are one accepted batch or absent; recover unknown acknowledgment by key. |
+| FR-62 defaults | Run the documented minimal composition and each override; counts stay deterministic and unknown model capacity refuses explicitly; finite bounds remain effective. |
+| FR-63 dependency compatibility | Resolve consumer constraints and run the selected contract/codec/typing/installed boundary suites at each proposed dependency range boundary before metadata widens. |
+| FR-64 telemetry naming | Select a span prefix and attribute namespace, inspect nested spans across awaits/workers/failures, and verify canonical metadata/content exclusions and fixed journal semantics. |
+
 ## Technical Context
 
 This section records decisions; the rationale is in the ADRs.
@@ -347,6 +387,10 @@ This section records decisions; the rationale is in the ADRs.
 - **APIs**: the model port, the engine ports, and the client API (contracts `CONTRACT-001` to `CONTRACT-005`).
 - **Platform Targets**: Linux and macOS.
 - **Hosting and CI**: GitHub (`DocumentDrivenDX/tether`) and GitHub Actions (an assumption to confirm).
+
+### Current dependency compatibility
+
+The 0.1 tested compatibility set is Python 3.11.17 with Pydantic 2.14.1, Pydantic AI 2.59.0 and Textual 8.2.8 where selected. Current exact metadata constraints disclose that set. No broader Pydantic, Agent or Textual range is claimed from these passes. FR-63 is near the top of the next compatibility slice: qualify proposed lower/upper versions and consumer resolution together before widening published ranges; retain exact executable pins in `uv.lock`.
 
 ## Constraints, Assumptions, Dependencies
 
@@ -391,6 +435,21 @@ This section records decisions; the rationale is in the ADRs.
 - Inference rows own observed model content, not Tether session metadata or effect/approval state. Their retention and availability cannot authorize journal eviction; a complete archive requires reference closure (CONTRACT-003/005).
 - CI service and packaging automation are implementation/deployment choices. Routine pull-request CI may run a smaller gate to conserve hosted capacity. The complete required conformance, acceptance, installed-profile and artifact gates must run on the selected release source before tagging; the execution route does not change the behavioral requirements.
 - Python 3.11 is the recorded compatibility target; the implementation must qualify its selected dependencies and interpreter matrix. A consumer requiring another floor triggers an explicit compatibility change.
+
+### Consumer decisions awaiting Erik LaBianca
+
+The supplied consumer proposal labels these choices as assumptions. They remain open; none is silently accepted by this plan or a successful 0.1 release. Only dependent implementation/integration work waits for the relevant choice.
+
+| Decision | Proposed default from consumer request | Owner / state |
+|---|---|---|
+| Last-turn replacement | Immutable retraction after cutover; refuse unresolved effects | Erik LaBianca — open |
+| Batch approval required for cutover | No; serial answers | Erik LaBianca — open |
+| Existing-session import required for cutover | No; allow integration without import | Erik LaBianca — open |
+| Application PostgreSQL settlement profile | Shared transaction when the verified root is shared | Erik LaBianca — open |
+| Original-transcript versus exchange-payload read permission | Keep two actions, matching the current implementation | Erik LaBianca — open; current protections remain enforced |
+| Ongoing release channel and signing authority | PyPI through the existing local publication route; signing authority unspecified | Erik LaBianca — open; the separately authorized 0.1 publication does not establish a signing policy |
+
+Batch approval, immutable retraction, summary facets/bulk lookup, existing-session import and cross-process live text remain nonblocking cutover enhancements. A second process/window sees committed entries when their step commits; token-by-token live delivery requires a separately qualified transport. Committed-result fallback remains authoritative.
 
 ## Success Criteria
 

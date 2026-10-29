@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-25
+  updated: 2026-10-29
   authoring:
     home: repo
   links:
@@ -164,6 +164,14 @@ forward ambient SDK cookies, custom headers, organization/project, host or corre
 The native SDK may still parse ambient header configuration before this boundary; malformed values
 fail closed with a static unavailable reason and no physical request or raw header diagnostic.
 Offline estimation uses a separate capture transport and creates no physical attempt.
+
+## Proposed auxiliary purpose/profile binding
+
+The next consumer contract revision proposes `purpose="auxiliary"` in addition to answer, summary and correction, with a required nonempty `purpose_profile` identifier for auxiliary calls. The configured profile has a pinned revision/digest and supplies model tier, instructions, explicit limits/source policy and caller-required identity. Naming and suggestion profiles are tool-free. Unknown profiles, missing caller credentials or inconsistent purpose/profile fields MUST refuse before egress; the adapter cannot downgrade the call to answer or fall back to application authority. Existing non-auxiliary tags do not silently acquire a profile.
+
+The logical call, canonical request/cassette key, recorder binding and purpose-specific usage MUST retain the profile id/revision/digest. Every physical retry gets its own attempt identity, refreshes the same supplied live caller credential and repeats current policy. Auxiliary results use authorized HistoryProvider content; no mandatory session suggestion field is introduced. The new enum/field and replay compatibility require an explicit contract revision during accepted implementation; current 0.1 types are unchanged by this proposal.
+
+Acceptance MUST reject unknown/missing/changed profiles, replay drift and unsupported older contracts; revoke credentials between scheduling/start/retry; verify exact final-wire tags, source binding and incomplete usage; and prove tool proposals cannot execute in the tool-free profile. This paragraph requires Erik LaBianca's acceptance with CONTRACT-002/003 before source changes.
 
 ## Precedence and Compatibility
 
