@@ -8,6 +8,7 @@ from tether.models.canonical import canonical
 from tether.runtime.pydantic_ai.messages import arguments, json_object
 from tether.runtime.pydantic_ai.validation import validate_response
 from tether.types import (
+    Count,
     ModelExecutionLimits,
     ModelResponse,
     ModelUnavailable,
@@ -116,6 +117,23 @@ def observed_usage(data: bytes) -> TokenUsage | None:
         return None
 
 
+def validate_stream_usage(value: JsonValue) -> None:
+    if not isinstance(value, dict) or all(
+        value.get(key) is not None for key in ("prompt_tokens", "completion_tokens")
+    ):
+        usage_from_wire(value)
+        return
+    # Input usage may precede output usage; never invent counters for a partial.
+    # The terminal still passes usage_from_wire and requires both counts.
+    try:
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            count = value.get(key)
+            if count is not None:
+                TypeAdapter(Count).validate_python(count)
+    except ValidationError:
+        raise ModelUnavailable("invalid_response") from None
+
+
 class StreamingWireValidator:
     """Validate bounded OpenAI-compatible SSE frames before the SDK sees them."""
 
@@ -217,7 +235,7 @@ class StreamingWireValidator:
             raise ModelUnavailable("invalid_response")
         if "usage" in value and value["usage"] is not None:
             self.usage = value["usage"]
-            usage_from_wire(self.usage)
+            validate_stream_usage(self.usage)
         if not choices:
             return
         if self.finish_reason is not None:

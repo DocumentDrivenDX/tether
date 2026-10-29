@@ -68,6 +68,8 @@ def test_real_inventory_and_aggregate_branch_coverage_gate(tmp_path, both_branch
     shared_temporary_root = tmp_path / "shared-pytest-root"
     shared_temporary_root.mkdir()
     monkeypatch.setenv("PYTEST_DEBUG_TEMPROOT", str(shared_temporary_root))
+    # The nested gate must not erase the outer suite's coverage database.
+    monkeypatch.setenv("COVERAGE_FILE", str(tmp_path / ".coverage"))
     (tmp_path / "pyproject.toml").write_text(
         '[tool.pytest.ini_options]\ntestpaths=["tests"]\npythonpath=["."]\n'
         'addopts="--cov=sample --cov-branch"\n'

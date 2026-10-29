@@ -64,6 +64,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
         "tether.adapters.pydantic_ai",
     ),
     "tether.adapters.databricks": (
+        "pydantic",
         "tether.types",
         "tether.ports",
         "tether.history",

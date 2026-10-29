@@ -68,6 +68,8 @@ Signatures are Python 3.11. Payload types are frozen `pydantic` models with `ext
 
 **Asynchronous form.** A method shown `async def` is a coroutine function. A port that does no I/O is synchronous and is marked so: `Tracer`, `Clock`, `Ids`, and `Tool.asks_first`. A tool or a provider method MAY be written as a plain `def`; the engine then runs it in a worker thread (section 4).
 
+The Engine composition may explicitly select `identity_mode` (`caller`, `application` or `anonymous`), defaulting to `caller`. It MUST bind this mode before request preparation, estimation and attempt recording, preserve it across retries, and reject unknown values. Missing caller credentials MUST NOT trigger anonymous fallback. The reference local launcher selects anonymous mode only through explicit local-endpoint configuration; actor ownership, current policy and journal gates are unchanged.
+
 ### 1. Identity, decisions, the spec, and the turn
 
 ```python

@@ -1,0 +1,32 @@
+{
+  "scenario": "common-write-approval",
+  "source": "working tree; unreleased",
+  "python": "3.11.17",
+  "platform": "Darwin arm64",
+  "capture": "Actual Textual headless SVG export, 110 x 30 cells",
+  "model": "fabricated scripted fixture",
+  "network": "not used",
+  "assertions": [
+    "arguments visible before approval",
+    "no file before approval",
+    "approved file content exact",
+    "approval settled",
+    "new session is distinct and empty",
+    "composer focused"
+  ],
+  "limits": "File tool only; no live provider/search evidence or sandbox claim",
+  "frames": [
+    {
+      "file": "common-tools-pending.svg",
+      "sha256": "bbb65006c0fe756069d29e828263231e82248fe2c5093f7d6ebfb09082ac2505"
+    },
+    {
+      "file": "common-tools-approved.svg",
+      "sha256": "a6fad680c43c88920e8fbc31a6dc4c18acafa2b8a422b61529224af0ff629245"
+    },
+    {
+      "file": "common-tools-new-session.svg",
+      "sha256": "7d30d3eb0b8f1f3c37bd086842c7c05113f0675e197c5c00d3250ed7c11a12b1"
+    }
+  ]
+}

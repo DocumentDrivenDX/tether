@@ -13,6 +13,7 @@ from test_wire_estimator import vocabulary
 from tether.cli.command import execute, parser
 from tether.cli.demo import load_profile, open_demo
 from tether.tui import DemoApp
+from tether.types.canonical import digest
 
 pytestmark = pytest.mark.anyio
 
@@ -110,6 +111,11 @@ async def test_reference_profile_allows_bounded_many_frame_stream(tmp_path):
             tmp_path, server.sockets[0].getsockname()[1], max_response_bytes=32768
         )
         loaded = await load_profile(config)
+        legacy = loaded.model_dump(
+            mode="json",
+            exclude={"workspace", "identity_mode", "context_source", "databricks_profile"},
+        )
+        assert loaded.session_ref == "model:" + loaded.id + ":" + digest(legacy)[:16]
         async with open_demo(tmp_path / "journal", profile=loaded) as (app, actor, _tool):
             session = await app.client(actor).create(ref=loaded.session_ref)
             result = await (await app.client(actor).send(session.id, "Fabricated input")).result()
@@ -184,12 +190,83 @@ async def test_reference_config_refuses_missing_authorization_before_egress(tmp_
     try:
         config = write_profile(tmp_path, server.sockets[0].getsockname()[1])
         loaded = await load_profile(config)
+        assert loaded.authorization_file is not None
         loaded.authorization_file.unlink()
         async with open_demo(tmp_path / "journal", profile=loaded) as (app, actor, _tool):
             session = await app.client(actor).create(ref=loaded.session_ref)
             result = await (await app.client(actor).send(session.id, "Fabricated input")).result()
             assert result.stop_reason != "final"
         assert not peer.seen
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.parametrize("approved", [True, False])
+async def test_common_write_tool_requires_exact_approval(tmp_path, monkeypatch, approved):
+    import test_reference_model_profile as this_module
+
+    from tether.types.execution import Answer
+
+    peer = Peer()
+    original = wire_response()
+    proposal = json.loads(original)
+    proposal["choices"][0].update(
+        finish_reason="tool_calls",
+        message={
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "fabricated-write",
+                    "type": "function",
+                    "function": {
+                        "name": "write_file",
+                        "arguments": json.dumps(
+                            {"path": "seedling.txt", "content": "fabricated seedling"}
+                        ),
+                    },
+                }
+            ],
+        },
+    )
+    responses = iter([json.dumps(proposal).encode(), original])
+    monkeypatch.setattr(this_module, "wire_response", lambda: next(responses))
+    server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
+    try:
+        config = write_profile(tmp_path, server.sockets[0].getsockname()[1])
+        settings = json.loads(config.read_text())
+        settings["workspace"] = "."
+        config.write_text(json.dumps(settings))
+        loaded = await load_profile(config)
+        assert loaded.workspace == tmp_path
+        async with open_demo(tmp_path / "journal", profile=loaded) as (app, actor, _):
+            client = app.client(actor)
+            session = await client.create(ref=loaded.session_ref)
+            result = await (await client.send(session.id, "Write a fabricated file")).result()
+            assert result.stop_reason == "confirmation_required"
+            assert not (tmp_path / "seedling.txt").exists()
+            names = {item["function"]["name"] for item in peer.seen[0][2]["tools"]}
+            assert names == {
+                "record_demo",
+                "bash",
+                "read_file",
+                "write_file",
+                "web_search",
+                "web_page_load",
+            }
+            pending = await client.pending(session.id)
+            assert pending is not None
+            assert pending.tool == "write_file"
+            assert pending.arguments == {"path": "seedling.txt", "content": "fabricated seedling"}
+            handle = await client.confirm(
+                session.id, pending.invocation_id, Answer(approved=approved)
+            )
+            assert handle is not None
+            assert (await handle.result()).stop_reason == "final"
+            assert (tmp_path / "seedling.txt").exists() == approved
+            if approved:
+                assert (tmp_path / "seedling.txt").read_text() == "fabricated seedling"
     finally:
         server.close()
         await server.wait_closed()
