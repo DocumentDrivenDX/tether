@@ -41,8 +41,11 @@ authorization file outside the checkout; it contains the complete HTTP
 Authorization value and is read afresh for each physical attempt. The profile
 contains no secret. Its tokenizer vocabulary and server framing values must be
 qualified for the chosen model. The offline demo remains the default when
-`--model-config` is absent. A controlled local HTTP peer exercises this path;
-live provider compatibility and semantic summary fidelity are still open.
+`--model-config` is absent. A controlled local HTTP peer and one local DS4
+text/tool/approval run exercise this path; the selected DS4 run and its remaining
+tokenizer/framing limits are recorded in the
+[P0 qualification receipt](docs/helix/03-test/evidence/p0-qualification-20261028.md).
+Broader provider compatibility and semantic summary fidelity remain open.
 
 ## Development
 
