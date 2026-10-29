@@ -84,7 +84,7 @@ For dependencies, 0.1 documents the actually tested singleton versions. C-01 tes
 
 Installed Pydantic AI 2.59.0 metadata requires `pydantic>=2.12` and `pydantic-graph==2.59.0`. The consumer's supplied `pydantic>=2.11` constraint alone permits the tested 2.14.1 version; it does not establish that Pydantic 2.11 can run this Agent pin. Boundary characterization must respect the actual transitive minimum or explicitly qualify a different Agent version. A successful resolver result is not runtime/codec qualification.
 
-An isolated uv resolver run against the published `novirhiza-tether==0.1.0` package plus the supplied `pydantic>=2.11` constraint selected Pydantic 2.14.1/Agent 2.59.0. A negative control with `pydantic<2.12` refused resolution because this release pins Pydantic 2.14.1. This characterizes these constraints only; a complete consumer dependency set and wider runtime compatibility remain to be qualified. No published range was widened.
+An isolated uv resolver run against the published `novirhiza-tether==0.1.0` package plus the supplied `pydantic>=2.11` constraint selected Pydantic 2.14.1/Agent 2.59.0. A negative control with `pydantic<2.12` refused resolution because this release pins Pydantic 2.14.1. This characterizes these constraints only; the full selected-source consumer composition and wider runtime compatibility remain to be qualified. No published range was widened.
 
 ## Application Adapter Boundaries
 
@@ -106,7 +106,9 @@ The 0.1 release source/artifact qualification and public PyPI publication are co
 
 The [compatibility preflight](../02-design/evidence/consumer-compatibility-preflight-20261029.json) records source hashes at the release commit, all 13 current ClientLimit field dispositions, the 11 reference composition values, existing FullContext/unconfigured behavior, fixed telemetry naming and the positive/negative public-package resolver characterization. Current span families include Client, gate, retrieval/provider hook, tool and actual worker-body observations. Engine exposes neither span_prefix nor attribute_namespace; configurable naming remains proposed. Existing no-op/metadata telemetry evidence does not qualify an OTel receiver. This closes the unaffected provenance/claim audit, not C-01 implementation.
 
-The complete consumer dependency graph, runtime qualification of wider dependency ranges, convenience configuration defaults and configurable telemetry remain dependent on accepted scope/design. No source implementation of these proposed surfaces has begun. The task-created QA container and two disposable public-install environments have been removed; release artifacts, exact success/failure evidence, operator profiles and microsite captures are retained.
+Read-only inspection of the available consumer runtime manifest identified 13 requirements: 12 use the public index, and one is routed through a separate index. The 12 public requirements resolved together with released Tether at Pydantic 2.14.1/Agent 2.59.0. The separately indexed requirement was explicitly excluded from that bounded resolver characterization, so neither the complete selected-source graph nor consumer runtime behavior is claimed. No source or private index configuration was copied into public evidence.
+
+Qualification of the separately routed dependency/full consumer runtime, wider dependency ranges, convenience configuration defaults and configurable telemetry remain dependent on accepted scope/design. No source implementation of these proposed surfaces has begun. The task-created QA container and two disposable public-install environments have been removed; release artifacts, exact success/failure evidence, operator profiles and microsite captures are retained.
 
 ## Validation Plan
 

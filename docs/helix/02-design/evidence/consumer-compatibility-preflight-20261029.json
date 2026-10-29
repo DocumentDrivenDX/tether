@@ -22,6 +22,22 @@
   "date": "2026-10-29",
   "dependencies": {
     "compatible_input": "pydantic>=2.11",
+    "consumer_public_subset_output_sha256": "32c4187c05b310319a78b44c04c9871af22afbd55bc7aaf9b649189447c7c713",
+    "consumer_public_subset_resolution": "passed; resolver only",
+    "consumer_public_subset_selected_versions": {
+      "fastapi": "0.162.0",
+      "mcp": "2.3.0",
+      "pydantic": "2.14.1",
+      "pydantic-ai-slim": "2.59.0",
+      "pydantic-settings": "2.16.2"
+    },
+    "consumer_runtime_scope": {
+      "public_subset_count": 12,
+      "python": "3.11",
+      "runtime_requirement_count": 13,
+      "scope": "public-index subset only; selected separate-index dependency not resolved",
+      "separate_index_requirement_count": 1
+    },
     "negative_input": "pydantic<2.12",
     "negative_outcome": "unsatisfiable due to release pydantic==2.14.1",
     "published_package": "novirhiza-tether==0.1.0",
@@ -32,7 +48,7 @@
   },
   "kind": "source-and-resolver-characterization; not new API implementation",
   "limits": [
-    "Full consumer dependency graph not supplied/qualified",
+    "Consumer runtime manifest inspected read-only: 12 public-index requirements resolve together with released Tether; one separately indexed requirement and full selected-source/runtime composition remain unqualified",
     "No wider Pydantic runtime range or new codecs qualified",
     "Configurable telemetry/default surface remains proposed",
     "Eight consumer seams and six owner decisions remain unaccepted"
