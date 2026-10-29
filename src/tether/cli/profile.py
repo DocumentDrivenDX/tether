@@ -23,6 +23,7 @@ class ReferenceModelProfile(Payload):
     context_window_tokens: PositiveInt
     output_tokens: PositiveInt
     safety_margin_tokens: Count
+    max_response_bytes: PositiveInt = Field(default=8192, le=1024 * 1024)
     tokenizer_profile: dict[str, JsonValue]
     vocabulary_path: Path
 

@@ -122,7 +122,7 @@ async def open_demo(
         history = await JsonlHistory.open(files)
         tool = DemoTool()
         model_limits = ModelExecutionLimits(
-            max_response_bytes=8192,
+            max_response_bytes=profile.max_response_bytes if profile is not None else 8192,
             max_tool_argument_bytes=512,
             max_attempts=2,
             request_timeout_seconds=30 if profile is not None else 5,

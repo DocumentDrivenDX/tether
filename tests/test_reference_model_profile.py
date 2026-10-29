@@ -22,29 +22,27 @@ def anyio_backend():
     return "asyncio"
 
 
-def write_profile(tmp_path, port: int):
+def write_profile(tmp_path, port: int, *, max_response_bytes: int | None = None):
     vocab = tmp_path / "vocabulary.txt"
     vocab.write_bytes(vocabulary())
     authorization = tmp_path / "authorization.txt"
     authorization.write_text(" ".join(("Bearer", "fabricated")), encoding="utf-8")
     config = tmp_path / "model.json"
-    config.write_text(
-        json.dumps(
-            dict(
-                id="local-fixture",
-                base_url=f"http://127.0.0.1:{port}/v1",
-                model_name="fabricated-wire-model",
-                authorization_file=authorization.name,
-                output_limit_field="max_tokens",
-                context_window_tokens=100000,
-                output_tokens=256,
-                safety_margin_tokens=128,
-                tokenizer_profile=tokenizer_profile().model_dump(mode="json"),
-                vocabulary_path=vocab.name,
-            )
-        ),
-        encoding="utf-8",
+    settings = dict(
+        id="local-fixture",
+        base_url=f"http://127.0.0.1:{port}/v1",
+        model_name="fabricated-wire-model",
+        authorization_file=authorization.name,
+        output_limit_field="max_tokens",
+        context_window_tokens=100000,
+        output_tokens=256,
+        safety_margin_tokens=128,
+        tokenizer_profile=tokenizer_profile().model_dump(mode="json"),
+        vocabulary_path=vocab.name,
     )
+    if max_response_bytes is not None:
+        settings["max_response_bytes"] = max_response_bytes
+    config.write_text(json.dumps(settings), encoding="utf-8")
     return config
 
 
@@ -67,6 +65,80 @@ class Peer:
         finally:
             writer.close()
             await writer.wait_closed()
+
+
+class ManyFramesPeer:
+    async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            await read_request(reader)
+
+            def frame(delta: dict, finish: str | None = None) -> bytes:
+                value = {
+                    "id": "fabricated-many-frames",
+                    "object": "chat.completion.chunk",
+                    "created": 1,
+                    "model": "fabricated-wire-model",
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+                }
+                return b"data: " + json.dumps(value).encode() + b"\n\n"
+
+            payload = (
+                frame({"role": "assistant"})
+                + frame({"content": "x"}) * 80
+                + frame({}, "stop")
+                + b"data: [DONE]\n\n"
+            )
+            assert len(payload) > 8192
+            writer.write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+                b"Content-Length: "
+                + str(len(payload)).encode()
+                + b"\r\nConnection: close\r\n\r\n"
+                + payload
+            )
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+
+async def test_reference_profile_allows_bounded_many_frame_stream(tmp_path):
+    peer = ManyFramesPeer()
+    server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
+    try:
+        config = write_profile(
+            tmp_path, server.sockets[0].getsockname()[1], max_response_bytes=32768
+        )
+        loaded = await load_profile(config)
+        async with open_demo(tmp_path / "journal", profile=loaded) as (app, actor, _tool):
+            session = await app.client(actor).create(ref=loaded.session_ref)
+            result = await (await app.client(actor).send(session.id, "Fabricated input")).result()
+            assert result.stop_reason == "final"
+            assert result.messages[-1].content == "x" * 80
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_reference_profile_default_response_cap_refuses_many_frames(tmp_path):
+    peer = ManyFramesPeer()
+    server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
+    try:
+        config = write_profile(tmp_path, server.sockets[0].getsockname()[1])
+        loaded = await load_profile(config)
+        async with open_demo(tmp_path / "journal", profile=loaded) as (app, actor, _tool):
+            session = await app.client(actor).create(ref=loaded.session_ref)
+            result = await (await app.client(actor).send(session.id, "Fabricated input")).result()
+            assert result.stop_reason == "model_unavailable"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_reference_profile_rejects_unbounded_response_cap(tmp_path):
+    config = write_profile(tmp_path, 1, max_response_bytes=1024 * 1024 + 1)
+    with pytest.raises(ValueError, match="invalid_model_config"):
+        await load_profile(config)
 
 
 async def test_reference_config_selects_real_adapter_without_changing_offline_default(
