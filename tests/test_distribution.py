@@ -46,7 +46,12 @@ def test_good_artifacts_and_ambiguous_outputs(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("option", ["typed", "licensed", "expression"])
 def test_wheel_missing_required_metadata_fails(tmp_path: Path, option: str) -> None:
-    artifacts(tmp_path, **{option: False})
+    artifacts(
+        tmp_path,
+        typed=option != "typed",
+        licensed=option != "licensed",
+        expression=option != "expression",
+    )
     with pytest.raises(ValueError, match="wheel missing"):
         inspect_artifacts(tmp_path)
 
