@@ -1,5 +1,7 @@
 # Tether
 
+[Microsite](https://DocumentDrivenDX.github.io/tether/) · [Scenario capture workflow](docs/microsite.md)
+
 Install the `novirhiza-tether` distribution; the Python import remains `tether`.
 
 A Python library for building agent harnesses. Tether integrates Pydantic AI Agent with

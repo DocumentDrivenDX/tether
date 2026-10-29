@@ -1,0 +1,40 @@
+{
+  "scenario": "local-qwen-text-tool-approval",
+  "version": "0.1.0",
+  "model": "qwen3.8-flash-next-chat",
+  "server": "Local DS4 OpenAI-compatible endpoint",
+  "python": "3.11.17",
+  "platform": "macOS arm64",
+  "data": "fabricated",
+  "network": "explicit local endpoint",
+  "capture": "Real Textual headless UI exports; actual live inference",
+  "limits": {
+    "output_tokens": 384,
+    "max_response_bytes": 131072,
+    "safety_margin_tokens": 32768
+  },
+  "assertions": [
+    "READY assistant response",
+    "no pending tool after text",
+    "record_demo pending before approval",
+    "no pending tool after approval",
+    "idle after approval"
+  ],
+  "frames": [
+    {
+      "file": "qwen-01-ready.svg",
+      "description": "The live local Qwen model responds READY.",
+      "sha256": "636a00042e66718d8f4f75caecd00929c96cd02a878c86798d6252e9dd7c98ac"
+    },
+    {
+      "file": "qwen-02-approval.svg",
+      "description": "A live local model proposal is held for approval.",
+      "sha256": "363e68c4578286a5636ac11ef2542c0bd382ba9aaffc6643c800790ed2b940a4"
+    },
+    {
+      "file": "qwen-03-approved.svg",
+      "description": "Explicit approval completes the live local-model journey.",
+      "sha256": "38854a516148cafa1838fbb88519701f97972eaed2f0a5842efe252bca98e6d2"
+    }
+  ]
+}

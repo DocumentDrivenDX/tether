@@ -56,6 +56,9 @@ This repository is built to be public. Hard floors:
   add a dispatch or model-call bypass. SPIKE-004 is bounded evidence, not production conformance.
 - Telemetry and audit entries carry identifiers, sizes, and reasons, never message or tool
   content.
+- When qualifying a user scenario, capture real screenshots or a short video with fabricated
+  data for the microsite. Follow `docs/microsite.md`; keep reproducible capture recipes and
+  versioned evidence, and publish only journeys whose assertions passed.
 - Add regression coverage for changed behavior. Do not lower checks, weaken assertions, or add
   a skip or an ignore to get a change past a gate.
 - Commit only when asked. Commits carry a `Co-authored-by:` trailer for the person directing the
