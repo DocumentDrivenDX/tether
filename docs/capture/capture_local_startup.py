@@ -69,7 +69,7 @@ async def capture(base_url):
                 if name == "write_file":
                     assert not (workspace / "seedling.txt").exists()
                 path = OUTPUT / f"local-startup-{name}-pending.svg"
-                path.write_text(app.export_screenshot(title="Tether · local tool approval"))
+                path.write_text("\n".join(line.rstrip() for line in app.export_screenshot(title="Tether · local tool approval").splitlines()) + "\n")
                 frames.append({"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
                 await pilot.click("#approve")
                 await pilot.pause()

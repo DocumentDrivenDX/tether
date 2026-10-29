@@ -17,11 +17,11 @@
   "frames": [
     {
       "file": "databricks-model-picker.svg",
-      "sha256": "d29a442e8acc2e6a034757743037811bd725dc40075fac1cbc5b7af5cda88748"
+      "sha256": "0175466aa448a003ca7d497c9de41609822539182162de2c8612c5059b98b799"
     },
     {
       "file": "databricks-startup-ready.svg",
-      "sha256": "1653c82107c76341a99883cf8542ab0e17ddb53cd5ac1c2a7ec06b2fc0bf3dcf"
+      "sha256": "29fdd092ff01c195dfc4246d0b067dfe090403d402bfdf7dbaba16a7a51fd178"
     }
   ]
 }

@@ -66,7 +66,7 @@ async def capture():
                         assert (await app.client.history(app.session_id)).items == ()
                         assert app.focused is app.query_one("#message", Input)
                     path = OUTPUT / f"common-tools-{decision}.svg"
-                    path.write_text(app.export_screenshot(title="Tether · common tools"))
+                    path.write_text("\n".join(line.rstrip() for line in app.export_screenshot(title="Tether · common tools").splitlines()) + "\n")
                     frames.append({"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
     receipt = {
         "scenario": "common-write-approval", "source": "working tree; unreleased",

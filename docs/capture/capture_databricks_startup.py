@@ -55,7 +55,9 @@ async def capture(profile, model):
             app.save_screenshot("databricks-startup-ready.svg", path=str(OUTPUT))
     frames = []
     for name in ("databricks-model-picker.svg", "databricks-startup-ready.svg"):
-        data = (OUTPUT / name).read_bytes()
+        path = OUTPUT / name
+        path.write_text("\n".join(line.rstrip() for line in path.read_text().splitlines()) + "\n")
+        data = path.read_bytes()
         assert profile.encode() not in data
         frames.append({"file": name, "sha256": hashlib.sha256(data).hexdigest()})
     receipt = {

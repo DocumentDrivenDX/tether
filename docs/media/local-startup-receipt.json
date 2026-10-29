@@ -18,23 +18,23 @@
   "frames": [
     {
       "file": "local-startup-write_file-pending.svg",
-      "sha256": "a8b01199aa90489afa62c01a220332128c9fbbf8ab0ed3dc2e9a39cbdd67e6ce"
+      "sha256": "f293e0a7785a2a89a563c40b8f22257614fb65db37cd5b71205b3cbf617a8100"
     },
     {
       "file": "local-startup-read_file-pending.svg",
-      "sha256": "aef4dcb9fafb0f4dabfaa6db76c017456722df407f278a60b52107a947fa5a5d"
+      "sha256": "dd5ac148d24fb76d8200a1816690515af435c27fda7a3e6d0b816edee8372f7b"
     },
     {
       "file": "local-startup-bash-pending.svg",
-      "sha256": "b9d722eb99b147f13ceed3898341135d5debdd25d034985a0f60e9b4700cc8b2"
+      "sha256": "ef88f89137bb1a24159da94a3f72477c978755014df9e59e437556ed190e35ba"
     },
     {
       "file": "local-startup-web_search-pending.svg",
-      "sha256": "03df153faf7b9b50634a8c54b58613ec8141a44a8e6f973b828cb691885c9e82"
+      "sha256": "72695fc1b0d458f92499a2c22e7511d341bfa2e91660546ebf1222a92e6dd7f5"
     },
     {
       "file": "local-startup-web_page_load-pending.svg",
-      "sha256": "9820c8decc673d5fb95e05e114fb2cb1e51e2f12d139747477256265bb97c3ec"
+      "sha256": "82ac089d9dc29bc784a0bdb94ce1c6d90f56e3c429734f1150f61c393bb619e7"
     }
   ],
   "limits": "One local server/model; approximate byte estimator; no broad provider or sandbox qualification"
