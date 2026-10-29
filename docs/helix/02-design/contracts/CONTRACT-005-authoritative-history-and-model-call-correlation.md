@@ -192,11 +192,11 @@ Lookup uses configured table locators and parameterized predicates over endpoint
 
 External recording coverage remains explicit: pending rows, expired retention, missing bodies, logging errors, schema changes, permission failures and ambiguous joins cannot become empty history or successful recovery. There is no write, migration or schema mutation against the inference tables. Table discovery, SQL reads, caches and queued work have finite configured bounds and are isolated by actor/credential context. A credential change/revocation invalidates read-cache authority; failures do not trigger a service-principal fallback.
 
-## Proposed shared-root PostgreSQL transaction profile
+## Shared-root PostgreSQL transaction profile (development companion revision 1)
 
-This proposed post-0.1 profile requires Erik LaBianca's contract acceptance and separate implementation/qualification. It preserves separate HistoryProvider and SessionStore authorities while coordinating their commits. The current independently committed `put` profile remains supported for independent backends.
+Erik LaBianca authorized implementation of this post-0.1 profile on 2026-10-29; executed evidence qualifies its declared subset. It preserves separate HistoryProvider and SessionStore authorities while coordinating their commits. The current independently committed `put` profile remains supported for independent backends.
 
-For PostgresHistory and PostgresSessionStore composed from the same verified root/namespace, shared transaction is the proposed default. The adapter MUST stage canonical history bytes/digest and journal references through one bounded actor-bound, lease-fenced transaction participant. A stable atomic operation key binds owner/session, immutable record keys/digests, referenced journal batch and expected frontier. Commit publishes content, references, journal facts, summary and changes together. Equal retries recover the same references/frontier; conflicting retries refuse. The capability is internal to the paired adapter and MUST NOT expose a raw connection through generic ToolContext or create ambient application authority.
+For PostgresHistory and PostgresSessionStore composed from the same verified root/namespace, shared transaction is the development default. The adapter MUST stage canonical history bytes/digest and journal references through one bounded actor-bound, lease-fenced transaction participant. A stable atomic operation key binds owner/session, immutable record keys/digests, referenced journal batch and expected frontier. Commit publishes content, references, journal facts, summary and changes together. Equal retries recover the same references/frontier; conflicting retries refuse. The capability is internal to the paired adapter and MUST NOT expose a raw connection through generic ToolContext or create ambient application authority.
 
 An acknowledgment failure does not prove rollback. Recovery queries the same operation key under current actor/read authority and returns accepted, absent or unknown; unknown forbids a new dependent write. A requested shared profile with incompatible roots, namespaces, capabilities or lease bindings MUST refuse. Explicit independent profiles retain put-before-reference with possible unreferenced content, never a journal reference to unaccepted content. Applications continue to own connection sources, pool/role/RLS policy and migrations.
 
@@ -316,3 +316,21 @@ summary subset, and steps counts answer generations. Purpose comes from the actu
 per-purpose totals retain missingness independently; persisted session summaries retain their
 existing overall totals/complete fields. No new summary column or automatic schema migration is
 selected by this extension.
+
+
+### Turn-local history binding companion (version 1)
+
+The optional `types.transactions.TurnHistoryProvider.for_turn(log)` factory returns a HistoryProvider scoped to the supplied TurnLog. `TurnMessages.for_turn(log)` binds its MessageHistory view and `provider` together. Existing providers without this companion retain content-before-reference semantics. `HISTORY_TRANSACTION_VERSION=1` versions this additive capability independently of record codecs.
+
+`PostgresHistory(root, transaction_profile="auto")` selects shared staging only for a journal handle from that exact verified DatabaseRoot. `"shared"` requires that match and raises `StoreError("history_transaction_mismatch")` otherwise. `"independent"` always retains standalone commits. Separate root objects are independent profiles even when pointed at the same database. Standalone `put` remains independently committed.
+
+The shared view MUST copy/validate records, bind the leased actor/principal/session and refuse closed or poisoned handles. Its pending record count is at most StorageLimits.page_limit and total canonical StoredHistory bytes at most max_batch_bytes; excess raises `history_staging_limit`. Unreferenced staged records MUST NOT be published by an unrelated authorization append. Only records referenced by the accepting batch, including nested typed references, join its transaction. Content conflict raises `EntryConflict("history_conflict")`; journal conflict rolls content back. Cancelled/unknown acknowledgment poisons both views until reopening; no local staged read proves external acceptance. Independent observers MUST see either the accepted complete batch or none.
+
+
+### Whole-batch receipt and shared participant
+
+A paired PostgreSQL append records history_batch in the same commit as its content/references/journal/summary/feed. The receipt binds current owner/session/principal, the complete requested journal batch digest and its original expected frontier. The leased adapter append optionally accepts operation_key and expected_frontier; automatic paired commits derive a stable key from accepted journal keys (or source identity when no key is present). Equal keyed retries return the original requested entries/frontier without a new feed event. Conflicting batch content/frontier raises history_batch_conflict/history_batch_frontier before publication. Receipt metadata is an additional journal entry; append's return still contains only requested entries. Combined canonical staged content plus batch/receipt bytes MUST fit max_batch_bytes.
+
+PostgresSettlementParticipant(root, id, operations, apply) exposes only a finite immutable mapping of application-owned named SQL statements to its callback. SettlementTransaction.execute(name, JSON parameters) consumes one bounded operation, enforces parameter bytes and becomes unusable after callback completion. The exact actor/root/fence remains adapter-owned; ToolContext exposes no connection. Exact accepted settlement keys prevent applying the participant twice. No application table/schema migration is performed by construction.
+
+Development atomic receipts use internal version 1 and retain the original accepted positions for keyed and unkeyed journal inputs. Exact retries validate and return those entries without a new change event. Unkeyed identity includes declared nested history addresses. Malformed or unsupported receipts refuse; earlier unqualified development snapshots without this receipt shape are not an upgrade/downgrade profile.

@@ -59,7 +59,7 @@ packages = ["src/tether"]
 tether = "tether.cli:main"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "scripts", "tests", "pyproject.toml", "uv.lock", "README.md", "LICENSE-*", "NOTICE"]
+include = ["src", "scripts", "tests", "examples", "pyproject.toml", "uv.lock", "README.md", "LICENSE-*", "NOTICE"]
 
 [tool.uv]
 build-constraint-dependencies = ["dunamai==1.26.3", "hatchling==1.32.4", "jinja2==3.1.6", "markupsafe==3.0.4", "packaging==26.3", "pathspec==1.1.1", "pluggy==1.7.0", "tomlkit==0.15.2", "trove-classifiers==2026.9.21.13", "uv-dynamic-versioning==0.14.1"]

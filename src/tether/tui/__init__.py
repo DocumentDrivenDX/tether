@@ -168,7 +168,9 @@ class DemoApp(App[None]):
             return
         page = await self.client.list()
         self.sessions = page.items
-        listing = self.query_one("#sessions", ListView)
+        listing = next((node for node in self.query(ListView) if node.id == "sessions"), None)
+        if listing is None:
+            return
         await listing.clear()
         for item in page.items:
             await listing.append(ListItem(Label(f"{item.title or item.id} · {item.status}")))

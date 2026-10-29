@@ -148,7 +148,7 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 
 ### Should Have (P1)
 
-The immediately next slice after 0.1 publication is the consumer contract and compatibility work in FR-54 to FR-64. It precedes consumer integration and the other P1 enhancements below. The proposed contract paragraphs require owner acceptance before dependent implementation; this sequencing does not reopen 0.1 P0 qualification.
+The immediately next slice after 0.1 publication is the consumer contract and compatibility work in FR-54 to FR-64. It precedes consumer integration and the other P1 enhancements below. Erik LaBianca authorized development implementation of the merged contract packet on 2026-10-29. Its contracts, technical designs and implementation evidence govern that development revision; this does not reopen 0.1 P0 qualification.
 
 1. Measured performance budgets for the client API, protected in CI (FR-21).
 2. The OpenTelemetry adapter (FR-24).
@@ -230,7 +230,7 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 
 ### Subsystem: Telemetry
 
-- **FR-64** — P1 next compatibility slice: Engine composition can select a stable span prefix and attribute namespace while preserving canonical metadata semantics and content exclusion. The current qualified implementation uses fixed `tether` names; configurable naming remains proposed.
+- **FR-64** — P1 next compatibility slice: Engine composition can select a stable span prefix and attribute namespace while preserving canonical metadata semantics and content exclusion. Published 0.1.0 uses fixed `tether` names; configurable development naming is governed by CONTRACT-002 and qualified separately.
 
 - **FR-22** — The loop emits spans for each turn, model call, and tool call, carrying trace context across awaits.
 - **FR-23** — The loop emits one audit entry per step and one per gate decision, carrying identifiers, sizes, and reasons.
@@ -290,7 +290,7 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 
 ### Feature Map
 
-The next consumer requirements map FR-54 to Client API, FR-55/57/59 to Agent/Governance, FR-56/58/60 to Tools/Governance, FR-61 to Sessions/Authoritative History, FR-62/63 to Reference Clients/Packaging and FR-64 to Telemetry. CONTRACT-002/003/005 contain the proposed interface obligations; the implementation plan sequences acceptance before source changes.
+The next consumer requirements map FR-54 to Client API, FR-55/57/59 to Agent/Governance, FR-56/58/60 to Tools/Governance, FR-61 to Sessions/Authoritative History, FR-62/63 to Reference Clients/Packaging and FR-64 to Telemetry. CONTRACT-002/003/005 contain the accepted development interface obligations; the implementation plan records execution and qualification separately from published 0.1.0.
 
 Authoritative history and correlation (FR-50 to FR-53) belong to the Sessions and Context Management features and the Databricks adapter where selected; CONTRACT-005 fixes their boundary. Local/Gateway readiness, identity modes and replay-safe effectful writers receive distinct acceptance coverage in TP-001.
 

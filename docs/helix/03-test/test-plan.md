@@ -9,6 +9,12 @@ ddx:
   authoring:
     home: repo
   links:
+    - id: TD-001
+      kind: informed_by
+    - id: TD-002
+      kind: informed_by
+    - id: TD-003
+      kind: informed_by
     - id: prd
       kind: informed_by
     - id: SD-001
@@ -154,3 +160,26 @@ that passing assertions with insufficient branch coverage still fail the overall
 ## Diagnostic Test Strategy
 
 Use fabricated source/summary/argument markers to prove privacy before any sink, including context-failure and unknown-effect paths. Inject sink/export failures and enforce configured bounds without blocking the turn indefinitely. For a selected real OpenTelemetry adapter, send traces through a real receiver and verify nesting, current actor/request correlation by identifiers, usage purpose, and no duplicate ingestion. Capture source versions, store capabilities, model profile/estimator versions, strategy, fault point, expected/observed effect state, result, diagnostic capture limits and measured runtime/memory. Context source content and operator resolution reasons are not span/audit attributes.
+
+## Consumer Development Revision Qualification
+
+FR-54–64 follow C-01–05 and TD-001–003. They are development capabilities beyond published 0.1.0. The same complete canonical gate, unchanged 180-second child deadline, public collection inventory and 85% aggregate branch-coverage floor apply.
+
+| Requirement | Primary executed test source | Boundary / limit |
+|---|---|---|
+| FR-54 | test_consumer_commands.py; test_consumer_direct_recovery.py | Real Client task/lease/dedup/reopen; no model/assistant provenance; approval refusal and same-invocation recovery |
+| FR-55 | test_consumer_commands.py; test_consumer_refusals.py | Ready/needs-input/refused/cancelled; original input preserved; separately verified derived references and foreign-scope zero egress |
+| FR-56 | test_consumer_settlement.py; test_consumer_shared_settlement.py; test_consumer_independent_process.py | Clean commit/withheld rollback, lost acknowledgment, original decision/actor, actual two-transaction commit/rollback process frontiers and same-id reconciliation |
+| FR-57 | test_consumer_transitions.py | Snapshot/next-request binding, equal retry, stale old digest and unsettled approval refusal |
+| FR-58 | test_consumer_registry_edits.py; existing changed-tool read tests | Immutable snapshots, atomic failed publication, actual cancelled worker retention and current definition invalidation |
+| FR-59 | test_consumer_auxiliary.py; test_consumer_refusals.py | Tool-free explicit purpose/profile, distinct accepted results, missing/revoked caller credentials and zero second egress |
+| FR-60 | test_consumer_registry_edits.py; test_consumer_edited_restart.py | Semantic restriction, separate proposal/shown/executable digests, mutation/error/drift negatives, actual durable-root reopen before intent |
+| FR-61 | test_paired_history.py; test_consumer_transaction_process.py | Whole-batch key/frontier, conflict/unknown/reopen, separate observers and four independent process-death frontiers for both commit and rollback |
+| FR-62 | test_consumer_configuration.py | Minimal composition, explicit overrides/capacity, Full/Tail choice and unknown-profile refusal |
+| FR-63 | Existing codec/typing/dependency/installed suites and retained resolver preflight | Exact selected pins only; no broader ranges or separately routed consumer graph claimed |
+| FR-64 | test_consumer_configuration.py and existing telemetry tests | Nested success/failure/await/worker naming; canonical metadata and content exclusion; no exporter claim |
+| Combined | test_consumer_integrated.py; examples/consumer_capabilities.py | Fabricated public Client journey; three scripted model calls and one application stage; four assertion-backed development captures |
+
+New optional ports have finite dummies and conformance checks in testing.preparation, testing.settlement and testing.approval_edits, exercised by test_consumer_companions.py. PostgreSQL tests use the selected PostgreSQL 18 development binary profile; process death is not power-cut proof. Independent settlement process tests use separate transactions against fabricated application rows, not an assertion of arbitrary remote backend idempotency. The integrated example's application participant is explicitly volatile; durable journal/history and independent database frontiers are proven separately.
+
+The [consumer execution receipt](evidence/consumer-qualification-20261029.md) records the passing complete gate, exact source/artifact identities, installed base/TUI profiles, captures, semantic review and earlier failed/superseded runs. The deterministic late-refresh TUI regression is included in the complete inventory. Hosted Actions, paid model/service calls and server restarts remain excluded.

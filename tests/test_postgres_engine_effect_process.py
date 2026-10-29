@@ -93,13 +93,16 @@ async def resolve_sql_barrier(scoped, run, actor, session_id, invocation_id, eff
     view = await scoped.get(session_id, actor.id)
     assert view is not None
     assert view.summary.unresolved_effect_count == 0
-    entries = (await scoped.entries(session_id, actor.id, start=0, limit=100)).items
-    resolutions = [entry for entry in entries if entry.key == "resolution:" + invocation_id]
+    resolutions = await scoped.lookup(
+        session_id, actor.id, kind="key", value="resolution:" + invocation_id, limit=2
+    )
     assert len(resolutions) == 1
     async with scoped.turn(session_id, actor.id, turn_id="resolve-retry") as log:
         await run.engine.resolve(actor, log, value)
-    entries = (await scoped.entries(session_id, actor.id, start=0, limit=100)).items
-    assert len([entry for entry in entries if entry.key == "resolution:" + invocation_id]) == 1
+    resolutions = await scoped.lookup(
+        session_id, actor.id, kind="key", value="resolution:" + invocation_id, limit=2
+    )
+    assert len(resolutions) == 1
     conflict = value.model_copy(update={"outcome": "not_completed"})
     with pytest.raises(ResolutionConflict):
         async with scoped.turn(session_id, actor.id, turn_id="resolve-conflict") as log:

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Generator
+from collections.abc import Awaitable, Callable, Generator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Literal
 from uuid import uuid4
 
@@ -17,15 +18,15 @@ from tether.types import (
     ModelRequest,
     RequestTags,
 )
+from tether.types.approval_edits import ArgumentTransform
+from tether.types.auxiliary import AuxiliaryProfile
 from tether.types.canonical import digest
 from tether.types.context import ContextConfig, ContextStrategy, TokenEstimator
 from tether.types.execution import (
     Actor,
     AgentSpec,
     Answer,
-    AuthzRequest,
     Clock,
-    Decision,
     Entry,
     ExecutionDenied,
     ExecutionLimits,
@@ -45,18 +46,23 @@ from tether.types.execution import (
 )
 from tether.types.history import HistoryProvider
 from tether.types.lifetime import WorkerLifetime
+from tether.types.preparation import Preparation
+from tether.types.settlement import SettlementParticipant
 from tether.types.telemetry import AuditSink, DeliveryStats, TelemetryLimits, Tracer
 from tether.types.tooling import tool_spec
+from tether.types.transactions import TurnHistoryProvider, TurnMessages
 
-from . import resuming
+from . import commands, preparation, resuming
 from .closing import close_session
-from .confirmations import approval_entries
+from .confirmation_edits import confirmed_entries
 from .context import ContextBoundary
 from .governance import AllowAll, Governance, utc_now
-from .inspection import describe_pending
+from .history import selected_provider
+from .inspection import authorized_pending
 from .observers.facade import Observers
 from .reconstruction import pinned_spec, requested_turn, restore_pending
 from .recovery import resume_chain
+from .registry import RegistryPublisher
 from .resolution import resolve
 from .run import Run
 from .starts import accept_input
@@ -72,7 +78,7 @@ class Engine:
         *,
         model: ModelPort,
         history: MessageHistory,
-        model_limits: ModelExecutionLimits,
+        model_limits: ModelExecutionLimits | None = None,
         identity_mode: Literal["caller", "application", "anonymous"] = "caller",
         attempt_factory: Callable[[RequestTags], AttemptRecorder] | None = None,
         history_provider: HistoryProvider | None = None,
@@ -86,9 +92,15 @@ class Engine:
         estimator: TokenEstimator | None = None,
         context: ContextStrategy | None = None,
         specs: tuple[AgentSpec, ...] = (),
+        prepare: Preparation | None = None,
+        auxiliary_profiles: tuple[AuxiliaryProfile, ...] = (),
+        settlements: tuple[SettlementParticipant, ...] = (),
+        approval_transforms: Mapping[str, ArgumentTransform] | None = None,
         audit: AuditSink | None = None,
         tracer: Tracer | None = None,
         telemetry_limits: TelemetryLimits | None = None,
+        span_prefix: str = "tether",
+        attribute_namespace: str = "tether",
         live_text: Callable[[str, AttemptIdentity, int, str], Awaitable[None]] | None = None,
         live_done: Callable[
             [str, AttemptIdentity, Literal["outage", "cancelled", "reconnect"] | None],
@@ -99,9 +111,15 @@ class Engine:
         if identity_mode not in {"caller", "application", "anonymous"}:
             raise ValueError("invalid_identity_mode")
         self.identity_mode: Literal["caller", "application", "anonymous"] = identity_mode
-        self.model, self.history, self.model_limits = model, history, model_limits
+        self.model, self.history = model, history
+        self.model_limits = model_limits if model_limits is not None else ModelExecutionLimits()
         self.history_provider = history_provider
         self.attempt_factory = attempt_factory
+        self.preparation = prepare
+        if len({participant.id for participant in settlements}) != len(settlements):
+            raise ValueError("settlement_participant_conflict")
+        self.settlements = settlements
+        self.approval_transforms = dict(approval_transforms or {})
         self.context = ContextBoundary(context_config, estimator, context)
         self.registry, self.guards = Registry(tools, providers), guards
         self.policy, self.limits, self.clock = (
@@ -109,12 +127,29 @@ class Engine:
             limits if limits is not None else ExecutionLimits(),
             clock,
         )
-        self.observers = Observers(audit, tracer, telemetry_limits)
+        self.observers = Observers(
+            audit,
+            tracer,
+            telemetry_limits,
+            span_prefix=span_prefix,
+            attribute_namespace=attribute_namespace,
+        )
         self.live_text = live_text
         self.live_done = live_done
         self.observers.steps.register(self.registry.providers)
         self.workers = Workers(
             self.limits.max_workers, operation_capacity=self.limits.max_worker_operations
+        )
+        self.commands = commands.CommandEngine(
+            self._operation,
+            self._governance,
+            lambda: self._registry_view.get() or self.registry,
+            self.workers,
+            self.guards,
+            context=self.context,
+            model=self.model,
+            history=lambda gov: selected_provider(self.history, self.history_provider, gov.history),
+            profiles=auxiliary_profiles,
         )
         self._runs: dict[str, Run] = {}
         self._specs = {digest(s.model_dump(mode="json")): s.model_copy(deep=True) for s in specs}
@@ -122,6 +157,25 @@ class Engine:
         self._idle = asyncio.Event()
         self._idle.set()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._registry_view: ContextVar[Registry | None] = ContextVar(
+            "tether_registry", default=None
+        )
+        self.tool_registry = RegistryPublisher(
+            self.registry,
+            publish=self._publish_registry,
+            busy=self._registry_busy,
+            check=self._bind_loop,
+        )
+
+    def _publish_registry(self, registry: Registry) -> None:
+        self.registry = registry
+
+    def _registry_busy(self, generation: str) -> bool:
+        return any(
+            run.executor.registry.generation == generation
+            and (bool(run.executor.pending) or run.executor.unresolved())
+            for run in self._runs.values()
+        )
 
     def _bind_loop(self) -> None:
         current = asyncio.get_running_loop()
@@ -147,18 +201,24 @@ class Engine:
         return Governance(
             actor,
             log,
-            self.history,
+            self.history.for_turn(log) if isinstance(self.history, TurnMessages) else self.history,
             self.policy,
             turn_id,
             self.limits,
             self.clock,
             observers=self.observers,
+            settlements=self.settlements,
+            transforms=self.approval_transforms,
         )
 
     @contextmanager
     def _operation(self, actor: Actor, log: TurnLog) -> Generator[None, None, None]:
+        self.tool_registry.admit(log.session.id, tuple(self._running))
         self._enter(actor, log)
         session_id = log.session.id
+        registry = self.registry
+        self.tool_registry.retain(registry.generation)
+        registry_token = self._registry_view.set(registry)
         try:
             with self.observers.tracer.start_as_current_span(
                 "tether.turn",
@@ -170,6 +230,14 @@ class Engine:
             ):
                 yield
         finally:
+            self.tool_registry.record_effects(session_id, registry.generation, log)
+            self._registry_view.reset(registry_token)
+            self.tool_registry.release_after(
+                registry.generation,
+                tuple(
+                    future for future, owner in self.workers.active.items() if owner == session_id
+                ),
+            )
             self._running.discard(session_id)
             if not self._running:
                 self._idle.set()
@@ -205,6 +273,10 @@ class Engine:
             self._runs.pop(log.session.id, None)
             if accepted is not None:
                 accepted()
+            if self.preparation is not None:
+                stopped = await preparation.prepare(gov, start, self.preparation, self.workers)
+                if stopped is not None:
+                    return stopped
             run = self._create(gov, spec)
             self._runs[log.session.id] = run
             return await run.finish()
@@ -218,9 +290,10 @@ class Engine:
     def _create(self, gov: Governance, spec: AgentSpec) -> Run:
         gov.spec_id, gov.spec_version = spec.id, spec.version
         self._specs[digest(spec.model_dump(mode="json"))] = spec.model_copy(deep=True)
+        registry = self._registry_view.get() or self.registry
         selected = tuple(
             tool_spec(p.tool)
-            for name, p in self.registry.tools.items()
+            for name, p in registry.tools.items()
             if name in spec.tools and p.tool.model_visible
         )
         tags = RequestTags(
@@ -242,7 +315,9 @@ class Engine:
             max_output_tokens=self.context.output_tokens(spec.model),
             credential=gov.actor.credential,
         )
-        executor = ToolExecutor(gov, self.registry, spec, self.workers, self.guards)
+        executor = ToolExecutor(
+            gov, registry, spec, self.workers, self.guards, current_registry=lambda: self.registry
+        )
         return Run(
             gov,
             executor,
@@ -250,7 +325,7 @@ class Engine:
             self.model,
             self.model_limits,
             self.attempt_factory,
-            self.history_provider,
+            selected_provider(self.history, self.history_provider, gov.history),
             self.context,
             self.live_text,
             self.live_done,
@@ -278,8 +353,15 @@ class Engine:
             state = "approved" if answer.approved else "declined"
             if pending.expires_at and self.clock() > pending.expires_at:
                 state = "expired"
-            entries = await approval_entries(
-                run.gov, pending, state, answer.note, resuming=len(run.executor.pending) == 1
+            entries = await confirmed_entries(
+                run.gov,
+                self.workers,
+                pending,
+                answer,
+                state,
+                self.registry,
+                run.executor.spec,
+                resuming=len(run.executor.pending) == 1,
             )
             await run.gov.commit(entries)
             run.executor.pending.pop(invocation_id)
@@ -298,7 +380,11 @@ class Engine:
         if source_turn is None:
             return None
         run = self._runs.get(log.session.id)
-        if run is not None and run.gov.turn_id == source_turn:
+        if (
+            run is not None
+            and run.gov.turn_id == source_turn
+            and not isinstance(self.history_provider, TurnHistoryProvider)
+        ):
             return run
         return await self._restore(actor, log, invocation_id)
 
@@ -332,30 +418,18 @@ class Engine:
         lifetime: WorkerLifetime,
     ) -> PendingConfirmation:
         self._bind_loop()
-        try:
-            async with asyncio.timeout(self.limits.hook_timeout_seconds):
-                decision = Decision.model_validate(
-                    await self.policy.authorize(
-                        AuthzRequest(
-                            actor=copy_actor(actor), action="read_session", resource=session.id
-                        )
-                    )
-                )
-        except Exception:
-            raise ExecutionDenied("policy_denied") from None
-        if not decision.allowed or actor.id != session.owner:
-            raise ExecutionDenied("policy_denied")
-        self.workers.scopes[session.id] = lifetime
-        return await describe_pending(
+        return await authorized_pending(
             actor,
             session,
             source,
             request,
             proposal,
-            self.registry,
-            self._specs,
-            self.workers,
-            self.limits,
+            lifetime=lifetime,
+            policy=self.policy,
+            workers=self.workers,
+            limits=self.limits,
+            registry=self.registry,
+            specs=self._specs,
         )
 
     async def resume(
@@ -367,18 +441,15 @@ class Engine:
     ) -> TurnResult:
         with self._operation(actor, log):
             gov = self._governance(copy_actor(actor), log, log.turn_id or str(uuid4()))
-            await resuming.decisions(gov)
-            plan = await resuming.planned(gov, self.registry, self.workers)
-            spec = pinned_spec(log.entries, self._specs)
-            await resuming.accept(gov, plan, spec, self.registry, self.workers)
-            self._runs.pop(log.session.id, None)
-            if accepted is not None:
-                accepted()
-            run = self._create(gov, spec)
-            await resuming.restore(run, plan)
-            self._runs[log.session.id] = run
-            return await run.finish(
-                continuing=bool(run.deferred_ids), recovered_final=not plan.steps
+            return await resuming.execute(
+                gov,
+                self.registry,
+                self.workers,
+                self.guards,
+                self._specs,
+                self._create,
+                self._runs,
+                accepted,
             )
 
     async def close_session(self, actor: Actor, log: TurnLog) -> None:

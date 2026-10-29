@@ -1,21 +1,31 @@
 """Immutable canonical-byte history, independently committed before journal references."""
 
 from collections.abc import Sequence
+from typing import Literal
 
 from psycopg import AsyncConnection, sql
 
 from tether.types.canonical import canonical, digest
-from tether.types.execution import Actor, EntryConflict, ExecutionDenied, HistoryRef, copy_actor
+from tether.types.execution import (
+    Actor,
+    EntryConflict,
+    ExecutionDenied,
+    HistoryRef,
+    TurnLog,
+    copy_actor,
+)
 from tether.types.history import (
     ExchangeBinding,
     ExchangeRefs,
     HistoryCapabilities,
+    HistoryProvider,
     HistoryRecord,
     HistoryValue,
     StoredHistory,
 )
 from tether.types.history_codec import exchange_source, verify_exchange
 from tether.types.storage import IntegrityError, StoreError
+from tether.types.transactions import HistoryTurn
 
 from .root import DatabaseRoot
 
@@ -31,7 +41,15 @@ class EnvelopeIntegrity(IntegrityError):
 class PostgresHistory:
     id = "postgres"
 
-    def __init__(self, root: DatabaseRoot) -> None:
+    def __init__(
+        self,
+        root: DatabaseRoot,
+        *,
+        transaction_profile: Literal["auto", "shared", "independent"] = "auto",
+    ) -> None:
+        if transaction_profile not in {"auto", "shared", "independent"}:
+            raise ValueError("history_transaction_profile")
+        self.transaction_profile = transaction_profile
         self.root = root
         self.capabilities = HistoryCapabilities(
             writable=True,
@@ -41,6 +59,15 @@ class PostgresHistory:
             coverage=frozenset({"message", "model_exchange", "summary"}),
         )
         self._table = sql.Identifier(root.schema, "history")
+
+    def for_turn(self, log: TurnLog) -> HistoryProvider:
+        if self.transaction_profile == "independent":
+            return self
+        if isinstance(log, HistoryTurn) and log.history_root is self.root:
+            return log.bind_history(self.root)
+        if self.transaction_profile == "shared":
+            raise StoreError("history_transaction_mismatch")
+        return self
 
     def _ref(self, actor: Actor, session_id: str, key: str, record: HistoryRecord) -> HistoryRef:
         return HistoryRef(
@@ -69,25 +96,9 @@ class PostgresHistory:
         data = canonical(stored.model_dump(mode="json"))
         if len(data) > self.root.limits.max_batch_bytes:
             raise StoreError("history_write_bytes")
-        address = (actor.id.encode(), session_id.encode(), key.encode())
 
         async def write(connection: AsyncConnection[tuple[object, ...]]) -> HistoryRef:
-            await connection.execute(
-                sql.SQL(
-                    "INSERT INTO {} (owner, session, key, envelope, sha256) "
-                    "VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING"
-                ).format(self._table),
-                (*address, data, ref.sha256),
-            )
-            cursor = await connection.execute(
-                sql.SQL(
-                    "SELECT envelope, sha256 FROM {} WHERE owner=%s AND session=%s AND key=%s"
-                ).format(self._table),
-                address,
-            )
-            row = await cursor.fetchone()
-            if row != (data, ref.sha256):
-                raise EntryConflict("history_conflict")
+            await insert_history(connection, self.root, stored)
             return ref
 
         return await self.root.run(actor, session_id, write, write=True)
@@ -195,3 +206,27 @@ class PostgresHistory:
                 record=source,
             )
         return ExchangeRefs(exchange=ref, source=source_ref)
+
+
+async def insert_history(
+    connection: AsyncConnection[tuple[object, ...]], root: DatabaseRoot, stored: StoredHistory
+) -> None:
+    ref = stored.ref
+    data = canonical(stored.model_dump(mode="json"))
+    address = (ref.owner.encode(), ref.session_id.encode(), ref.key.encode())
+    table = sql.Identifier(root.schema, "history")
+    await connection.execute(
+        sql.SQL(
+            "INSERT INTO {} (owner, session, key, envelope, sha256) "
+            "VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING"
+        ).format(table),
+        (*address, data, ref.sha256),
+    )
+    cursor = await connection.execute(
+        sql.SQL("SELECT envelope, sha256 FROM {} WHERE owner=%s AND session=%s AND key=%s").format(
+            table
+        ),
+        address,
+    )
+    if await cursor.fetchone() != (data, ref.sha256):
+        raise EntryConflict("history_conflict")

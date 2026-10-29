@@ -1,0 +1,15 @@
+# Tether 0.2.0 source qualification — 2026-10-29
+
+The complete canonical recipe (`.venv/bin/python scripts/quality.py HEAD`, the command invoked by `make check`) passed on clean commit `a04a91380783bea968a99d2967d9f737f2ef68d1`, tree `0c83dbe91a1c9f305a67efdc1ee20ff898596010`, using Python 3.11.17 on Darwin arm64: **1,824 cases in 82 bounded groups**. Aggregate coverage: `TOTAL                                              14877   1145   4300    713    90%`. Lint/format, strict source typing, source/test shape ceilings, architectural boundaries and base dependency audit passed. The original 85% branch-aware floor, 180-second child deadline, 32-case/64-KiB groups and eight-case native groups are unchanged.
+
+The [machine-readable receipt](release-020-source-qualification-20261029.json) retains the exact executable/configuration file map, source fingerprint `2b0f2894cfd0d9a7d99e5dc1cdf85921f995a49fff919b8a3163420984b5ce5f`, tested Git identity and log SHA-256. Adding this evidence and a normal merge must preserve every file in that map; later artifact checks bind the final main commit and stable version. No untested executable delta may be tagged.
+
+This gate includes PR #84 and the consumer capabilities together, including both anonymous/application answer-mode cases proving auxiliary operations require and receive the current caller credential. The first focused attempt exposed an incorrect assertion against sanitized ScriptedModel snapshots. That assertion now runs at the live model boundary; missing-credential zero-egress and actual credential rechecks remain asserted. The later uv setup attempt failed before tests because of restricted network access. Both failures and all earlier budget charges are retained; neither is reported as a pass.
+
+The original 1,777-case consumer checkpoint, wheel/source hashes, capture states and review bundle remain unchanged. New source proof is recorded here separately. Prior [P0 qualification](p0-qualification-20261028.md) retains the measured live DS4 text/function-tool and context-framing subset; no new live model, Gateway, universal token bound, arbitrary external backend, wider dependency range, or OS power-cut claim is added. Current metadata retains exact tested Pydantic/Pydantic AI/Textual and selected PostgreSQL pins.
+
+## Remaining publication gates
+
+Source qualification is complete. Before publication, the selected main commit must retain the tested executable map; its tagged 0.2.0 wheel/source archive must pass all six installed profiles (base, openai, tui, tui-openai, postgres, embedded-postgres). The immutable GitHub release must hold the exact artifacts and manifest. Fresh release downloads must verify before local Keychain-backed PyPI upload; PyPI file hashes and fresh base/combined public-index install journeys must then pass. The release notes and operator receipt record those later results. This source receipt alone does not claim artifact or publication success.
+
+User authorization permits the 0.2.0 release and the bounded local retry. No Actions run is required; head and normal main merge subjects retain `[skip ci]`.

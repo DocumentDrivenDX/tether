@@ -90,8 +90,8 @@ class ContextConfig(ContextValue):
     summary_model: Text | None = None
     summary_identity_mode: Literal["inherit", "caller", "application", "anonymous"] = "inherit"
     max_summary_calls_per_step: Count = 1
-    max_source_bytes: PositiveInt
-    timeout_seconds: Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]
+    max_source_bytes: PositiveInt = 4 * 1024 * 1024
+    timeout_seconds: Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)] = 30
 
 
 class ContextSource(ContextValue):

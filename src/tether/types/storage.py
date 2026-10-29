@@ -13,7 +13,7 @@ from tether.types import Payload, PositiveInt, PositiveSeconds, TokenUsage
 from tether.types.execution import Actor, Entry, PendingConfirmation, SessionState, TurnLog
 from tether.types.lifetime import WorkerLifetime
 
-SESSION_CONTRACT_VERSION = 4
+SESSION_CONTRACT_VERSION = 5
 
 
 class StoreError(Exception):

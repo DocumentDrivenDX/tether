@@ -7,7 +7,9 @@ from datetime import datetime, timedelta
 from psycopg import sql
 
 from tether.types.canonical import canonical, digest
-from tether.types.execution import Entry, NewEntry, WorkerOutstanding
+from tether.types.execution import Entry, ExecutionDenied, NewEntry, WorkerOutstanding
+from tether.types.history import StoredHistory
+from tether.types.settlement import SettlementBinding, SettlementParticipant
 from tether.types.storage import (
     IntegrityError,
     LeaseLost,
@@ -18,8 +20,12 @@ from tether.types.storage import (
     TurnInProgress,
 )
 
+from .atomic import receipt
+from .batches import append_batch
+from .history import insert_history
 from .journal import Journal
 from .rows import Connection, Frame
+from .settlement import enlist
 
 
 @dataclass(frozen=True)
@@ -40,6 +46,18 @@ class Appended:
     entries: tuple[Entry, ...]
     summary: SessionSummary
     prefix: Prefix | None
+    receipts: tuple[Entry, ...] = ()
+
+
+def accepted_batch(
+    entries: tuple[Entry, ...],
+    summary: SessionSummary,
+    prefix: Prefix | None,
+    marker: NewEntry | None,
+) -> Appended:
+    if marker is None:
+        return Appended(entries, summary, prefix)
+    return Appended(entries[:-1], summary, prefix, entries[-1:])
 
 
 def matches(frame: Frame, token: Token) -> bool:
@@ -153,9 +171,24 @@ class Leases(Journal):
         return (await self.commit(token, values)).entries
 
     async def commit(
-        self, token: Token, values: Sequence[NewEntry], *, prefix: Prefix | None = None
+        self,
+        token: Token,
+        values: Sequence[NewEntry],
+        *,
+        prefix: Prefix | None = None,
+        history: Sequence[StoredHistory] = (),
+        settlement: tuple[SettlementBinding, SettlementParticipant] | None = None,
+        operation_key: str | None = None,
+        expected_frontier: int | None = None,
     ) -> Appended:
         values = tuple(value.model_copy(deep=True) for value in values)
+        history = tuple(value.model_copy(deep=True) for value in history)
+        if (
+            len(history) > self.root.limits.page_limit
+            or sum(len(canonical(value.model_dump(mode="json"))) for value in history)
+            > self.root.limits.max_batch_bytes
+        ):
+            raise StoreError("history_staging_limit")
 
         async def append(connection: Connection) -> Appended:
             await self.head(connection, write=True)
@@ -164,13 +197,50 @@ class Leases(Journal):
             fence(frame, token, now)
             if prefix is not None and prefix.count != frame.projection.summary.entry_count:
                 raise IntegrityError("turn_prefix_integrity")
-            accepted, inserted = await self.append(connection, frame, values, now)
+            marker = (
+                await receipt(
+                    self,
+                    connection,
+                    frame,
+                    values,
+                    key=operation_key,
+                    expected_frontier=expected_frontier,
+                )
+                if operation_key is not None
+                else None
+            )
+            batch = (*values, marker) if marker is not None else values
+            total = sum(
+                len(canonical(value.model_dump(mode="json"))) for value in (*history, *batch)
+            )
+            if total > self.root.limits.max_batch_bytes:
+                raise StoreError(
+                    "history_operation_bytes"
+                    if operation_key is not None
+                    else "journal_write_bytes"
+                )
+            for stored in history:
+                if stored.ref.owner != self.actor.id or stored.ref.session_id != token.session_id:
+                    raise ExecutionDenied("history_transaction_scope")
+                await insert_history(connection, self.root, stored)
+            if settlement is not None:
+                await enlist(self, connection, frame, *settlement)
+            accepted, inserted = await append_batch(
+                self,
+                connection,
+                frame,
+                values,
+                marker,
+                now,
+                maximum=self.root.limits.max_batch_bytes
+                - sum(len(canonical(value.model_dump(mode="json"))) for value in history),
+            )
             fence(frame, token, await self.clock(connection))
             if inserted:
                 await self.publish(connection, frame, inserted)
             budget = self.growth(frame, inserted, prefix)
             fence(frame, token, await self.clock(connection))
-            return Appended(accepted, frame.projection.summary, budget)
+            return accepted_batch(accepted, frame.projection.summary, budget, marker)
 
         return await self.root.run(self.actor, token.session_id, append, write=True)
 

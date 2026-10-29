@@ -49,7 +49,7 @@ ddx:
 
 **Contract ID**: CONTRACT-002
 **Type**: library (Python ports)
-**Version**: v2
+**Version**: v4
 **Related**: ADR-001, ADR-003, ADR-005, ADR-010, ADR-011, ADR-014, ADR-015, ADR-016, ADR-017, ADR-018, CONTRACT-001, CONTRACT-003
 
 ## Purpose
@@ -301,7 +301,7 @@ class Tracer(Protocol):
 | Rule | Requirement |
 |------|-------------|
 | Audit kinds | Context preparation uses namespaced `x.context.prepared`, `x.context.failed`, and `x.context.compaction` facts with identifiers/counts only. Resolution is an `authorization` plus namespaced `x.effects.resolved` fact; worker abandonment/exit uses `x.executor.outstanding`/`x.executor.exited` with ids and counts. The closed core set `session_started`, `user_message`, `assistant_message`, `model_call`, `tool_call`, `authorization`, `confirmation`, `retrieval`, `turn_ended`, `turn_cancelled`, `turn_interrupted`, `turn_resumed`, `session_settings`, `session_closed`, plus `x.<provider id>.<kind>`. One entry per step and one per gate decision. |
-| Spans | The current qualified implementation fixes `tether.turn` (root), `tether.model_call`, `tether.tool_call`, `tether.gate`, and `tether.retrieval`, with `tether.` attributes carrying identifiers, sizes, tiers, token counts and reasons. Configurable span prefix/attribute namespace is proposed in FR-64, not an existing setting. Spans carry across awaits through context variables. |
+| Spans | Published 0.1.0 fixes `tether.turn` (root), `tether.model_call`, `tether.tool_call`, `tether.gate`, and `tether.retrieval`, with `tether.` attributes carrying identifiers, sizes, tiers, token counts and reasons. The development revision adds configurable span prefix/attribute namespace under FR-64; see the development revision below. Spans carry across awaits through context variables. |
 | Content | Spans and audit entries MUST NOT carry message or tool content, argument values of a denied or invalid call, or a credential. Content capture is a separate, opt-in provider and is off by default. |
 | Usage | A model call's token usage is recorded on the span, the audit entry, and the session log (CONTRACT-003). |
 | Written by the engine | Only the engine writes audit entries and spans for engine decisions; an extension's own audit entries use its namespace. |
@@ -408,9 +408,9 @@ async def drive(client: Client, session_id: str, text: str, interaction: Interac
 
 The package ships `tether.testing.conformance`, as asynchronous tests run with the `anyio` pytest plugin: `policy_suite(factory)` (fail closed, one decision per action, a budget denial from `usage`), `audit_sink_suite`, `tracer_suite`, `provider_suite(factory)` (ordering, output validation, reason normalization, fail closed, registry conflicts, a plain `def` hook does not block the loop), `guard_suite(factory)`, `resume_planner_suite` (every derived state, and the prefix property over every log prefix), and `approval_suite` (binding, single use, concurrent answers, supersession, expiry, gate re-entry). An implementation of a port is conformant when it passes its suite. The model port and store suites are in CONTRACT-001 and CONTRACT-003; history/correlation suites are in CONTRACT-005. The live store, history provider and model context have separate authorities. SDK history/conversation usage/deferred requests, if selected, are versioned derived runner state, not a second transcript or approval/effect authority. Add `context_strategy_suite`, `token_estimator_suite` and `context_executor_suite` (CONTRACT-004), unresolved-effect barriers across new model ids and different tools, actual worker-lifetime capacity, queued cancellation, bounded shutdown, and read-only reconciliation/one-winner resolution. TP-001 allocates these cases.
 
-## Proposed next consumer contract slice
+## Next consumer contract slice (development revision 4)
 
-These paragraphs propose the next contract revision after 0.1. They are required before the next consumer adoption, are not implemented API claims, and require Erik LaBianca's acceptance before dependent source changes. They preserve the current runner, policy, history and execution authorities. The six product decisions in the PRD remain open; proposed defaults are not accepted answers.
+Erik LaBianca authorized implementation of this post-0.1 scope on 2026-10-29. These paragraphs govern development revision 4; the published 0.1.0 artifacts are unchanged. They preserve the current runner, policy, history and execution authorities. Application deployment choices in the PRD remain open. The implementation authorization accepts the reference-derived defaults recorded in the implementation plan; it does not choose a consumer deployment or widen dependency support.
 
 ### Client-origin tool invocation
 
@@ -462,7 +462,7 @@ Acceptance MUST cover list narrowing, rejected expansion under the tool's semant
 
 The initial v1 is revised before release, including CONTRACT-004 and `RESOLVE_EFFECT`; no compatibility layer is required.
 
-- Versioning: one integer, `ENGINE_CONTRACT_VERSION=3`. Version 3 requires storage-scoped `TurnLog.workers: WorkerLifetime` and an explicit shared lifetime for pending inspection. Version 1/2 provider hooks remain supported unchanged. Version 2 adds explicit model principal and the enforced READ_CALL_PAYLOAD action. Existing version-1 providers retain the identical hook surface and are supported; policies must handle the new action or fail closed. A provider declares the version it was written for in `Provider.contract`; the registry refuses a provider above the engine's and accepts a lower one the engine still supports. `AgentSpec.schema_version` versions a specification separately.
+- Versioning: one integer, `ENGINE_CONTRACT_VERSION=4`. Version 3 requires storage-scoped `TurnLog.workers: WorkerLifetime` and an explicit shared lifetime for pending inspection. Version 1/2 provider hooks remain supported unchanged. Version 2 adds explicit model principal and the enforced READ_CALL_PAYLOAD action. Existing version-1 providers retain the identical hook surface and are supported; policies must handle the new action or fail closed. A provider declares the version it was written for in `Provider.contract`; the registry refuses a provider above the engine's and accepts a lower one the engine still supports. `AgentSpec.schema_version` versions a specification separately.
 - Ordering or precedence: the gate sequence of section 8 is normative and overrides any provider's expectation.
 - Backward-compatibility rules: adding an optional method with a default to `Provider`, a new action string the engine does not itself raise, or a new optional field is compatible. Changing a signature, adding a reason the engine reads, reordering the sequence, or tightening a rule is a new version. There is no synchronous form, so asynchrony is not a compatibility axis.
 - Deprecation rules: a removed item is announced one version ahead and kept, with a warning, for that version.
@@ -828,3 +828,23 @@ ToolOutput.facts, Actor.attributes, capabilities, prompts, messages, output valu
 x.* journal facts. Unknown journal extension facts remain omitted by the accepted-fact registry.
 Application fetch implementations and any later configurable third-party scalar schema remain
 outside this checkpoint. With both audit and tracing omitted, no step UUID/digest/packet is built.
+
+
+### Configurable trace naming revision 1
+
+Engine accepts independent `span_prefix` and `attribute_namespace` strings, each defaulting to `tether`. Each MUST match `[A-Za-z][A-Za-z0-9_.-]{0,127}`; invalid input raises ValueError(telemetry_namespace_invalid) during construction. Prefixes replace only the canonical `tether` component of emitted span names and attribute keys, including attributes added after awaits and inside actual worker bodies. Audit event kinds/detail keys, journal facts, policy actions and permissions remain canonical. Current trace identity and metadata-only bounds are unchanged; naming does not qualify an exporter or receiver.
+
+
+### Operation and binding surface (development revision 4)
+
+Engine accepts optional `prepare: Preparation`, `settlements: tuple[SettlementParticipant, ...]`, `approval_transforms: Mapping[str, ArgumentTransform]` and `auxiliary_profiles: tuple[AuxiliaryProfile, ...]`. Missing participants/profiles refuse; no application service or scheduling authority is inferred. The companion constants PREPARATION_CONTRACT_VERSION, SETTLEMENT_CONTRACT_VERSION, APPROVAL_EDIT_CONTRACT_VERSION and AUXILIARY_CONTRACT_VERSION are 1. Existing provider hook versions remain supported.
+
+PreparationRequest binds a copied current Actor, session/turn/request id, accepted input fingerprint, source entry/ref and attachment identities. PreparationResult has state ready/needs_input/refused, a bounded code-shaped reason and optional derived message references. The hook uses hook_timeout_seconds and actual Workers ownership. Mutation, invalid/oversized output, or failed current source/retrieval checks produces refused/preparation_unavailable; cancellation remains cancellation and store/lease/unknown failures propagate. Derived refs require matching owner/session, verified digest and cumulative max_result_bytes. Only the accepted ready result permits model preparation.
+
+AuxiliaryProfile has id, revision, model tier, instructions and explicit ModelExecutionLimits. Context capacity and estimator come from the configured tier. Profiles are copied and the selection mapping is immutable. Auxiliary calls offer no tools, use caller identity and the journal physical-attempt recorder, and repeat current source/credential/model checks before each physical attempt. Attempt count, request time, source bytes and full payload estimates remain finite. Auxiliary results are excluded from answer transcript projection. No custom-recording or receiver/exporter coverage is implied by this journal profile.
+
+`engine.tool_registry.publish(tools)` validates a complete generation before replacing the current declaration snapshot. Defaults are max_generations=8, max_tools=1000, max_definition_bytes=1048576. Unresolved local effect binding admission shares the max_tools bound, including active operations. Capacity failures raise registry_capacity or registry_effect_capacity. Actual Worker completions, pending approvals and unresolved effects retain necessary generations. A failed journal inspection during cleanup retains conservatively and MUST NOT replace the primary failure. A later operation on that reopened session can clear a resolved binding. Trusted Python implementations/business state are not sandboxed; applications version changed executable semantics.
+
+ToolOutput may carry SettlementStage(participant, stage_id). A stage requires an accepted effectful intent. SettlementBinding binds settlement/invocation/stage/participant ids, owner/session/current actor/principal, full specification digest, accepted result-entry digest and immutable commit/rollback decision. Digests are lowercase SHA-256. Participant settle/reconcile returns committed/rolled_back/uncertain and MUST be idempotent for the same binding. Shared callbacks publish in the accepting transaction or return settlement_failed; unknown/store failures preserve their existing meaning. Independent decisions precede the participant action; unmatched/failed acknowledgment retains uncertainty. Pending settlement blocks effectful replay/new effects and cannot be discarded by generic effect resolution. Only current-authorized same-binding reconciliation publishes a known matching result.
+
+Answer optionally carries arguments for an approved edited confirmation. ArgumentTransform(id, version, transform) is trusted tool-owned semantic restriction. Original, shown and executable values are independently preserved through HistoryProvider and SHA-256 bindings. Mutation, exception, expansion rejected by the transform, normalization/revision drift or stale definitions MUST NOT reach intent. New independent binding fields are absent for ordinary legacy approvals. New readers accept old records; older releases are not qualified to consume new generation/edited-binding records. Do not downgrade an active new-format journal to an older Engine.

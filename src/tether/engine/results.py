@@ -39,7 +39,7 @@ async def prepare_result(
     source = sources[0]
     return message, [
         NewEntry(
-            kind="message",
+            kind="tool_result" if source.kind == "tool_command" else "message",
             key="message:result:" + invocation_id,
             turn_id=source.turn_id,
             history_ref=ref,

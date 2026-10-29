@@ -1,0 +1,21 @@
+{
+  "command": [
+    "python3",
+    "/private/tmp/umf-shared-machine-budget/run.py",
+    "--seconds",
+    "180",
+    "--",
+    "/private/tmp/tether-praxis-implementation/.venv/bin/python",
+    "/private/tmp/tether-consumer-integration-20261029/focused.py"
+  ],
+  "exit_code": 1,
+  "output": "Shared cumulative allowance exhausted or prior job unresolved\n",
+  "state_sha256_before": "552e4cadc368681b57befc1ff6635b0b730d5d2d6da5dbc3da5eac60b368a4bb",
+  "state_sha256_after": "552e4cadc368681b57befc1ff6635b0b730d5d2d6da5dbc3da5eac60b368a4bb",
+  "job_started": false,
+  "focused_script_sha256": "cd4435ef24f1034d5fd42e3e75f5b6df8165ef76e9f6a09da4cece7f94dabec3",
+  "allowance_seconds": 1200,
+  "spent_seconds": 1198.308485125,
+  "attempts": 2,
+  "max_attempts": 2
+}

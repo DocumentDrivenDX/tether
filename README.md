@@ -438,3 +438,20 @@ fault, process or release qualification. Keep backend corruption/unknown acknowl
 worker, contended snapshot/approval and process-fencing suites alongside them. The base package
 adds no pytest dependency; a pytest/anyio test may simply await either suite. See CONTRACT-003
 for fixture shapes, bounds and the complete-profile obligations.
+
+## Development consumer operations
+
+The development source adds model-free `Client.invoke_tool`, leased preparation, staged settlement/reconciliation, `Client.transition_spec`, immutable registry publication, caller-bound `Client.auxiliary`, edited approvals, and paired PostgreSQL history/journal transactions. These APIs are beyond the published **0.1.0** package.
+
+Run the fully fabricated public API example from a source checkout:
+
+```sh
+uv sync --locked
+uv run --locked python examples/consumer_capabilities.py
+```
+
+The [example](examples/consumer_capabilities.py) combines all of these capabilities without a model server or paid calls. [Contracts](docs/helix/02-design/contracts/) define identity, limits, refusal and recovery semantics. New Client/model/Engine contract revisions are 5/4/4. New readers accept legacy records; do not downgrade journals containing new generation or edited-approval records to an older Engine.
+
+Client and model execution limits now have finite reference-derived defaults and per-field overrides. Model capacity/tokenizer settings remain explicit. Trace names accept independent Engine `span_prefix` and `attribute_namespace` settings; journal and audit names remain canonical. Published dependency pins retain the actually tested singleton versions.
+
+Shared PostgreSQL composition requires the same verified `DatabaseRoot` object, including its caller acquisition policy. A shared participant receives bounded named SQL operations, never a connection in `ToolContext`. Independent settlement records its decision before the application action and retains uncertainty until current-authorized same-ID reconciliation. Applications own stage data, idempotency, scheduling and deployment-specific qualification.
