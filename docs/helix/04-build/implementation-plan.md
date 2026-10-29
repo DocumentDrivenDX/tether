@@ -67,7 +67,7 @@ Current contract-version constants describe 0.1. Accepted changes to signatures,
 
 ## Proposed Configuration Baseline
 
-These values are copied from the already exercised reference composition, not invented provider capacities. They are proposed compatibility defaults requiring acceptance, with application overrides. Current library constructors still require explicit values.
+These values are copied from the already exercised reference composition, not invented provider capacities. They are proposed compatibility defaults requiring acceptance, with application overrides. The eleven explicitly composed reference Client limits are required fields in the current library. ClientLimits already defaults history-link hops to 8 and mutation-receipt bytes to 4,194,304. Engine accepts omitted context settings but refuses request preparation as context_unconfigured when configuration, an estimator or the selected tier is missing; it already selects FullContext when no strategy is supplied.
 
 | Client field | Existing reference value |
 |---|---|
@@ -76,14 +76,15 @@ These values are copied from the already exercised reference composition, not in
 | read_timeout_seconds / heartbeat_interval_seconds / shutdown_timeout_seconds | 5 / 1 / 5 seconds |
 | follower_queue_size / max_followers / max_active_turns | 32 / 8 / 8 |
 | max_request_bytes | 65,536 bytes |
+| max_history_link_hops / max_mutation_receipt_bytes | 8 / 4,194,304 bytes (existing type defaults) |
 
-The offline reference ModelExecutionLimits are response 8,192 bytes, tool arguments 512 bytes, two attempts, five-second request timeout and 0.01-second maximum retry delay. The live reference composition already selects different timeouts explicitly; it does not silently change these defaults. A proposed Full-context default obtains limits and deterministic wire estimation from the selected model profile; Tail remains an explicit option. No live profile, tokenizer, output reservation or context capacity is guessed. A custom model without a qualified estimator/configuration must supply one or receive an explicit unconfigured refusal.
+The offline reference ModelExecutionLimits are response 8,192 bytes, tool arguments 512 bytes, two attempts, five-second request timeout and 0.01-second maximum retry delay. The live reference composition already selects different timeouts explicitly; it does not silently change these defaults. The proposed convenience composition retains the existing FullContext planner fallback and obtains limits and deterministic wire estimation from the selected model profile; Tail remains an explicit option. No live profile, tokenizer, output reservation or context capacity is guessed. A custom model without a qualified estimator/configuration must supply one or receive an explicit unconfigured refusal.
 
 For dependencies, 0.1 documents the actually tested singleton versions. C-01 tests proposed range boundaries and the consumer's resolver constraints before widening published metadata; exact executable pins remain in `uv.lock`. Configurable telemetry proposes separate `span_prefix` and `attribute_namespace` Engine composition settings with current `tether` defaults; it does not rename journal kinds, policy actions or content permissions.
 
 Installed Pydantic AI 2.59.0 metadata requires `pydantic>=2.12` and `pydantic-graph==2.59.0`. The consumer's supplied `pydantic>=2.11` constraint alone permits the tested 2.14.1 version; it does not establish that Pydantic 2.11 can run this Agent pin. Boundary characterization must respect the actual transitive minimum or explicitly qualify a different Agent version. A successful resolver result is not runtime/codec qualification.
 
-An isolated uv resolver run accepted the current distribution metadata plus the supplied `pydantic>=2.11` constraint and selected Pydantic 2.14.1/Agent 2.59.0. This characterizes that one constraint only; a complete consumer dependency set and wider runtime compatibility remain to be qualified.
+An isolated uv resolver run against the published `novirhiza-tether==0.1.0` package plus the supplied `pydantic>=2.11` constraint selected Pydantic 2.14.1/Agent 2.59.0. A negative control with `pydantic<2.12` refused resolution because this release pins Pydantic 2.14.1. This characterizes these constraints only; a complete consumer dependency set and wider runtime compatibility remain to be qualified. No published range was widened.
 
 ## Application Adapter Boundaries
 
@@ -101,7 +102,11 @@ A separately selected Gateway profile needs an operator-run fabricated workspace
 
 C-00 has proposed paragraphs for all eight seams in CONTRACT-002/003/005 and a shared-transaction failure table. PRD FR-54–64 and the six named owner decisions are recorded; all six supplied answers remain proposed/open. No implementation of these seams is claimed. The next action is one coherent review of the packet, resolution of affected choices, then accepted technical design and ordered implementation.
 
-The 0.1 release source and artifact qualification runs independently of this proposal. Never move an unaccepted consumer requirement into that release's P0 gate.
+The 0.1 release source/artifact qualification and public PyPI publication are complete; the [final release receipt](../03-test/evidence/p0-qualification-20261028.md#final-010-qualification--2026-10-29) retains exact hashes, four public-index installs and the failed macOS bootstrap observations. No unaccepted consumer requirement was moved into its P0 gate.
+
+The [compatibility preflight](../02-design/evidence/consumer-compatibility-preflight-20261029.json) records source hashes at the release commit, all 13 current ClientLimit field dispositions, the 11 reference composition values, existing FullContext/unconfigured behavior, fixed telemetry naming and the positive/negative public-package resolver characterization. Current span families include Client, gate, retrieval/provider hook, tool and actual worker-body observations. Engine exposes neither span_prefix nor attribute_namespace; configurable naming remains proposed. Existing no-op/metadata telemetry evidence does not qualify an OTel receiver. This closes the unaffected provenance/claim audit, not C-01 implementation.
+
+The complete consumer dependency graph, runtime qualification of wider dependency ranges, convenience configuration defaults and configurable telemetry remain dependent on accepted scope/design. No source implementation of these proposed surfaces has begun. The task-created QA container and two disposable public-install environments have been removed; release artifacts, exact success/failure evidence, operator profiles and microsite captures are retained.
 
 ## Validation Plan
 

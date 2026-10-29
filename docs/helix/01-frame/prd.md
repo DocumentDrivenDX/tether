@@ -148,7 +148,7 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 
 ### Should Have (P1)
 
-The immediately next slice after 0.1 publication is the consumer contract and compatibility work in FR-54 to FR-64. It precedes consumer adoption and the other P1 enhancements below. The proposed contract paragraphs require owner acceptance before dependent implementation; this sequencing does not reopen 0.1 P0 qualification.
+The immediately next slice after 0.1 publication is the consumer contract and compatibility work in FR-54 to FR-64. It precedes consumer integration and the other P1 enhancements below. The proposed contract paragraphs require owner acceptance before dependent implementation; this sequencing does not reopen 0.1 P0 qualification.
 
 1. Measured performance budgets for the client API, protected in CI (FR-21).
 2. The OpenTelemetry adapter (FR-24).
@@ -438,13 +438,13 @@ The 0.1 tested compatibility set is Python 3.11.17 with Pydantic 2.14.1, Pydanti
 
 ### Consumer decisions awaiting Erik LaBianca
 
-The supplied consumer proposal labels these choices as assumptions. They remain open; none is silently accepted by this plan or a successful 0.1 release. Only dependent implementation/adoption work waits for the relevant choice.
+The supplied consumer proposal labels these choices as assumptions. They remain open; none is silently accepted by this plan or a successful 0.1 release. Only dependent implementation/integration work waits for the relevant choice.
 
 | Decision | Proposed default from consumer request | Owner / state |
 |---|---|---|
 | Last-turn replacement | Immutable retraction after cutover; refuse unresolved effects | Erik LaBianca — open |
 | Batch approval required for cutover | No; serial answers | Erik LaBianca — open |
-| Existing-session import required for cutover | No; allow adoption without import | Erik LaBianca — open |
+| Existing-session import required for cutover | No; allow integration without import | Erik LaBianca — open |
 | Application PostgreSQL settlement profile | Shared transaction when the verified root is shared | Erik LaBianca — open |
 | Original-transcript versus exchange-payload read permission | Keep two actions, matching the current implementation | Erik LaBianca — open; current protections remain enforced |
 | Ongoing release channel and signing authority | PyPI through the existing local publication route; signing authority unspecified | Erik LaBianca — open; the separately authorized 0.1 publication does not establish a signing policy |
