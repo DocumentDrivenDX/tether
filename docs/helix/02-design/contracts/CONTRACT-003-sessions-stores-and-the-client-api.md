@@ -49,7 +49,7 @@ ddx:
 
 **Contract ID**: CONTRACT-003
 **Type**: library (Python ports and API)
-**Version**: v2
+**Version**: v5
 **Related**: ADR-001, ADR-004, ADR-005, ADR-010, ADR-011, ADR-014, ADR-015, ADR-018, ADR-019, ADR-020, CONTRACT-001, CONTRACT-002
 
 ## Purpose
@@ -474,17 +474,17 @@ The package ships `InMemoryStore` (a live store declaring `durability="none"`, `
 
 Fork is a deferred capability, not a v1 client method. A future fork remains owner-scoped: it authorizes and materializes each required source component, creates destination-session refs through the selected writable provider, and retains provenance to the source. It cannot place another session's ref directly into the destination and bypass HistoryProvider session checks. Missing/denied/incompatible source aborts acceptance; orphan destination content is not a forked session. Copied calls, approvals and effects are historical evidence, never executable recovery work or transferable authorization. Incomplete groups require explicit non-executable closure at the fork boundary. New actions receive new invocation ids and fresh gates. Cross-owner sharing/import is outside this scope.
 
-## Proposed next consumer command and transaction profile
+## Next consumer command and transaction profile (development revision 5)
 
-This is the proposed post-0.1 contract revision for the immediately next consumer slice. The current Client and store interfaces above remain the implemented surface until Erik LaBianca accepts these paragraphs and their dependent design. First consumer adoption follows this slice; 0.1 qualification is unchanged.
+Erik LaBianca authorized implementation of this post-0.1 scope on 2026-10-29. Revision 5 governs the development Client surface; the published 0.1.0 package remains unchanged. First consumer adoption follows this slice; 0.1 qualification is unchanged.
 
 ### Client-origin invocation and preparation
 
-The proposed `Client.invoke_tool` command takes `session_id`, `tool_name`, canonical JSON arguments and a required `request_id`, plus an optional requested specification. It returns a task-owned operation handle whose result is derived from accepted journal facts. Its fingerprint includes owner, command origin, tool/arguments and requested specification; equal retries share the accepted operation and conflicting retries refuse. Canonical argument content is accepted through HistoryProvider and bound by a verified ref/digest in the command journal entry. `origin="client"` and the accepted command-entry identity are persisted independently of model-call provenance. A retry retains that operation's pinned definition/generation rather than rebinding it to a replacement tool.
+The development `Client.invoke_tool` command takes `session_id`, `tool_name`, canonical JSON arguments and a required `request_id`, plus an optional requested specification. It returns a task-owned operation handle whose result is derived from accepted journal facts. Its retry identity is scoped to owner/session, and its canonical command fingerprint includes command origin, tool/arguments and requested specification; equal retries share the accepted operation and conflicting retries refuse. Canonical argument content is accepted through HistoryProvider and bound by a verified ref/digest in the command journal entry. `origin="client"` and the accepted command-entry identity are persisted independently of model-call provenance. A retry retains that operation's pinned definition/generation rather than rebinding it to a replacement tool.
 
 The command acquires the ordinary session lease, honors active-turn/actual-worker/unknown-effect/closed-session refusals and executes CONTRACT-002's full tool pipeline. Approval-required calls refuse before dispatch, and no model request, assistant-source entry or model-call row is synthesized.
 
-The proposed leased-preparation participant attaches to accepted `send` input after idempotent admission. It receives the immutable accepted request identity and current actor under the same lease, returns ready/needs-input/refused, and may attach separately authorized preparation references without replacing text or attachment identity. Cancellation, deadline, source denial or lease loss ends preparation explicitly. Reopening an uncertain acknowledgment resolves by the accepted request/preparation key before another attempt. Client snapshots expose the waiting/refused state through committed metadata rather than claiming a model has started.
+The development leased-preparation participant attaches to accepted `send` input after idempotent admission. It receives the immutable accepted request identity and current actor under the same lease, returns ready/needs-input/refused, and may attach separately authorized preparation references without replacing text or attachment identity. Cancellation, deadline, source denial or lease loss ends preparation explicitly. Reopening an uncertain acknowledgment resolves by the accepted request/preparation key before another attempt. Client snapshots expose the waiting/refused state through committed metadata rather than claiming a model has started.
 
 Acceptance MUST race command/send/close/confirm and competing processes; verify zero model calls for direct invocation; refuse approval-required calls; and crash at admission, preparation acceptance, intent, observable effect and result acknowledgment. Current caller authorization and bounded metadata/payload disclosure apply to every read of the operation.
 
@@ -508,7 +508,7 @@ Acceptance MUST cancel queued and active work, revoke the caller between schedul
 
 ### Shared PostgreSQL history and journal transaction
 
-When PostgresSessionStore and PostgresHistory share one verified root/namespace, their proposed default paired profile MUST commit new message content and its journal reference in the same lease-fenced database transaction. The internal adapter participant carries the present actor, immutable content digest/key, expected journal frontier and lease holder/generation. It is not a raw connection in ToolContext. The atomic operation key binds the complete content/reference batch: an equal retry returns its accepted references/frontier; conflicting content or bindings refuse. The committed change feed and summary advance with that same transaction. An uncertain acknowledgment is recovered by key under current caller authorization before another write is attempted.
+When PostgresSessionStore and PostgresHistory share one verified root/namespace, their development default paired profile MUST commit new message content and its journal reference in the same lease-fenced database transaction. The internal adapter participant carries the present actor, immutable content digest/key, expected journal frontier and lease holder/generation. It is not a raw connection in ToolContext. The atomic operation key binds the complete content/reference batch: an equal retry returns its accepted references/frontier; conflicting content or bindings refuse. The committed change feed and summary advance with that same transaction. An uncertain acknowledgment is recovered by key under current caller authorization before another write is attempted.
 
 A requested shared profile MUST refuse a mismatched root, unsupported participant or expired lease; it cannot silently fall back to separate commits. Independent roots/backends retain the explicit content-before-reference profile. Standalone history writes do not acquire journal atomicity by proximity. CONTRACT-005 defines the failure table and content-closure checks.
 
@@ -524,7 +524,7 @@ Acceptance MUST show the documented minimal composition, every override, determi
 
 The pre-release v1 now includes atomic reconnect snapshots, unresolved-effect paging/resolution, context records and attempt-scoped live text. No released cursor/event/API compatibility is claimed or shimmed.
 
-- Versioning: one integer, `SESSION_CONTRACT_VERSION=4`. Version 4 requires pure for_actor(actor) binding for every caller path. Version 3 requires a namespace-scoped `WorkerLifetime` on SessionStore, TurnLog and JournalFiles; custom adapters must provide it and retain underlying resources through actual worker exit. A new entry kind is compatible, and a reader MUST ignore an entry kind it does not know.
+- Versioning: one integer, `SESSION_CONTRACT_VERSION=5`. Version 4 requires pure for_actor(actor) binding for every caller path. Version 3 requires a namespace-scoped `WorkerLifetime` on SessionStore, TurnLog and JournalFiles; custom adapters must provide it and retain underlying resources through actual worker exit. A new entry kind is compatible, and a reader MUST ignore an entry kind it does not know.
 - Ordering or precedence: this contract governs persistence and the client API; CONTRACT-002 governs which entries the engine writes and when, and its gate sequence.
 - Backward-compatibility rules: adding an optional field, an entry kind, a capability, or a `Change` variant that a follower may ignore is compatible. Changing a signature, a rule, a guarantee, or a cursor format is a new version. A cursor format change invalidates outstanding cursors, which a store refuses with `InvalidCursor`.
 - Deprecation rules: a removed item is announced one version ahead and kept, with a warning, for that version.
@@ -908,3 +908,24 @@ mutation and do not undo it. A later READ_SESSION denial or public response-size
 after valid known receipt admission under CONTRACT-002. Root/credential/owner and existing
 policy actions remain unchanged. Optional receipt mode is selected for audit-enabled commands;
 applications without audit retain the legacy summary call path.
+
+
+### Configuration defaults revision 1
+
+`CLIENT_DEFAULTS_VERSION=1` supplies ClientLimits defaults from the accepted implementation-plan table: pages 100, call ids 8, read bytes 1,048,576, lookup entries 1,000, read/heartbeat/shutdown seconds 5/1/5, follower queue 32, followers 8, active turns 8, request bytes 65,536, history-link hops 8 and receipt bytes 4,194,304. Every field remains independently overridable and validated. SessionService/Tether accepts omitted limits and creates a fresh ClientLimits value. No mutable default instance is shared.
+
+`MODEL_EXECUTION_DEFAULTS_VERSION=1` supplies ModelExecutionLimits defaults: response bytes 8,192, tool-argument bytes 512, attempts 2, request seconds 5 and maximum retry-delay seconds 0.01. Engine accepts omitted model_limits and creates a fresh value. ContextConfig defaults source bytes to 4,194,304 and timeout to 30 seconds; tier capacities, estimator and selected live provider remain explicit. FullContext remains the omitted strategy. Unknown/missing tier capacity or estimator MUST refuse as context_unconfigured. These defaults do not assert tokenizer/server qualification.
+
+
+### New Client commands (development revision 5)
+
+| Method | Required input | Result / rules |
+|---|---|---|
+| invoke_tool | session_id, tool_name, JSON arguments, request_id; optional spec | TurnHandle; source-verified, model-free tool command; approval-required refuses before intent/dispatch |
+| auxiliary | session_id, profile, through_index, request_id; optional spec | TurnHandle; exact current source frontier, configured tool-free profile, live caller credential |
+| transition_spec | session_id, spec, request_id; optional expected_spec_digest | TurnHandle; current transition_spec authorization, no active/unsettled group; atomic old/new binding and snapshot publication |
+| reconcile_settlement | session_id, settlement_id, request_id | TurnHandle; current read/resolve authority, original participant/decision/actor binding; no new tool/model execution |
+
+Commands share the existing task owner, active-turn/request/read bounds and heartbeat-supervised lease. Equal keys/inputs return the accepted operation, including after reopening; conflicting origin/input raises RequestConflict. Results come from accepted facts under current disclosure authorization. Direct tool_result and auxiliary_result content MUST NOT enter the answer transcript as orphan tool messages or synthetic answers. Direct recovery before intent may execute the same invocation through fresh gates; existing intent requires the unchanged safe replay declaration. Unsafe replay returns recovery_blocked. Auxiliary/transition/reconciliation operations are not reissued as answer turns by resume. No command can clear unresolved effects by choosing a new key.
+
+Transitions operate between completed leased operations/call groups. They refuse an active turn or pending/unresolved call; they do not queue a mid-Agent mutation. The accepted target is a copied supplied AgentSpec with id/version/digest, and the accepted registry generation is recorded. A lost acknowledgment is looked up under its command key. Actual application cutover/import/retraction/batch approval remains separate.

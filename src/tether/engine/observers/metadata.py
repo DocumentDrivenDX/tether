@@ -23,6 +23,7 @@ ACTIONS = frozenset(
         "approve",
         "resume",
         "resolve_effect",
+        "transition_spec",
         "retrieve",
         "create_session",
         "update_session",
@@ -61,7 +62,7 @@ ENUMS = {
         {"prepared", "started", "ok", "error", "incomplete", "denied", "interrupted", "withheld"}
     ),
     "state": frozenset({"requested", "approved", "declined", "expired", "invalid", "superseded"}),
-    "purpose": frozenset({"answer", "summary", "correction"}),
+    "purpose": frozenset({"answer", "summary", "correction", "auxiliary"}),
     "effect": frozenset({"read_only", "effectful"}),
     "replay": frozenset({"safe", "unsafe"}),
     "stop_reason": frozenset(

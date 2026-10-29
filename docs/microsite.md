@@ -56,3 +56,18 @@ uv run --locked python docs/capture/capture_streaming_reply.py
 ```
 
 Assets: `docs/media/streaming-01-partial.svg`, `docs/media/streaming-02-updated.svg`, and `docs/media/streaming-capture-receipt.json`.
+
+### Consumer API integration (development source preview)
+
+`examples/consumer_capabilities.py` executes a real public Client journey with fabricated scripted model frames: preparation deduplication; edited count approval; staged settlement; immutable registry publication; specification transition; direct model-free status; and a caller-bound tool-free suggestion. Its application participant is an explicitly volatile dummy; JSONL supplies durable journal/history. Separate PostgreSQL/process tests qualify transaction and reconciliation frontiers.
+
+`docs/capture/capture_consumer_capabilities.py` runs that example in a small Textual API demonstration viewer and exports four actual states. These are development API captures, not the released 0.1.0 reference TUI or live-model inference. The example assertions pass before each frame is recorded. The receipt retains the example source hash, asset hashes and observed counts.
+
+```sh
+uv run --locked python examples/consumer_capabilities.py
+uv run --locked python docs/capture/capture_consumer_capabilities.py
+```
+
+Assets: `docs/media/consumer-01.svg` through `consumer-04.svg`, plus `consumer-capture-receipt.json`. Visual inspection verified readable content and the development/0.1.0 distinction. These assets are ready for a separately labeled development gallery; the released-version galleries retain their original qualification claims.
+
+The [consumer development qualification receipt](helix/03-test/evidence/consumer-qualification-20261029.md) records the matching frozen source, passing complete gate and installed base/TUI profiles. The capture receipt includes all current runtime source hashes; these development assets are not a publication of a new package or microsite gallery.

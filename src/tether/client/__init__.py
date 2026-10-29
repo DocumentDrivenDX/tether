@@ -11,10 +11,11 @@ from tether.types.client import UNSET, Change, TurnHandle, Unset
 from tether.types.execution import Actor, Answer, Entry, HistoryRef, PendingConfirmation, Resolution
 from tether.types.storage import SessionInit, SessionPatch, SessionSummary
 
+from .operations import OperationClient
 from .reads import ClientReads
 
 
-class Client(ClientReads):
+class Client(OperationClient, ClientReads):
     def __init__(self, service: SessionService, actor: Actor) -> None:
         super().__init__(service.access, actor, service.archives)
         self._service = service

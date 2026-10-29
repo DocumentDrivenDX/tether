@@ -52,7 +52,10 @@ async def outcome(
     pin = await access.store_for(actor).snapshot(session_id, actor.id)
     if stop in {"final", "confirmation_required", "model_incomplete"}:
         for entry in entries:
-            if entry.kind != "message" or entry.history_ref is None:
+            if (
+                entry.kind not in {"message", "tool_result", "auxiliary_result"}
+                or entry.history_ref is None
+            ):
                 continue
             value = await links.hydrate(
                 access,

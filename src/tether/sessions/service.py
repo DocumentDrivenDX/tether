@@ -16,6 +16,7 @@ from tether.types.storage import RecoveredTurn, SessionStore, Unsupported
 
 from .access import SessionAccess
 from .archived import ArchiveAccess
+from .commands import CommandTurns
 from .feed import Followers
 from .turns import OwnedTurns
 
@@ -27,12 +28,13 @@ class SessionService:
         engine: Engine,
         store: SessionStore,
         history: HistoryProvider,
-        limits: ClientLimits,
+        limits: ClientLimits | None = None,
         resume: Literal["off", "report", "auto"] = "report",
         default_spec: str | None = None,
         archive: ArchiveSource | None = None,
         archive_sink: ArchiveSink | None = None,
     ) -> None:
+        limits = limits if limits is not None else ClientLimits()
         if resume != "off" and (
             store.capabilities.durability == "none" or not store.capabilities.fencing
         ):
@@ -83,6 +85,7 @@ class SessionService:
         self._service_live_done = finish_live_text
         engine.live_done = self._service_live_done
         self.turns = OwnedTurns(self.access, engine, default_spec)
+        self.commands = CommandTurns(self.turns)
         self.resume_mode = resume
         self.recovered: tuple[RecoveredTurn, ...] = ()
         self.closed = False

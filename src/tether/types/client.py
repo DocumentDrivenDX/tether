@@ -30,20 +30,23 @@ class RequestConflict(StoreError):
     pass
 
 
+CLIENT_DEFAULTS_VERSION = 1
+
+
 class ClientLimits(Payload):
     max_mutation_receipt_bytes: PositiveInt = 4 * 1024 * 1024
-    max_page_size: PositiveInt
-    max_call_ids: PositiveInt
-    max_read_bytes: PositiveInt
-    max_lookup_entries: PositiveInt
+    max_page_size: PositiveInt = 100
+    max_call_ids: PositiveInt = 8
+    max_read_bytes: PositiveInt = 1024 * 1024
+    max_lookup_entries: PositiveInt = 1000
     max_history_link_hops: PositiveInt = 8
-    read_timeout_seconds: PositiveSeconds
-    heartbeat_interval_seconds: PositiveSeconds
-    shutdown_timeout_seconds: PositiveSeconds
-    follower_queue_size: PositiveInt
-    max_followers: PositiveInt
-    max_active_turns: PositiveInt
-    max_request_bytes: PositiveInt
+    read_timeout_seconds: PositiveSeconds = 5
+    heartbeat_interval_seconds: PositiveSeconds = 1
+    shutdown_timeout_seconds: PositiveSeconds = 5
+    follower_queue_size: PositiveInt = 32
+    max_followers: PositiveInt = 8
+    max_active_turns: PositiveInt = 8
+    max_request_bytes: PositiveInt = 65536
 
 
 class HistorySlot(Payload):

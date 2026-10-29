@@ -29,10 +29,15 @@ class Observers:
         audit: AuditSink | None = None,
         tracer: Tracer | None = None,
         limits: TelemetryLimits | None = None,
+        *,
+        span_prefix: str = "tether",
+        attribute_namespace: str = "tether",
     ) -> None:
         self.limits = limits if limits is not None else TelemetryLimits()
         self.delivery = AuditDelivery(audit, self.limits)
-        self.tracer = GuardedTracer(tracer)
+        self.tracer = GuardedTracer(
+            tracer, span_prefix=span_prefix, attribute_namespace=attribute_namespace
+        )
         self.enabled = audit is not None
         self.workers_enabled = audit is not None or tracer is not None
         self._gates: OrderedDict[int, tuple[ReferenceType[NewEntry], TraceIds | None]] = (
