@@ -77,6 +77,10 @@ The offline reference ModelExecutionLimits are response 8,192 bytes, tool argume
 
 For dependencies, 0.1 documents the actually tested singleton versions. C-01 tests proposed range boundaries and the consumer's resolver constraints before widening published metadata; exact executable pins remain in `uv.lock`. Configurable telemetry proposes separate `span_prefix` and `attribute_namespace` Engine composition settings with current `tether` defaults; it does not rename journal kinds, policy actions or content permissions.
 
+Installed Pydantic AI 2.59.0 metadata requires `pydantic>=2.12` and `pydantic-graph==2.59.0`. The consumer's supplied `pydantic>=2.11` constraint alone permits the tested 2.14.1 version; it does not establish that Pydantic 2.11 can run this Agent pin. Boundary characterization must respect the actual transitive minimum or explicitly qualify a different Agent version. A successful resolver result is not runtime/codec qualification.
+
+An isolated uv resolver run accepted the current distribution metadata plus the supplied `pydantic>=2.11` constraint and selected Pydantic 2.14.1/Agent 2.59.0. This characterizes that one constraint only; a complete consumer dependency set and wider runtime compatibility remain to be qualified.
+
 ## Application Adapter Boundaries
 
 Core will refuse proposals that put ingestion pipelines, artifact/research schemas, retention policy, workflow engagement rules, plug-in/MCP discovery, title/suggestion scheduling or browser routes inside the runtime. Those are application adapters using the bounded preparation, registry, transition and auxiliary-call seams. Core will also refuse a raw ToolContext connection, ambient credential/application-authority fallback, an extra runner, inferred external-effect success, or migration during ordinary construction.
