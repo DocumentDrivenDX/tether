@@ -96,3 +96,50 @@ async def test_missing_caller_credential_refuses_auxiliary_without_egress(tmp_pa
         assert result.stop_reason == "model_denied"
         assert result.reason == "missing_credential"
         assert len(model.requests) == 1
+
+
+@pytest.mark.parametrize("identity_mode", ["anonymous", "application"])
+async def test_auxiliary_remains_caller_bound_when_answer_identity_changes(tmp_path, identity_mode):
+    model = ScriptedModel([final(), final()])
+    profile = AuxiliaryProfile(
+        id="suggestion",
+        revision="1",
+        model="fixture",
+        instructions="Suggest a fabricated label.",
+    )
+    async with composition(
+        tmp_path,
+        DemoTool(),
+        model=model,
+        profiles=(profile,),
+        identity_mode=identity_mode,
+    ) as (client, app, _model):
+        session = await client.create()
+        await (await client.send(session.id, "Fabricated request")).result()
+        assert model.requests[0].identity_mode == identity_mode
+        snapshot = await client.snapshot(session.id)
+        denied = await (
+            await client.auxiliary(
+                session.id,
+                "suggestion",
+                through_index=snapshot.through_index,
+                request_id="missing-caller",
+            )
+        ).result()
+        assert (denied.stop_reason, denied.reason) == ("model_denied", "missing_credential")
+        assert len(model.requests) == 1
+        credential = CurrentCredential()
+        caller = app.client(Actor(id="owner", credential=credential))
+        snapshot = await caller.snapshot(session.id)
+        accepted = await (
+            await caller.auxiliary(
+                session.id,
+                "suggestion",
+                through_index=snapshot.through_index,
+                request_id="actual-caller",
+            )
+        ).result()
+        assert accepted.stop_reason == "final"
+        assert len(model.requests) == 2
+        assert model.requests[-1].identity_mode == "caller"
+        assert model.requests[-1].credential is credential

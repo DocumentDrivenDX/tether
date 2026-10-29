@@ -31,7 +31,10 @@ fabricated tool call and an approval. It creates a local JSONL store at
 `~/.local/share/tether`. No account, credential or network call is needed for the demo.
 Install the optional `tui` extra when running an installed distribution outside the
 development environment. The terminal UI shows sessions and transcript history and
-supports send, approve/deny and explicit resume. The same local demo profile has CLI
+supports send, approve/deny and explicit resume. Click **New Session** or press
+**Ctrl+N** to start a blank conversation using the current model profile. New
+sessions retain manual tool approval and appear in the session list; select an
+earlier session to return to its history and pending approvals. The same local demo profile has CLI
 commands for `list`, `show`, `send`, `follow`, `confirm`, `resume` and fabricated cassette
 `replay`; run `uv run tether --help` for arguments. Use `--root PATH` to select another
 local store. These clients are a reference path. One fresh macOS/Python 3.11 clone with an isolated dependency cache reached
@@ -39,6 +42,71 @@ the offline UI in 5.51 seconds, including installation; download time varies wit
 network and package registry conditions.
 For a deliberately volatile in-memory UI demo, use `uv run tether --volatile`;
 its sessions disappear when the process exits and resume is disabled.
+
+## Start with a local model
+
+From this checkout:
+
+```sh
+uv run tether --openai-api-baseurl=http://localhost:18001/v1
+```
+
+For an installed release containing this feature, use the distribution's actual name:
+
+```sh
+uvx --from 'novirhiza-tether[tui,openai]' tether --openai-api-baseurl=http://localhost:18001/v1
+```
+
+`uvx tether` looks for a distribution named `tether`; this project installs as
+`novirhiza-tether` and provides the `tether` executable.
+These changes are currently unreleased. To test the current checkout through uvx,
+use `uvx --from '.[tui,openai]' tether --openai-api-baseurl=http://localhost:18001/v1`.
+Use HTTP if your server serves HTTP; HTTPS keeps certificate verification enabled.
+
+The launcher discovers `/models`, prefers an advertised `-chat` alias, and shows
+its selection. Override with `--model MODEL`. Common tools use the current directory;
+select another with `--workspace PATH`. Each tool call still requires approval.
+Loopback startup needs no API key. Authenticated endpoints use
+`--authorization-file PATH` (a file containing the full Authorization value).
+No environment credentials or tokenizer downloads are used.
+
+Context capacity comes from server metadata when available. Otherwise the launcher
+shows an unverified **starter** request budget of 16,384 tokens; `--context-window N`
+overrides it. Output defaults to 1,024 tokens, capped by an advertised maximum;
+`--output-tokens N` overrides the request, with 1,024 tokens held as a safety margin.
+The bundled byte-only estimate includes the whole native request and is approximate;
+it is intentionally cautious about text size and cannot prove server framing or
+capacity. Explicit tokenizer/server profiles remain available below.
+
+## Start with a Databricks CLI profile
+
+With the Databricks CLI installed and the profile already signed in:
+
+```sh
+uv run tether --databricks-profile=work
+```
+
+No URL or authorization file is needed. The launcher derives the workspace host,
+uses the gateway's Chat Completions route, and opens a model picker. Select a model
+and press **Start**, or skip the picker with `--model system.ai.MODEL`.
+For the current checkout through uvx, use
+`uvx --from '.[tui,openai]' tether --databricks-profile=work`.
+
+Discovery uses the Databricks model-services API, currently scoped to `system.ai`
+services advertising `mlflow/v1/chat/completions`. Listed metadata does not guarantee
+invocation permission. The existing CLI supplies refreshed OAuth user credentials;
+Tether does not copy tokens into profiles or history. Each authentication checks
+that the profile still points to the original workspace. Missing CLI, expired login,
+changed host, empty catalogs and discovery failures stop startup or the request.
+PAT and service-principal CLI authentication are not qualified by this launcher.
+The starter context budget and approximate estimate described above apply.
+
+`--gateway URL` is an alias for the compatible API base URL, alongside `--base-url`;
+it never interprets a value as a Databricks profile. A Databricks profile supplies
+both URL and authentication, so combining it with an explicit URL or authorization
+file is refused. Inference API compatibility, streaming, discovery and credentials
+are separate capabilities; this shortcut does not imply discovery/auth support for
+other gateway products.
 
 ## Optional compatible model reference
 
@@ -61,6 +129,32 @@ text/tool/approval run exercise this path; the selected DS4 run and its remainin
 tokenizer/framing limits are recorded in the
 [P0 qualification receipt](docs/helix/03-test/evidence/p0-qualification-20261028.md).
 Broader provider compatibility and semantic summary fidelity remain open.
+
+To enable common tools, add `"workspace": "/absolute/path/to/workspace"` to
+that model profile (a relative path resolves beside the profile). The directory
+must exist. Both reference clients then expose `bash`, `read_file`, `write_file`,
+`web_search` and `web_page_load` alongside `record_demo`. Each invocation requires
+approval; the TUI shows its exact arguments before Approve/Deny. Changing the
+workspace changes the profile/session identity.
+
+File tools accept workspace-relative or absolute paths resolving inside the
+workspace, refuse escapes including existing symlinks, and use UTF-8 with a
+64 KiB limit. Writes create or overwrite files; parent directories must exist.
+Bash starts in the workspace, inherits the process environment and user permissions,
+and is **not a sandbox**. Its default deadline is 10 seconds (maximum 20), with
+64 KiB combined output; timeout/overflow kills its process group. Keep authorization
+files outside the workspace. File paths are a convenience boundary, not protection
+against concurrent filesystem changes or hard links.
+
+Search uses DuckDuckGo's public Lite HTML endpoint without an API key and returns up to
+five title/URL/snippet results. Availability and markup can change; no parsed results
+explicitly reports that uncertainty. Page loading fetches HTTP(S) text/HTML, follows
+HTTP(S) redirects, extracts text without JavaScript and labels truncation. Web reads
+have a 10-second socket timeout, a 256 KiB input cap and a 32 Ki-character page-text
+cap; decoding replaces invalid characters. These are trusted local example tools:
+network access includes reachable private hosts and configured system proxies.
+Their outputs enter session history and the selected model's context. The offline
+profile has no common tools or network activity.
 
 ## Development
 

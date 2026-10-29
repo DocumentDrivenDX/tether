@@ -24,10 +24,13 @@ from tether.stores.memory import MemoryFiles
 from tether.types import ModelExecutionLimits, ModelResponse, TextDelta, ToolCall
 from tether.types.client import ClientLimits
 from tether.types.context import ContextConfig, TokenEstimator
-from tether.types.execution import Actor, AgentSpec, Effect, Replay, ToolContext
+from tether.types.execution import Actor, AgentSpec, Effect, Replay, Tool, ToolContext
 
+from .common_tools import common_tools
 from .configured import configured_model
-from .profile import ReferenceModelProfile
+from .local import LocalModelOptions as LocalModelOptions
+from .local import resolve_profile as resolve_profile
+from .profile import ReferenceModelProfile as ReferenceModelProfile
 from .profile import load_profile as load_profile
 
 if TYPE_CHECKING:
@@ -121,9 +124,16 @@ async def open_demo(
         store = await JsonlSessionStore.open(files)
         history = await JsonlHistory.open(files)
         tool = DemoTool()
+        tools: tuple[Tool, ...] = (tool,)
+        if profile is not None and profile.workspace is not None:
+            import asyncio
+
+            if not await asyncio.to_thread(profile.workspace.is_dir):
+                raise ValueError("workspace_directory_required")
+            tools += common_tools(profile.workspace)
         model_limits = ModelExecutionLimits(
             max_response_bytes=profile.max_response_bytes if profile is not None else 8192,
-            max_tool_argument_bytes=512,
+            max_tool_argument_bytes=65536 if len(tools) > 1 else 512,
             max_attempts=2,
             request_timeout_seconds=30 if profile is not None else 5,
             max_retry_delay_seconds=0.25 if profile is not None else 0.01,
@@ -136,7 +146,7 @@ async def open_demo(
         model: ScriptedModel | OpenAICompatModel = demo_model(continuation=continuation)
         if profile is not None:
             adapter, context_config, estimator, actor, spec = await configured_model(
-                profile, model_limits, DemoTool.name
+                profile, model_limits, tuple(item.name for item in tools)
             )
             model = adapter
         engine = Engine(
@@ -146,7 +156,8 @@ async def open_demo(
             history=MessageHistoryAdapter(history),
             history_provider=history,
             model_limits=model_limits,
-            tools=(tool,),
+            identity_mode=profile.identity_mode if profile is not None else "caller",
+            tools=tools,
             specs=(spec,),
         )
         async with Tether(

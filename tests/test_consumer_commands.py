@@ -28,7 +28,15 @@ def anyio_backend():
 
 @asynccontextmanager
 async def composition(
-    path, tool, *, model=None, prepare=None, settlements=(), guards=(), profiles=()
+    path,
+    tool,
+    *,
+    model=None,
+    prepare=None,
+    settlements=(),
+    guards=(),
+    profiles=(),
+    identity_mode: Literal["caller", "application", "anonymous"] = "caller",
 ):
     files = await JsonlRoot.open(path)
     try:
@@ -44,6 +52,7 @@ async def composition(
         adapter = model if model is not None else ScriptedModel([])
         engine = Engine(
             model=adapter,
+            identity_mode=identity_mode,
             history=MessageHistoryAdapter(history),
             history_provider=history,
             tools=(tool,),

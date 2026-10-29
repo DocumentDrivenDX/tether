@@ -1,0 +1,41 @@
+{
+  "scenario": "URL-only local model and common tools",
+  "source": "unreleased working tree",
+  "model": "qwen3.8-flash-next-chat",
+  "endpoint": "explicit loopback HTTP endpoint",
+  "python": "3.11.17",
+  "platform": "Darwin arm64",
+  "data": "fabricated prompts and temporary file; public web query/page",
+  "capture": "Actual Textual headless SVG exports with real local inference",
+  "assertions": [
+    "URL-only discovery and anonymous live model answer",
+    "write_file: exact pending arguments, approval, real result, idle",
+    "read_file: exact pending arguments, approval, real result, idle",
+    "bash: exact pending arguments, approval, real result, idle",
+    "web_search: exact pending arguments, approval, real result, idle",
+    "web_page_load: exact pending arguments, approval, real result, idle"
+  ],
+  "frames": [
+    {
+      "file": "local-startup-write_file-pending.svg",
+      "sha256": "f293e0a7785a2a89a563c40b8f22257614fb65db37cd5b71205b3cbf617a8100"
+    },
+    {
+      "file": "local-startup-read_file-pending.svg",
+      "sha256": "dd5ac148d24fb76d8200a1816690515af435c27fda7a3e6d0b816edee8372f7b"
+    },
+    {
+      "file": "local-startup-bash-pending.svg",
+      "sha256": "ef88f89137bb1a24159da94a3f72477c978755014df9e59e437556ed190e35ba"
+    },
+    {
+      "file": "local-startup-web_search-pending.svg",
+      "sha256": "72695fc1b0d458f92499a2c22e7511d341bfa2e91660546ebf1222a92e6dd7f5"
+    },
+    {
+      "file": "local-startup-web_page_load-pending.svg",
+      "sha256": "82ac089d9dc29bc784a0bdb94ce1c6d90f56e3c429734f1150f61c393bb619e7"
+    }
+  ],
+  "limits": "One local server/model; approximate byte estimator; no broad provider or sandbox qualification"
+}

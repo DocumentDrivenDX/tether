@@ -79,6 +79,7 @@ class Engine:
         model: ModelPort,
         history: MessageHistory,
         model_limits: ModelExecutionLimits | None = None,
+        identity_mode: Literal["caller", "application", "anonymous"] = "caller",
         attempt_factory: Callable[[RequestTags], AttemptRecorder] | None = None,
         history_provider: HistoryProvider | None = None,
         tools: tuple[Tool, ...] = (),
@@ -107,6 +108,9 @@ class Engine:
         ]
         | None = None,
     ) -> None:
+        if identity_mode not in {"caller", "application", "anonymous"}:
+            raise ValueError("invalid_identity_mode")
+        self.identity_mode: Literal["caller", "application", "anonymous"] = identity_mode
         self.model, self.history = model, history
         self.model_limits = model_limits if model_limits is not None else ModelExecutionLimits()
         self.history_provider = history_provider
@@ -303,6 +307,7 @@ class Engine:
         )
         template = ModelRequest(
             model=spec.model,
+            identity_mode=self.identity_mode,
             tags=tags,
             system=spec.instructions,
             messages=(),

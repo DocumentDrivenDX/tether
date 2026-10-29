@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
+from uuid import uuid4
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -21,7 +23,7 @@ from textual.widgets import (
     Static,
 )
 
-from tether.cli.demo import load_profile, open_demo
+from tether.cli.demo import LocalModelOptions, ReferenceModelProfile, open_demo, resolve_profile
 from tether.client import Client
 from tether.types.client import Lagged, ReplyReset, ReplyText, ResyncRequired, SessionUpdated
 from tether.types.execution import Actor, Answer, TurnResult
@@ -30,8 +32,11 @@ from tether.types.storage import SessionSummary
 
 class DemoApp(App[None]):
     TITLE = "Tether · offline demo"
+    BINDINGS: ClassVar = [("ctrl+n", "new_session", "New session")]
     CSS = """
-    #sessions { width: 28; border: solid $primary; }
+    #session-panel { width: 28; }
+    #new-session { width: 1fr; }
+    #sessions { width: 1fr; height: 1fr; border: solid $primary; }
     #conversation { width: 1fr; border: solid $primary; }
     #transcript { height: 1fr; }
     #reply { height: auto; max-height: 50%; padding: 0 1;
@@ -42,12 +47,18 @@ class DemoApp(App[None]):
     """
 
     def __init__(
-        self, root: Path, *, volatile: bool = False, model_config: Path | None = None
+        self,
+        root: Path,
+        *,
+        volatile: bool = False,
+        model_config: Path | None = None,
+        local_options: LocalModelOptions | None = None,
     ) -> None:
         super().__init__()
         self.root = root
         self.volatile = volatile
         self.model_config = model_config
+        self.local_options = local_options
         self._demo_context: Any = None
         self.client: Client | None = None
         self.actor: Actor | None = None
@@ -61,7 +72,9 @@ class DemoApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="body"):
-            yield ListView(id="sessions")
+            with Vertical(id="session-panel"):
+                yield Button("New Session", id="new-session")
+                yield ListView(id="sessions")
             with Vertical(id="conversation"):
                 yield RichLog(id="transcript", wrap=True, markup=False)
                 yield Static(id="reply", markup=False)
@@ -74,9 +87,27 @@ class DemoApp(App[None]):
         yield Footer()
 
     async def on_mount(self) -> None:
-        profile = await load_profile(self.model_config) if self.model_config is not None else None
+        profile = await resolve_profile(self.model_config, self.local_options)
+        if profile is not None and profile.available_models:
+            from .model_picker import ModelPicker
+
+            async def selected(name: str | None) -> None:
+                if name is None:
+                    self.exit()
+                    return
+                await self._connect(
+                    profile.model_copy(update={"model_name": name, "available_models": ()})
+                )
+
+            self.push_screen(ModelPicker(profile.available_models), selected)
+            return
+        await self._connect(profile)
+
+    async def _connect(self, profile: ReferenceModelProfile | None) -> None:
         if profile is not None:
             self.title = "Tether · " + profile.id
+            if self.local_options is not None:
+                self.sub_title = profile.model_name
             self.query_one("#message", Input).placeholder = "Send a message"
         self._demo_context = open_demo(self.root, volatile=self.volatile, profile=profile)
         app, actor, _ = await self._demo_context.__aenter__()
@@ -93,8 +124,28 @@ class DemoApp(App[None]):
         self.session_id = demo.id
         await self._refresh_sessions()
         await self._show_session()
+        if self.local_options is not None:
+            self.query_one("#transcript", RichLog).write(
+                f"Connected model: {profile.model_name if profile else 'local'}. "
+                f"Context budget: {profile.context_window_tokens if profile else 0} "
+                f"({profile.context_source if profile else 'starter'}); approximate byte estimate. "
+                "Tools use the selected workspace and require approval."
+            )
         self._follower = asyncio.create_task(self._follow())
         self.query_one("#message", Input).focus()
+
+    async def action_new_session(self) -> None:
+        if self.client is None:
+            return
+        session = await self.client.create(
+            title="Session · " + uuid4().hex[:8], settings={"approval": "manual"}
+        )
+        self.session_id = session.id
+        await self._refresh_sessions()
+        await self._show_session()
+        field = self.query_one("#message", Input)
+        field.value = ""
+        field.focus()
 
     async def _stop_follower(self) -> None:
         if self._follower is not None:
@@ -123,6 +174,9 @@ class DemoApp(App[None]):
         await listing.clear()
         for item in page.items:
             await listing.append(ListItem(Label(f"{item.title or item.id} · {item.status}")))
+        listing.index = next(
+            (index for index, item in enumerate(self.sessions) if item.id == self.session_id), None
+        )
 
     async def _show_session(self) -> None:
         if self.client is None or self.session_id is None:
@@ -152,12 +206,17 @@ class DemoApp(App[None]):
             return
         pending = await self.client.pending(self.session_id)
         view = await self.client.get(self.session_id)
-        self.query_one("#approve", Button).disabled = pending is None
+        self.query_one("#approve", Button).disabled = pending is None or pending.arguments is None
         self.query_one("#deny", Button).disabled = pending is None
         self.query_one("#resume", Button).disabled = not view.summary.resumable
         if pending is not None:
             self.query_one("#transcript", RichLog).write(
-                f"Approval requested: {pending.description or pending.tool}"
+                f"Approval requested: {pending.tool} — {pending.description}"
+            )
+            self.query_one("#transcript", RichLog).write(
+                json.dumps(pending.arguments, ensure_ascii=True)
+                if pending.arguments is not None
+                else "[arguments unavailable]"
             )
 
     def _reset_reply(self) -> None:
@@ -234,7 +293,9 @@ class DemoApp(App[None]):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if self.client is None or self.session_id is None:
             return
-        if event.button.id == "send":
+        if event.button.id == "new-session":
+            await self.action_new_session()
+        elif event.button.id == "send":
             await self._send()
         elif event.button.id in {"approve", "deny"}:
             pending = await self.client.pending(self.session_id)
@@ -256,5 +317,11 @@ class DemoApp(App[None]):
             await self._show_session()
 
 
-def run(root: Path, *, volatile: bool = False, model_config: Path | None = None) -> None:
-    DemoApp(root, volatile=volatile, model_config=model_config).run()
+def run(
+    root: Path,
+    *,
+    volatile: bool = False,
+    model_config: Path | None = None,
+    local_options: LocalModelOptions | None = None,
+) -> None:
+    DemoApp(root, volatile=volatile, model_config=model_config, local_options=local_options).run()

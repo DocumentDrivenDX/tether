@@ -96,7 +96,10 @@ class AttemptTransport(httpx.AsyncBaseTransport):
         request: ModelRequest,
         limits: ModelExecutionLimits,
         application_credential: Credential | None,
+        *,
+        request_tags_header: str = "X-Tether-Request-Tags",
     ) -> None:
+        self.request_tags_header = request_tags_header
         self.inner = inner
         self.request = request
         self.limits = limits
@@ -153,7 +156,10 @@ class AttemptTransport(httpx.AsyncBaseTransport):
         tags = self.request.tags.model_dump(mode="json") | identity.model_dump(
             mode="json", exclude_none=True
         )
-        request.headers["X-Tether-Request-Tags"] = canonical(tags).decode()
+        header_tags: dict[str, JsonValue] = tags
+        if self.request_tags_header == "Databricks-Ai-Gateway-Request-Tags":
+            header_tags = {key: str(value) for key, value in tags.items() if value is not None}
+        request.headers[self.request_tags_header] = canonical(header_tags).decode()
         if self.request.traceparent:
             request.headers["traceparent"] = self.request.traceparent
         request.headers.pop("authorization", None)
