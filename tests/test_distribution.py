@@ -10,7 +10,12 @@ from check_distribution import LICENSES, inspect_artifacts
 
 
 def artifacts(
-    root: Path, *, typed: bool = True, licensed: bool = True, expression: bool = True
+    root: Path,
+    *,
+    typed: bool = True,
+    licensed: bool = True,
+    expression: bool = True,
+    requirement: str = "",
 ) -> None:
     names = {"tether/__init__.py": ""}
     if typed:
@@ -19,7 +24,7 @@ def artifacts(
         names.update({"tether-1.dist-info/licenses/" + name: "license" for name in LICENSES})
     names["tether-1.dist-info/METADATA"] = (
         "License-Expression: MIT OR Apache-2.0\n" if expression else ""
-    )
+    ) + (f"Requires-Dist: {requirement}\n" if requirement else "")
     with zipfile.ZipFile(root / "novirhiza_tether-1.whl", "w") as wheel:
         for name, content in names.items():
             wheel.writestr(name, content)
@@ -51,4 +56,10 @@ def test_source_missing_required_metadata_fails(tmp_path: Path) -> None:
     with tarfile.open(tmp_path / "novirhiza_tether-1.tar.gz", "w:gz"):
         pass
     with pytest.raises(ValueError, match="source archive missing"):
+        inspect_artifacts(tmp_path)
+
+
+def test_direct_url_dependency_is_refused_before_publication(tmp_path: Path) -> None:
+    artifacts(tmp_path, requirement="fabricated @ https://fabricated.invalid/binary.whl")
+    with pytest.raises(ValueError, match="direct URL dependency forbidden by PyPI"):
         inspect_artifacts(tmp_path)

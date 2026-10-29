@@ -10,9 +10,11 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+from email.parser import Parser
 from pathlib import Path
 
 from dependency_policy import PROVIDER_DISTRIBUTIONS
+from packaging.requirements import Requirement
 from process import run_command
 
 LICENSES = {"LICENSE-MIT", "LICENSE-APACHE", "NOTICE"}
@@ -363,6 +365,9 @@ def inspect_artifacts(directory: Path) -> Path:
         metadata = wheel.read(next(x for x in names if x.endswith(".dist-info/METADATA"))).decode()
         if "License-Expression: MIT OR Apache-2.0" not in metadata:
             raise ValueError("wheel missing dual-license expression")
+        requirements = Parser().parsestr(metadata).get_all("Requires-Dist", [])
+        if any(Requirement(value).url is not None for value in requirements):
+            raise ValueError("wheel has a direct URL dependency forbidden by PyPI")
     with tarfile.open(sources[0]) as source:
         names = source.getnames()
         if not any(x.endswith("/src/tether/py.typed") for x in names) or not LICENSES.issubset(
@@ -399,6 +404,8 @@ async def clean_import(wheel: Path, root: Path, extra: str | None = None) -> Non
     if extra:
         for name in ("tui", "openai") if extra == "tui-openai" else (extra,):
             export.extend(["--extra", name])
+    if extra == "embedded-postgres":
+        export.extend(["--group", "embedded-binaries"])
     exported = await run(export)
     wheel_data = await asyncio.to_thread(wheel.read_bytes)
     wheel_hash = hashlib.sha256(wheel_data).hexdigest()

@@ -148,4 +148,6 @@ After the README and evidence edits, `uv sync --locked && make check` passed loc
 
 ## Next gate
 
+PyPI publication requires index-compatible dependency metadata. The optional embedded profile now keeps its native wheel as an explicit operator prerequisite, supplied by the checkout's hash-pinned `embedded-binaries` group during qualification; the published extra installs the PostgreSQL driver. Artifact inspection rejects any direct URL in wheel `Requires-Dist`, and a planted direct-reference wheel exercises that refusal. Runtime embedded startup and binary identity remain unchanged.
+
 The selected macOS arm64/Python 3.11.17, local JSONL/PostgreSQL 18 and DS4 text/function-tool subset has passing behavioral evidence for TP-001's sixteen P0 paths. Broader support limitations above are not additional release prerequisites. The remaining release gates are the complete source recipe on the clean final main commit and stable-version artifact checks for base, `openai`, `tui`, combined `tui-openai`, `postgres`, and `embedded-postgres`. After those pass, follow the [deployment checklist](../../05-deploy/deployment-checklist.md) and retain exact source/file identities.
