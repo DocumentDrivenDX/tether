@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-24
+  updated: 2026-10-28
   authoring:
     home: repo
   links:
@@ -191,6 +191,26 @@ The Databricks profile sends opaque `tether_session_id`, `tether_turn_id`, `teth
 Lookup uses configured table locators and parameterized predicates over endpoint/workspace, provider request id when known, and exact outbound attempt tags. It returns all relevant invocation rows. It deduplicates identical deliveries by qualified source identity and canonical payload digest, preserves different provider invocations, and reports incompatible duplicates or multiple possible response matches as `ambiguous`; it never selects the first row or newest timestamp as truth. Receipt, requester/endpoint scope, tags, schema and expected normalized digests are cross-checked before `ready`. Header-to-table equality and tag round trips require a fabricated live qualification; source code/unit tests alone are insufficient.
 
 External recording coverage remains explicit: pending rows, expired retention, missing bodies, logging errors, schema changes, permission failures and ambiguous joins cannot become empty history or successful recovery. There is no write, migration or schema mutation against the inference tables. Table discovery, SQL reads, caches and queued work have finite configured bounds and are isolated by actor/credential context. A credential change/revocation invalidates read-cache authority; failures do not trigger a service-principal fallback.
+
+## Proposed shared-root PostgreSQL transaction profile
+
+This proposed post-0.1 profile requires Erik LaBianca's contract acceptance and separate implementation/qualification. It preserves separate HistoryProvider and SessionStore authorities while coordinating their commits. The current independently committed `put` profile remains supported for independent backends.
+
+For PostgresHistory and PostgresSessionStore composed from the same verified root/namespace, shared transaction is the proposed default. The adapter MUST stage canonical history bytes/digest and journal references through one bounded actor-bound, lease-fenced transaction participant. A stable atomic operation key binds owner/session, immutable record keys/digests, referenced journal batch and expected frontier. Commit publishes content, references, journal facts, summary and changes together. Equal retries recover the same references/frontier; conflicting retries refuse. The capability is internal to the paired adapter and MUST NOT expose a raw connection through generic ToolContext or create ambient application authority.
+
+An acknowledgment failure does not prove rollback. Recovery queries the same operation key under current actor/read authority and returns accepted, absent or unknown; unknown forbids a new dependent write. A requested shared profile with incompatible roots, namespaces, capabilities or lease bindings MUST refuse. Explicit independent profiles retain put-before-reference with possible unreferenced content, never a journal reference to unaccepted content. Applications continue to own connection sources, pool/role/RLS policy and migrations.
+
+| Frontier / failure | Required shared-profile result | Independent-profile result |
+|---|---|---|
+| Failure before transaction admission | No content or journal write; safe to retry the same key after current gates | No new write |
+| History staged, journal not staged | Transaction rollback leaves neither visible | Content may exist without a journal reference |
+| Journal staged, commit not accepted | No partial content/reference/summary/feed visibility | Journal outcome remains subject to its own commit acknowledgment |
+| Lease expires or cancellation occurs before commit | Fence rejects/rolls back; actual database work retains lifetime until exit | Content may be an orphan; journal append must still refuse stale fencing |
+| Commit succeeds, acknowledgment is lost | Report unknown; recover the exact complete batch by operation key before another attempt | Recover the separate history key and journal key; do not infer combined success |
+| Same key, changed content/bindings | Refuse conflict without mutation | Existing immutable history/journal conflict rules apply |
+| Caller revoked before recovery/read | Refuse disclosure or write under that caller; no maintenance/application fallback | Same current-caller rule |
+
+Conformance MUST inject a process exit at every table frontier, observe from an independent connection, race equal/conflicting retries, and reopen after lost acknowledgment. Verify canonical bytes/digests and exact reference closure, one accepted journal frontier, matching summary/feed, retained worker ownership during cancellation, and refusal of wrong-root or stale-lease participants. These cases establish database atomicity for this profile, not exactly-once remote application effects.
 
 ## Precedence and Compatibility
 

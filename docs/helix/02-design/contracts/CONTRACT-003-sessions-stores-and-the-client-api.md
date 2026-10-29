@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-24
+  updated: 2026-10-28
   authoring:
     home: repo
   links:
@@ -473,6 +473,50 @@ The package ships `InMemoryStore` (a live store declaring `durability="none"`, `
 ### Fork/reference isolation (P2)
 
 Fork is a deferred capability, not a v1 client method. A future fork remains owner-scoped: it authorizes and materializes each required source component, creates destination-session refs through the selected writable provider, and retains provenance to the source. It cannot place another session's ref directly into the destination and bypass HistoryProvider session checks. Missing/denied/incompatible source aborts acceptance; orphan destination content is not a forked session. Copied calls, approvals and effects are historical evidence, never executable recovery work or transferable authorization. Incomplete groups require explicit non-executable closure at the fork boundary. New actions receive new invocation ids and fresh gates. Cross-owner sharing/import is outside this scope.
+
+## Proposed next consumer command and transaction profile
+
+This is the proposed post-0.1 contract revision for the immediately next consumer slice. The current Client and store interfaces above remain the implemented surface until Erik LaBianca accepts these paragraphs and their dependent design. First consumer adoption follows this slice; 0.1 qualification is unchanged.
+
+### Client-origin invocation and preparation
+
+The proposed `Client.invoke_tool` command takes `session_id`, `tool_name`, canonical JSON arguments and a required `request_id`, plus an optional requested specification. It returns a task-owned operation handle whose result is derived from accepted journal facts. Its fingerprint includes owner, command origin, tool/arguments and requested specification; equal retries share the accepted operation and conflicting retries refuse. `origin="client"` is persisted independently of model-call provenance. The command acquires the ordinary session lease, honors active-turn/actual-worker/unknown-effect/closed-session refusals and executes CONTRACT-002's full tool pipeline. Approval-required calls refuse before dispatch, and no model request or model-call row is synthesized.
+
+The proposed leased-preparation participant attaches to accepted `send` input after idempotent admission. It receives the immutable accepted request identity and current actor under the same lease, returns ready/needs-input/refused, and may attach separately authorized preparation references without replacing text or attachment identity. Cancellation, deadline, source denial or lease loss ends preparation explicitly. Reopening an uncertain acknowledgment resolves by the accepted request/preparation key before another attempt. Client snapshots expose the waiting/refused state through committed metadata rather than claiming a model has started.
+
+Acceptance MUST race command/send/close/confirm and competing processes; verify zero model calls for direct invocation; refuse approval-required calls; and crash at admission, preparation acceptance, intent, observable effect and result acknowledgment. Current caller authorization and bounded metadata/payload disclosure apply to every read of the operation.
+
+### Settlement and state publication
+
+Session storage MUST retain staged participant ids, the selected transaction profile, accepted settlement decision and known/uncertain outcome with the invocation's immutable bindings. The decision, result state and change-feed visibility MUST agree at one journal frontier. A shared-database participant has no independently published success before that frontier. An independent participant remains pending/uncertain until its same-id outcome is known; lease release or a new Client command cannot erase its barrier. Rollback failure is explicit uncertainty, not an empty result. Application code owns business payloads and reconciliation; the store exposes no raw connection through generic ToolContext.
+
+Acceptance MUST cover guard withholding, participant failure, lost commit/rollback acknowledgment, duplicate resolution, actor revocation and process death at every decision/effect/result frontier described by CONTRACT-002. Snapshots, effects, entries and the feed MUST report the same accepted state after reopening.
+
+### Specification, registry and edited approvals
+
+An accepted transition records old/new specification id, version and digest plus the registry generation under the session lease, only between completed call groups. Outstanding incompatible calls refuse or close through their existing outcomes; unresolved effects persist. Registry publication is atomic and active invocations retain their pinned generation until actual exit. Pending inspection and confirmation MUST compare the present tool/specification/generation bindings and invalidate incompatible approvals. An edited confirmation preserves separate proposal, shown and executable digests and repeats source/schema/current-policy gates before intent; an existing intent forbids further editing.
+
+Acceptance MUST race transition/publication with pending reads, answers, tool execution, close and recovery. A lost acknowledgment is recovered by its stable command key. No snapshot may advertise a new binding while its journal still authorizes the old one, and no stale answer may execute a changed definition or argument set.
+
+### Auxiliary operations
+
+An application-scheduled auxiliary model operation requires a current Actor, configured purpose/profile and source frontier. It acquires its own session operation/lease after the answer turn ends, records attempts and purpose-specific usage, and refreshes that caller's credential per physical attempt. Missing credentials, read/model denial or source drift refuse without application-identity fallback. The Client exposes accepted operation/result metadata through existing bounded reads; applying a suggested title or other application field remains an explicit authorized command. Core does not own a background scheduler or mandatory suggestion payload.
+
+Acceptance MUST cancel queued and active work, revoke the caller between scheduling and egress/retry, race close or a new turn, and reopen missing/partial usage. Results and operational diagnostics preserve the same owner/payload boundaries as answer calls.
+
+### Shared PostgreSQL history and journal transaction
+
+When PostgresSessionStore and PostgresHistory share one verified root/namespace, their proposed default paired profile MUST commit new message content and its journal reference in the same lease-fenced database transaction. The internal adapter participant carries the present actor, immutable content digest/key, expected journal frontier and lease holder/generation. It is not a raw connection in ToolContext. The atomic operation key binds the complete content/reference batch: an equal retry returns its accepted references/frontier; conflicting content or bindings refuse. The committed change feed and summary advance with that same transaction. An uncertain acknowledgment is recovered by key under current caller authorization before another write is attempted.
+
+A requested shared profile MUST refuse a mismatched root, unsupported participant or expired lease; it cannot silently fall back to separate commits. Independent roots/backends retain the explicit content-before-reference profile. Standalone history writes do not acquire journal atomicity by proximity. CONTRACT-005 defines the failure table and content-closure checks.
+
+Acceptance MUST use separate processes/connections for transaction rollback after content staging, lease expiry, cancellation, commit acknowledgment loss, equal/conflicting retries, caller revocation and reopening. After every fault, either the complete content/reference/journal/change batch exists or none of it exists; unknown acknowledgment remains unknown until the key lookup proves its outcome.
+
+### Defaults and configuration compatibility
+
+The current release requires explicit ClientLimits, ModelExecutionLimits and per-tier model limits. The next compatibility slice proposes documented constructor/factory defaults derived from the already exercised reference-client values, with explicit owner overrides and a deterministic estimator/Full or Tail composition. It MUST NOT infer a provider context/output capacity, silently choose a live model profile or label a fabricated estimator as server-qualified. The exact default values and strategy selection require an accepted profile table before implementation; no new numeric budget is established by this paragraph.
+
+Acceptance MUST show the documented minimal composition, every override, deterministic repeated estimation, explicit unknown model capacity refusal, and the same finite request/worker/read bounds under the selected defaults. Changes to published defaults are versioned compatibility changes.
 
 ## Precedence and Compatibility
 
