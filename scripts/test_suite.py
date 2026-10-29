@@ -62,9 +62,22 @@ async def run_suite(python: str) -> int:
             f"Collected {sum(map(len, batches))} cases in {len(batches)} bounded groups", flush=True
         )
         for batch in batches:
-            code = await command(
-                [python, "-m", "coverage", "run", "--append", "-m", "pytest", "--no-cov", *batch]
-            )
+            with tempfile.TemporaryDirectory(prefix="tether-test-group-") as batch_directory:
+                code = await command(
+                    [
+                        python,
+                        "-m",
+                        "coverage",
+                        "run",
+                        "--append",
+                        "-m",
+                        "pytest",
+                        "--no-cov",
+                        "--basetemp",
+                        str(Path(batch_directory) / "pytest"),
+                        *batch,
+                    ]
+                )
             if code:
                 return code
     # Reads the unchanged branch/source/fail_under settings from pyproject.toml.
