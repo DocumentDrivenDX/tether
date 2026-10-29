@@ -5,7 +5,7 @@ ddx:
   activity: frame
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-28
   authoring:
     home: repo
   links:
@@ -52,7 +52,7 @@ The Python runtime selection is retained after the Python/TypeScript and AgentKi
 | `python-uv` | Configuration: one central `pydantic-settings` `BaseSettings` class | The core defines plain `pydantic` configuration models and reads no environment variable, so the core does not depend on `pydantic-settings`. `pydantic-settings` is used only by the reference clients, as their composition root. | ADR-003 |
 | `model-provider-independence` | (project-local; no library practice) | SDK imports are confined to selected optional adapter boundaries; base packaging and public core types remain provider-SDK-free. Reuse needs a documented integration rationale, not proof that implementing the protocol directly is impossible. | ADR-012 |
 | `hexagonal-architecture` | Core depends only on its own types/ports at external boundaries | The selected internal tether.runtime.pydantic_ai integration imports pydantic-ai-slim Agent/Conversation/capability APIs. Engine uses Tether-owned callbacks/types; external I/O remains behind ports and public core payloads contain no SDK types. Runtime reuse does not require a second public runner port. | ADR-003 |
-| `python-uv` | Python 3.12 or later when the runtime allows | The floor is 3.11 until the first downstream consumer's runtime is confirmed (a library's floor is the lowest consumer runtime) | Needs confirmation (PRD open assumption) |
+| `python-uv` | Python 3.12 or later when the runtime allows | Python 3.11 is the selected release floor. Qualify later versions separately; a downstream consumer needing another floor triggers a compatibility decision. | PRD technical context and recorded Python 3.11 qualification |
 
 ## Area Labels
 

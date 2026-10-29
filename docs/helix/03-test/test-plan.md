@@ -5,7 +5,7 @@ ddx:
   activity: test
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-24
+  updated: 2026-10-28
   authoring:
     home: repo
   links:
@@ -122,7 +122,7 @@ Use fabricated messages, documents, tools, actors and effects only. Build any cr
 
 Local JSONL file/restart qualification is recorded in SD-001's execution receipts with its single-writer profile and versions; it does not establish actual operating-system power-cut behavior. Gateway request-tag transport is documented, but exact selected-workspace header/tag/row correspondence still needs live fabricated evidence. AGENTS.md follows the owner's Agent decision and ADR-002/003/012.
 
-Full release qualification remains incomplete; executed production subsets and their versions live in SD-001's execution receipts. No accepted performance budget is supplied here. [SPIKE-004](../02-design/spikes/SPIKE-004-pydantic-ai-agent-boundary-integration.md) supplies scoped actual Agent integration evidence for authorization/READ_SESSION, invocation-bound approval, fault/restart recovery, source/runner separation and per-attempt correlation. Its runnable suite uses a custom nonstreaming model, mocked HTTP transport and a bounded fixture store, including five abrupt process exits; it does not certify the production JSONL profile, streaming/native transports, full context coverage or live Gateway joins. Source delivery and feature/story detail remain SD-001 work. Summary fidelity and approximate token estimates require workload/model qualification; no universal recall or server-acceptance guarantee is claimed. Actual OS-crash durability and cross-session business-effect deduplication remain consumer qualification. These limits do not waive any P0 suite.
+The current P0 receipt maps all sixteen paths to executed production cases and selected profile evidence. Final qualification still requires the complete source gate on the clean release commit and exact stable-version installed artifacts. No accepted Client performance budget is supplied here. [SPIKE-004](../02-design/spikes/SPIKE-004-pydantic-ai-agent-boundary-integration.md) remains historical foundation evidence; the later production JSONL/PostgreSQL, stream, context, worker and live DS4 cases govern their declared support subsets. Summary fidelity and approximate token estimates are workload/model qualified; no universal recall or server-acceptance guarantee is claimed. Actual OS-crash durability and cross-session business-effect deduplication remain consumer qualification. Downstream platform adoption is a post-release product outcome and is not one of these P0 paths. These limits do not waive any P0 suite.
 
 The [2026-10-28 P0 qualification snapshot](evidence/p0-qualification-20261028.md) records the current main tree, complete local source gate, five fresh installed artifact profiles, and open Q0–Q8 decisions. It is scoped evidence, not a release sign-off.
 

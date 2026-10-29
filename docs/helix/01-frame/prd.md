@@ -5,7 +5,7 @@ ddx:
   activity: frame
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-28
   authoring:
     home: repo
   links:
@@ -54,7 +54,7 @@ kind: product
 
 ## Summary
 
-Tether is an open-source Python library for building agent harnesses. It provides an asynchronous agent loop with a provider-neutral model port, a typed tool-call interface, durable session management with crash recovery, and telemetry. It exposes the session list and session data to a user interface through a fast in-process Python API (list, read in pages, follow live changes), and it ships a command-line client and a terminal UI that work seconds after cloning the repository. It supports configured local, self-hosted, sovereign or hosted model servers within declared protocol/model subsets, and keeps provider SDKs out of base packaging/public core types while permitting explicitly selected optional adapter SDKs (ADR-012). Python developers and platform teams who embed an agent runtime in their own services use it, keeping their own interface, storage, and policy. Success is that every port has a dummy and a conformance suite, that recorded conversations replay deterministically through the loop, that a killed turn on a qualified durable profile preserves accepted steps and explicitly reports blocked or unknown outcomes, that a UI lists, reads, and follows sessions within published budgets, that a developer is using the harness in a terminal within seconds of cloning, and that the first downstream platform runs on a tether release.
+Tether is an open-source Python library for building agent harnesses. It provides an asynchronous agent loop with a provider-neutral model port, a typed tool-call interface, durable session management with crash recovery, and telemetry. It exposes the session list and session data to a user interface through a fast in-process Python API (list, read in pages, follow live changes), and it ships a command-line client and a terminal UI that work seconds after cloning the repository. It supports configured local, self-hosted, sovereign or hosted model servers within declared protocol/model subsets, and keeps provider SDKs out of base packaging/public core types while permitting explicitly selected optional adapter SDKs (ADR-012). Python developers and platform teams who embed an agent runtime in their own services use it, keeping their own interface, storage, and policy. Release success is that every port has a dummy and a conformance suite, that recorded conversations replay deterministically through the loop, that a killed turn on a qualified durable profile preserves accepted steps and explicitly reports blocked or unknown outcomes, that a UI lists, reads, and follows sessions within published budgets, and that a developer is using the harness in a terminal within seconds of cloning. Adoption by the first downstream platform is a separate post-release outcome.
 
 ## Problem and Goals
 
@@ -341,7 +341,7 @@ Each subsystem becomes one feature specification: FEAT-001 Agent Loop and Model 
 
 This section records decisions; the rationale is in the ADRs.
 
-- **Language/Runtime**: Python 3.11 and later (the floor is an assumption: the lowest runtime of the first downstream consumer). `uv` for environments and builds (concern `python-uv`).
+- **Language/Runtime**: Python 3.11 is the selected release floor; later versions require their own qualification before support is claimed. A downstream consumer needing a different floor triggers a separate compatibility decision. `uv` manages environments and builds (concern `python-uv`).
 - **Key Libraries**: `pydantic` v2 and the asynchronous baseline; Pydantic AI Agent and model integration reuse are selected under ADR-002/003; SDK-free base/public core types with isolated optional SDK adapters (ADR-012); SPIKE-003/004 provide bounded evidence; production qualifications are planned in SD-001; Textual for the terminal UI as an extra (ADR-008); the standard library `sqlite3` for the SQLite store (ADR-009); OpenTelemetry as an extra.
 - **Data/Storage**: execution journal, authoritative HistoryProvider and optional archive (ADR-018/019). Local reference clients use JSONL history plus a specified single-writer JSONL journal; in-memory providers are explicit volatile dummies. Postgres/optional embedded PostgreSQL 18 supplies the multiprocess journal; qualification remains required. GatewayHistory replaces model-exchange authority with explicit supplemental history. SQLite is optional.
 - **APIs**: the model port, the engine ports, and the client API (contracts `CONTRACT-001` to `CONTRACT-005`).
@@ -358,7 +358,7 @@ This section records decisions; the rationale is in the ADRs.
 
 ### Assumptions
 
-- The first downstream platform will adopt a tether release once it exists (the motivating consumer).
+- The first downstream platform is expected to adopt a tether release after publication. Its adoption is a product outcome, not a prerequisite for release 0.1.
 - The OpenAI-compatible protocol stays the common ground of the local and self-hosted servers users run; the adapter's conformance matrix finds each server's quirks (SPIKE-002).
 - The proposed performance targets are achievable on the reference workload; the first baseline will show where they are not.
 
@@ -375,7 +375,7 @@ This section records decisions; the rationale is in the ADRs.
 | Per-step commits cost too much latency on the durable store | Medium | Medium | Batch a step's entries into one commit; measure in the benchmarks before 0.1; document the store's durability settings |
 | Local durable startup exceeds the clone-and-try budget | Medium | Medium | Measure the selected JSONL reference profile; optimize startup without silently substituting volatile persistence (ADR-020) |
 | A derived archive hides a gap by returning less than the platform holds | Medium | High | It reports pending, denied, or unavailable and never an empty result; capability flags say partial (ADR-019) |
-| The ports or the provider surface prove too narrow or too wide | Medium | High | Port the first downstream platform's scenarios early; amend the contracts before release |
+| The ports or the provider surface prove too narrow or too wide | Medium | High | Qualify public consumer-shaped scenarios before release; use downstream adoption to identify further contract changes without blocking the already qualified release subset |
 | Resume re-executes a side effect | Medium | High | Tools default to unsafe and are recorded as interrupted, never rerun, unless declared safe; every gate applies again; resume is explicit by default (ADR-010) |
 | Server quirks in the OpenAI-compatible protocol break the default adapter | High | Medium | A conformance matrix from cassettes of local and self-hosted servers on fabricated prompts, live on demand; a quirk table in the adapter; server-specific parameters pass through; qualify the selected Pydantic AI integration and use a custom Model only for a demonstrated adapter gap under ADR-002 |
 | Asynchronous code is blocked by a plain function | Medium | High | Offload plain functions to worker threads; lint rules for blocking calls in `async def` |
@@ -398,4 +398,7 @@ This section records decisions; the rationale is in the ADRs.
 - Every P0 acceptance sketch passes the complete release qualification gate on the selected source commit before tagging. Routine pull-request CI is a subset and does not qualify a release.
 - A developer completes the quickstart with the terminal UI against the demo model, then a real provider, then an optional qualified Postgres journal, changing only configuration; local JSONL sessions remain the reference default.
 - On the declared durable journal/history profile, interruption preserves accepted steps exactly once and explicit resume reports completed, blocked or unknown state without duplicating an unqualified external effect.
-- The first downstream platform replaces its in-house loop with a tether release and keeps its session, policy, and audit behavior.
+
+### Post-release adoption outcome
+
+Adoption by the first downstream platform succeeds when it replaces its in-house loop with a tether release while keeping its session, policy, and audit behavior. This outcome is tracked separately and does not block release 0.1.
