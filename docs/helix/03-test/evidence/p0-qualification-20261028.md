@@ -1,6 +1,6 @@
 # Tether P0 qualification snapshot — 2026-10-28
 
-This receipt applies to source commit `9e28341b23b3214eb10146e9372302796ab486a3` and tree `d013f337d70e0440119da28ef6c98ba8e3415757` on `main`. It records executed local evidence and open gates against [TP-001](../test-plan.md) and [SD-001](../../02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md). **The first-release P0 gate is open.** No stable tag, GitHub release, or PyPI upload is authorized by this receipt.
+The initial snapshot below applies to source commit `9e28341b23b3214eb10146e9372302796ab486a3` and tree `d013f337d70e0440119da28ef6c98ba8e3415757` on `main`. Later sections record subsequent qualification against [TP-001](../test-plan.md) and [SD-001](../../02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md). **The final 2026-10-29 addendum supersedes the historical open-gate disposition for the selected 0.1.0 profiles.** Publication authority came from Erik's explicit release direction, not from this receipt.
 
 ## Executed source and artifact checks
 
@@ -151,3 +151,32 @@ After the README and evidence edits, `uv sync --locked && make check` passed loc
 PyPI publication requires index-compatible dependency metadata. The optional embedded profile now keeps its native wheel as an explicit operator prerequisite, supplied by the checkout's hash-pinned `embedded-binaries` group during qualification; the published extra installs the PostgreSQL driver. Artifact inspection rejects any direct URL in wheel `Requires-Dist`, and a planted direct-reference wheel exercises that refusal. Runtime embedded startup and binary identity remain unchanged.
 
 The selected macOS arm64/Python 3.11.17, local JSONL/PostgreSQL 18 and DS4 text/function-tool subset has passing behavioral evidence for TP-001's sixteen P0 paths. Broader support limitations above are not additional release prerequisites. The remaining release gates are the complete source recipe on the clean final main commit and stable-version artifact checks for base, `openai`, `tui`, combined `tui-openai`, `postgres`, and `embedded-postgres`. After those pass, follow the [deployment checklist](../../05-deploy/deployment-checklist.md) and retain exact source/file identities.
+
+## Final 0.1.0 qualification — 2026-10-29
+
+The annotated `v0.1.0` tag identifies clean main commit `e0996bd2c7d7453752c3441f99c8a68a97bb1043`. The complete canonical recipe passed on **CPython 3.11.17, Debian 12 Linux arm64, non-root**, using the existing local container runtime. All static checks and **1,709 unique cases in 79 bounded groups** passed. Aggregate coverage was **90% with branch measurement enabled**, against the unchanged 85% floor. Test inventory SHA-256: `5b4054f0235663b4b3f63026cc589828513793baa9e7e222819ef10c2ab11d64`; successful full-gate log SHA-256: `806160bbe87844c66eeb86f1b88fceac9669f9b80139dcc3121c53804f25ecb4`. An independent inventory audit matched every accepted group command and case count; no case was dropped or duplicated.
+
+The original 180-second child and 20-second embedded startup limits remained in force. Earlier macOS final-candidate attempts encountered embedded initdb/bootstrap deadline failures; the original failed logs and diagnostic are retained locally and are not counted as passes. The diagnostic located the failure during native bootstrap/startup, without claiming its cause. The full native PostgreSQL, process, fault, lease and worker suites passed in the Linux run. No user model server was restarted and no hosted Actions run or paid service was used.
+
+The tooling-only fix in PR #77 gives each bounded test group a separate temporary directory. Its real subprocess regression also verifies that an unrelated shared pytest temporary root remains untouched and that the existing coverage refusal still works. This fixes accumulated-directory teardown without changing runtime source, test inventory, deadlines, assertions or coverage limits. The runtime source remains byte-identical to merged PR #71, so the earlier DS4 profile evidence applies to this release's runtime.
+
+### Exact stable distributions
+
+| File | SHA-256 |
+|---|---|
+| `novirhiza_tether-0.1.0-py3-none-any.whl` | `df427a4c9660edd8712219c10fd1390134b1fc5b26e3427f72c76ae58adb8fd4` |
+| `novirhiza_tether-0.1.0.tar.gz` | `4b12c1f6a2bf24f419b05fed3de530747a43d8f8584b4a50e5aa336bf5e4fe91` |
+
+The distributions were built once from the annotated tag with uv 0.13.3. An independent source/archive comparison verified every packaged runtime file against Git, plus the source archive's README, package metadata source, lockfile, license files and notice. Strict Twine metadata checks passed. Wheel metadata contains no direct URL requirements; the optional embedded server binary remains an explicit, separately pinned operator prerequisite.
+
+All six exact stable installed profiles passed on macOS arm64/Python 3.11.17: base, `openai`, `tui`, combined `tui-openai`, `postgres`, and `embedded-postgres` with the explicit pinned binary prerequisite. They exercised installed-origin/typing/license metadata, provider SDK isolation, offline Agent/replay, gated execution and durable JSONL Client resume. Selected extras additionally exercised compatible HTTP loopback, PostgreSQL imports, embedded binary discovery, and offline TUI/CLI restart. Both TUI profiles passed real pseudo-terminal checks. These are installed-profile smokes; they do not independently repeat the full SQL fault suite.
+
+Fresh Linux arm64/Python 3.11.17 base and combined `tui-openai` installations of the exact stable wheel also passed the same applicable installed smoke. Base contained zero provider SDKs; combined contained OpenAI only. Its real terminal painted in 0.358 s and replied in 0.255 s in this run. These samples and the earlier fresh-clone timing are evidence for their recorded environments, not general latency guarantees.
+
+### Publication receipt
+
+[GitHub release v0.1.0](https://github.com/DocumentDrivenDX/tether/releases/tag/v0.1.0) is published, immutable, and not a prerelease. Its exact three assets are the wheel, source archive and `release-manifest.json`. Fresh anonymous downloads passed the committed release verifier: every asset digest matched GitHub, and the manifest bound both distribution hashes to the full source commit above. The annotated remote tag resolves to that commit. No artifact-signing claim is made.
+
+PyPI upload and fresh public-index installation are pending the operator's macOS Keychain access prompt. The prepared uploader reads the existing token only into process memory and accepts only the verified release distributions. This pending credential handoff does not reopen source qualification or the removed downstream-adoption prerequisite.
+
+The selected Q0–Q8 P0 source and installed-profile gates pass with the versions, subsets and limitations recorded above. Live DS4 support remains the qualified text/function-tool profile; arbitrary models, native media, universal summary fidelity/framing, OS power-cut durability and live Gateway delivery are unclaimed. First downstream adoption remains post-release. The proposed next consumer contracts in draft PR #76 remain unimplemented pending paragraph acceptance; they add no requirement to this release.
