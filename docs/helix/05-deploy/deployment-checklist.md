@@ -5,7 +5,7 @@ ddx:
   activity: deploy
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-28
+  updated: 2026-10-29
   authoring:
     home: repo
   links:
@@ -22,7 +22,7 @@ ddx:
 ## Release
 
 - **Component**: `novirhiza-tether` distribution; `tether` import.
-- **Release version**: `v0.1.0` is a candidate, not an existing tag or an authorized publication.
+- **Release version**: `v0.1.0` is published as an immutable [GitHub release](https://github.com/DocumentDrivenDX/tether/releases/tag/v0.1.0), at source commit `e0996bd2c7d7453752c3441f99c8a68a97bb1043`. The [final qualification receipt](../03-test/evidence/p0-qualification-20261028.md#final-010-qualification--2026-10-29) records passing source/installed gates and current PyPI status. The recipe below remains the procedure for a future candidate; do not recreate this tag.
 - **Source of truth**: one reviewed main commit, an annotated stable tag at that commit, and one immutable GitHub release holding the exact wheel, source archive, and `release-manifest.json`.
 - **Publication route**: local Python 3.11 qualification and build, then direct PyPI upload. No GitHub Actions release job.
 
@@ -39,7 +39,7 @@ ddx:
 | Gate | Must Pass Before | Check |
 |------|------------------|-------|
 | Full P0 qualification and source identity | tag | `make check CHECK_BASE=HEAD` on the clean selected commit, plus TP-001's required installed and real-profile evidence; verify `git status --porcelain` is empty |
-| Artifact identity | draft release | From the annotated `v0.1.0` tag, `uv build --out-dir "$release_stage/dist"`; run `scripts/check_distribution.py` against the exact directory for base, `openai`, `tui`, `postgres`, and `embedded-postgres`; `verify_release_artifacts.py create-manifest` must bind tag, full commit, package, version, and both file digests |
+| Artifact identity | draft release | From the annotated `v0.1.0` tag, `uv build --no-create-gitignore --out-dir "$release_stage/dist"`; run `scripts/check_distribution.py` against the exact directory for base, `openai`, `tui`, combined `tui-openai`, `postgres`, and `embedded-postgres`; `verify_release_artifacts.py create-manifest` must bind tag, full commit, package, version, and both file digests |
 | GitHub immutability | published release | `gh api repos/DocumentDrivenDX/tether/immutable-releases` returns `enabled: true`; publish the draft only after its three assets match the local manifest |
 | Released asset identity | PyPI upload | Download the published release assets into a fresh directory and run `verify_release_artifacts.py verify-release` with the same tag, commit, repository, and package; upload **those verified wheel and source archive files**, never a rebuild |
 | PyPI result | support claim | Compare PyPI's reported SHA-256 for both files to the manifest, then install the published distribution in a fresh Python 3.11 environment and run the selected smoke journeys |
@@ -61,8 +61,8 @@ release_stage=$(mktemp -d)
 test -z "$(git status --porcelain)"
 make check CHECK_BASE=HEAD
 git tag -a "$release_tag" "$source_commit" -m "Tether $release_tag"
-uv build --out-dir "$release_stage/dist"
-for profile in base openai tui postgres embedded-postgres; do
+uv build --no-create-gitignore --out-dir "$release_stage/dist"
+for profile in base openai tui tui-openai postgres embedded-postgres; do
   if [ "$profile" = base ]; then
     uv run --locked python scripts/check_distribution.py "$release_stage/dist"
   else
@@ -74,6 +74,8 @@ uv run --locked python scripts/verify_release_artifacts.py create-manifest \
   --tag "$release_tag" --repository DocumentDrivenDX/tether \
   --source-commit "$source_commit" --package novirhiza-tether
 ```
+
+The `--no-create-gitignore` build option keeps the staging directory limited to distributions; the strict manifest verifier rejects unrelated files.
 
 Push the tag only after confirming the main branch has no automatic tag or release workflow. Create a draft GitHub release with the three staged assets, inspect its tag and files, then publish it. The following commands continue the same shell session and variables used above:
 
