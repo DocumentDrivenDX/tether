@@ -721,15 +721,6 @@ dependencies = [
 
 [package.optional-dependencies]
 embedded-postgres = [
-    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-macosx_14_0_arm64.whl" }, marker = "python_full_version < '3.12' and platform_machine == 'arm64' and sys_platform == 'darwin'" },
-    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" }, marker = "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
-    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" }, marker = "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-macosx_14_0_arm64.whl" }, marker = "python_full_version == '3.12.*' and platform_machine == 'arm64' and sys_platform == 'darwin'" },
-    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" }, marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
-    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" }, marker = "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-macosx_14_0_arm64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'arm64' and sys_platform == 'darwin'" },
-    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
-    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "psycopg", extra = ["binary", "pool"] },
 ]
 openai = [
@@ -769,20 +760,22 @@ dev = [
     { name = "textual" },
     { name = "tiktoken" },
 ]
+embedded-binaries = [
+    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-macosx_14_0_arm64.whl" }, marker = "python_full_version < '3.12' and platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" }, marker = "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" }, marker = "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-macosx_14_0_arm64.whl" }, marker = "python_full_version == '3.12.*' and platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" }, marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" }, marker = "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-macosx_14_0_arm64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "pgserver-pg18", version = "18.6.1", source = { url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.15.1,<5" },
     { name = "openai", marker = "extra == 'openai'", specifier = "==3.37.0" },
-    { name = "pgserver-pg18", marker = "python_full_version == '3.11.*' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'embedded-postgres'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-macosx_14_0_arm64.whl" },
-    { name = "pgserver-pg18", marker = "python_full_version == '3.12.*' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'embedded-postgres'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-macosx_14_0_arm64.whl" },
-    { name = "pgserver-pg18", marker = "python_full_version == '3.13.*' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'embedded-postgres'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-macosx_14_0_arm64.whl" },
-    { name = "pgserver-pg18", marker = "python_full_version == '3.11.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'embedded-postgres'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" },
-    { name = "pgserver-pg18", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'embedded-postgres'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" },
-    { name = "pgserver-pg18", marker = "python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'embedded-postgres'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" },
-    { name = "pgserver-pg18", marker = "python_full_version == '3.11.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'embedded-postgres'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" },
-    { name = "pgserver-pg18", marker = "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'embedded-postgres'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" },
-    { name = "pgserver-pg18", marker = "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'embedded-postgres'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" },
     { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'embedded-postgres'", specifier = "==3.3.6" },
     { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = "==3.3.6" },
     { name = "pydantic", specifier = "==2.14.1" },
@@ -817,6 +810,17 @@ dev = [
     { name = "ruff", specifier = ">=0.12,<1" },
     { name = "textual", specifier = "==8.2.8" },
     { name = "tiktoken", specifier = "==0.14.0" },
+]
+embedded-binaries = [
+    { name = "pgserver-pg18", marker = "python_full_version == '3.11.*' and platform_machine == 'arm64' and sys_platform == 'darwin'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-macosx_14_0_arm64.whl" },
+    { name = "pgserver-pg18", marker = "python_full_version == '3.12.*' and platform_machine == 'arm64' and sys_platform == 'darwin'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-macosx_14_0_arm64.whl" },
+    { name = "pgserver-pg18", marker = "python_full_version == '3.13.*' and platform_machine == 'arm64' and sys_platform == 'darwin'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-macosx_14_0_arm64.whl" },
+    { name = "pgserver-pg18", marker = "python_full_version == '3.11.*' and platform_machine == 'aarch64' and sys_platform == 'linux'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" },
+    { name = "pgserver-pg18", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" },
+    { name = "pgserver-pg18", marker = "python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" },
+    { name = "pgserver-pg18", marker = "python_full_version == '3.11.*' and platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" },
+    { name = "pgserver-pg18", marker = "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" },
+    { name = "pgserver-pg18", marker = "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" },
 ]
 
 [[package]]

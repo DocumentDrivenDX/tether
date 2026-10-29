@@ -299,7 +299,18 @@ takeover, stale operations and killed-client recovery; paired SQL Agent/Client c
 restart, safe/unsafe resume, manual resolution and archive/restore. A fabricated application-owned
 unprivileged-role RLS profile demonstrates credential refresh and denied-caller refusal. This does
 not qualify arbitrary deployment roles, downstream exactly-once effects or OS power loss.
-Optional `novirhiza-tether[embedded-postgres]` adds the same pinned PostgreSQL18 binaries used by the
+Optional `novirhiza-tether[embedded-postgres]` installs the database driver. The embedded helper also
+requires an operator-installed `pgserver-pg18==18.6.1` binary wheel from the
+[pinned PostgreSQL 18.6 release](https://github.com/DocumentDrivenDX/pgserver/releases/tag/pg18.6-pgv0.8.6-r2).
+From this checkout, `uv sync --locked --extra embedded-postgres --group embedded-binaries`
+installs the platform-matched wheel with the committed hash. For the qualified macOS arm64/Python 3.11 profile,
+install the same prerequisite before using the published distribution:
+
+```sh
+uv pip install 'https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp311-cp311-macosx_14_0_arm64.whl#sha256=fd42f07982693e16478ed42a297890d142d22250116e08887146e690f0dd2649'
+```
+
+The helper uses the same pinned PostgreSQL18 binaries as the
 qualification suite. `EmbeddedPostgres.start(EmbeddedConfig(...))` requires an explicit bootstrap_user,
 absolute data_dir/runtime_dir, startup_seconds/shutdown_seconds/poll_seconds and max_roots. Its
 endpoint supplies Unix socket connection fields; create your own source, run migrations explicitly,
