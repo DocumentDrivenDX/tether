@@ -44,3 +44,15 @@ python docs/capture/capture_local_qwen.py /operator/path/model.json
 ```
 
 Recorded successfully against the already-running DS4 `qwen3.8-flash-next-chat` endpoint with 384 output tokens, 128 KiB response cap and 32,768-token safety margin. `docs/media/qwen-capture-receipt.json` lists the assertions and all three asset hashes. No server restart or hosted inference was used. Model responses are nondeterministic; the assertions must pass before replacing published captures. This selected scenario does not establish general model compatibility or summary fidelity.
+
+### Updating reply area (development source preview)
+
+The TUI streaming regression uses a fabricated paused provider through the real Client feed. Its two captures show one updating Assistant area, then assert that terminal completion clears the provisional widget. The transcript is reconstructed from committed history. These are development-source captures, not the released 0.1.0 interface or live-model inference. The receipt records the exact TUI source hash.
+
+Reproduce from this checkout with its locked development environment:
+
+```sh
+uv run --locked python docs/capture/capture_streaming_reply.py
+```
+
+Assets: `docs/media/streaming-01-partial.svg`, `docs/media/streaming-02-updated.svg`, and `docs/media/streaming-capture-receipt.json`.

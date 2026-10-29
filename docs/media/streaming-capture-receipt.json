@@ -1,0 +1,22 @@
+{
+  "scenario": "in-place provisional reply",
+  "package_version": "0.1.0.post17.dev0+c1cc495",
+  "release_claim": "development source preview; not the 0.1.0 UI",
+  "tui_source_sha256": "8ca7cacbe8936588203c6b3ccad66bd51d361818add5bb7769a4b7ab6d3fc097",
+  "model": "fabricated PausedReply test provider; no external inference",
+  "capture": "Real Textual UI exported between accepted fragments",
+  "assertions": [
+    "one widget accumulates both fragments",
+    "preview clears at terminal"
+  ],
+  "frames": [
+    {
+      "file": "streaming-01-partial.svg",
+      "sha256": "6bf16ae206f1543845b439a2571b4c40d2edf2fee88deed2fb33e17289324ad0"
+    },
+    {
+      "file": "streaming-02-updated.svg",
+      "sha256": "abf00595a2e56d2aa7ed611c396ae3a0f90bad2ea5aca550522347aa541bc61d"
+    }
+  ]
+}
