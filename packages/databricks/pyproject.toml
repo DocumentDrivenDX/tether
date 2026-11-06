@@ -4,16 +4,16 @@ build-backend = "hatchling.build"
 
 [project]
 name = "novirhiza-tether-databricks"
-version = "0.2.0.dev0"
+version = "0.3.0"
 description = "Optional Databricks Apps carrier for Tether web interfaces"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT OR Apache-2.0"
 license-files = ["LICENSE-MIT", "LICENSE-APACHE", "NOTICE"]
 dependencies = [
-  "novirhiza-tether[postgres]==0.2.0.dev0",
-  "novirhiza-tether-web-api==0.2.0.dev0",
-  "novirhiza-tether-web-ui==0.2.0.dev0",
+  "novirhiza-tether[postgres]==0.3.0",
+  "novirhiza-tether-web-api==0.3.0",
+  "novirhiza-tether-web-ui==0.3.0",
 ]
 
 [tool.hatch.build.targets.wheel]

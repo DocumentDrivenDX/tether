@@ -1108,7 +1108,7 @@ wheels = [
 
 [[package]]
 name = "novirhiza-tether"
-version = "0.2.0.dev0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
@@ -1250,7 +1250,7 @@ embedded-binaries = [
 
 [[package]]
 name = "novirhiza-tether-databricks"
-version = "0.2.0.dev0"
+version = "0.3.0"
 source = { editable = "packages/databricks" }
 dependencies = [
     { name = "novirhiza-tether", extra = ["postgres"] },
@@ -1267,7 +1267,7 @@ requires-dist = [
 
 [[package]]
 name = "novirhiza-tether-web-api"
-version = "0.2.0.dev0"
+version = "0.3.0"
 source = { editable = "packages/web-api" }
 dependencies = [
     { name = "fastapi" },
@@ -1282,7 +1282,7 @@ requires-dist = [
 
 [[package]]
 name = "novirhiza-tether-web-ui"
-version = "0.2.0.dev0"
+version = "0.3.0"
 source = { editable = "packages/web-ui" }
 
 [[package]]

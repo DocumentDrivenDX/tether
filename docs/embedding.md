@@ -14,7 +14,7 @@ protocol.
 
 ## Install the core
 
-This guide targets the unreleased `0.2.0.dev0` candidate. Published core `0.2.0`
+This guide targets the `0.3.0` release. Published core `0.2.0`
 has an earlier client facade without `ClientHost`; it cannot replace this
 candidate. Candidate Python interface packages require the exact core cohort.
 In the checkout, `uv sync --frozen` resolves that workspace source. The registry

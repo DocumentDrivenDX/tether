@@ -81,7 +81,7 @@ async def _refuse_published_core(
         text in refusal
         for text in (
             "No solution found",
-            "novirhiza-tether==0.2.0.dev0",
+            "novirhiza-tether==0.3.0",
             "requirements are unsatisfiable",
         )
     ):
