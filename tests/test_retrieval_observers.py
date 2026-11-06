@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from threading import Event, get_ident
+from typing import cast
 
 import pytest
+from selected_profiles_process import await_retained
 from test_client_resume import FreshCredential
 from test_gated_execution import DemoTool, Harness, MutablePolicy
 from test_guarded_tracing import BrokenTracer
@@ -57,6 +59,24 @@ def observers():
 
 def retrievals(sink):
     return [r for r in sink.records if r.kind == "retrieval"]
+
+
+async def await_event_or_owner(event: asyncio.Event, owner: asyncio.Future[object]) -> None:
+    waiter = asyncio.create_task(event.wait())
+    try:
+        done, _ = await asyncio.wait((waiter, owner), return_when=asyncio.FIRST_COMPLETED)
+        if owner in done and waiter not in done:
+            await owner
+            pytest.fail("operation completed before fetch entry")
+        assert waiter.result()
+    finally:
+        await await_retained(asyncio.create_task(settle_waiter(waiter)))
+
+
+async def settle_waiter(waiter: asyncio.Task[bool]) -> None:
+    if not waiter.done():
+        waiter.cancel()
+    await asyncio.gather(waiter, return_exceptions=True)
 
 
 @pytest.mark.parametrize("mode", ["sync", "async", "returned"])
@@ -185,7 +205,7 @@ async def test_nested_async_reads_work_with_one_physical_worker(limits):
     h = Harness(
         limits, tool=Nested(None), audit=sink, tracer=tracer, limits=ExecutionLimits(max_workers=1)
     )
-    assert (await asyncio.wait_for(h.run(), 2)).stop_reason == "final"
+    assert (await h.run()).stop_reason == "final"
     assert await h.engine.aclose()
     rows = retrievals(sink)
     assert len(rows) == 2
@@ -203,7 +223,7 @@ async def test_cancelled_read_wait_does_not_claim_fetch_exit(limits, sync):
 
     def fetch():
         loop.call_soon_threadsafe(entered.set)
-        assert thread_release.wait(3)
+        thread_release.wait()
         return "late result marker"
 
     async def async_fetch():
@@ -217,10 +237,10 @@ async def test_cancelled_read_wait_does_not_claim_fetch_exit(limits, sync):
     h = Harness(limits, tool=tool, audit=sink, tracer=tracer)
     task = asyncio.create_task(h.run())
     try:
-        await asyncio.wait_for(entered.wait(), 1)
+        await await_event_or_owner(entered, cast(asyncio.Future[object], task))
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, 1)
+            await task
         assert h.engine.workers.busy(h.log.session.id)
         span = next(r for r in tracer.records if r.name == "tether.retrieval")
         assert span.finished

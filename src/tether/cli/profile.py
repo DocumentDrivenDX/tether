@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from pathlib import Path
 from typing import Literal
 
 from pydantic import ConfigDict, Field, JsonValue, model_validator
 
-from tether.types import Count, Payload, PositiveInt
-from tether.types.canonical import digest
+from tether.client import Count, Payload, PositiveInt
 
 
 class ReferenceModelProfile(Payload):
@@ -58,7 +59,10 @@ class ReferenceModelProfile(Payload):
             values.pop("identity_mode")
         if self.context_source == "configured":
             values.pop("context_source")
-        return "model:" + self.id + ":" + digest(values)[:16]
+        encoded = json.dumps(
+            values, sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+        ).encode("utf-8")
+        return "model:" + self.id + ":" + hashlib.sha256(encoded).hexdigest()[:16]
 
 
 class FileAuthorization:

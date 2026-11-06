@@ -9,6 +9,7 @@ from contextlib import suppress
 from contextvars import ContextVar
 
 import pytest
+from selected_profiles_process import await_retained
 
 from tether.engine.observers.delivery import AuditDelivery
 from tether.testing.telemetry import ListAuditSink
@@ -23,6 +24,43 @@ def packet(index=0, *, actor="owner", detail=None):
         kind="authorization",
         detail={} if detail is None else detail,
     )
+
+
+async def wait_event_or_owner(event: asyncio.Event, owner: asyncio.Task) -> None:
+    waiter = asyncio.create_task(event.wait())
+    try:
+        done, _ = await asyncio.wait((waiter, owner), return_when=asyncio.FIRST_COMPLETED)
+        if owner in done and waiter not in done:
+            await owner
+            pytest.fail("observation owner completed before its event")
+        assert waiter.result()
+    finally:
+        await await_retained(asyncio.create_task(settle_waiter(waiter)))
+
+
+async def settle_waiter(waiter: asyncio.Task[bool]) -> None:
+    if not waiter.done():
+        waiter.cancel()
+    await asyncio.gather(waiter, return_exceptions=True)
+
+
+async def close_delivery(delivery: AuditDelivery) -> None:
+    await delivery.aclose()
+    await delivery.wait_closed()
+
+
+async def close_delivery_retained(delivery: AuditDelivery) -> None:
+    await await_retained(asyncio.create_task(close_delivery(delivery)))
+
+
+async def settle_closing_and_delivery(
+    delivery: AuditDelivery, closing: asyncio.Task[bool] | None
+) -> None:
+    if closing is not None:
+        if not closing.done():
+            closing.cancel()
+        await asyncio.gather(closing, return_exceptions=True)
+    await close_delivery(delivery)
 
 
 def test_default_disabled_delivery_starts_no_tasks_or_records():
@@ -115,18 +153,22 @@ def test_timeout_keeps_one_physical_delivery_until_actual_exit():
             ),
         )
         delivery.bind()
-        assert delivery.submit(packet(0))
-        await entered.wait()
-        assert delivery.submit(packet(1))
-        assert delivery.submit(packet(2))
-        assert not await delivery.aclose()
-        assert delivery.stats.active
-        assert calls == ["0"]
-        assert delivery.stats.timed_out == 1
-        assert delivery.stats.dropped_closed == 2
-        assert not delivery.submit(packet(3))
-        release.set()
-        await asyncio.wait_for(delivery.wait_closed(), 1)
+        try:
+            assert delivery.submit(packet(0))
+            await asyncio.sleep(0)  # Let the posted admission callback create its runner.
+            assert delivery._runner is not None
+            await wait_event_or_owner(entered, delivery._runner)
+            assert delivery.submit(packet(1))
+            assert delivery.submit(packet(2))
+            assert not await delivery.aclose()
+            assert delivery.stats.active
+            assert calls == ["0"]
+            assert delivery.stats.timed_out == 1
+            assert delivery.stats.dropped_closed == 2
+            assert not delivery.submit(packet(3))
+        finally:
+            release.set()
+            await close_delivery_retained(delivery)
         assert not delivery.stats.active
         assert delivery.stats.pending == 0
         assert calls == ["0"]
@@ -206,17 +248,24 @@ def test_caller_cancellation_seals_and_retains_actual_emission():
 
         delivery = AuditDelivery(Sink(), TelemetryLimits())
         delivery.bind()
-        assert delivery.submit(packet())
-        await entered.wait()
-        closing = asyncio.create_task(delivery.aclose())
-        await asyncio.sleep(0)
-        closing.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await closing
-        assert delivery.stats.sealed
-        assert delivery.stats.active
-        release.set()
-        await asyncio.wait_for(delivery.wait_closed(), 1)
+        closing: asyncio.Task[bool] | None = None
+        try:
+            assert delivery.submit(packet())
+            await asyncio.sleep(0)
+            assert delivery._runner is not None
+            await wait_event_or_owner(entered, delivery._runner)
+            closing = asyncio.create_task(delivery.aclose())
+            await asyncio.sleep(0)
+            closing.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await closing
+            assert delivery.stats.sealed
+            assert delivery.stats.active
+        finally:
+            release.set()
+            await await_retained(
+                asyncio.create_task(settle_closing_and_delivery(delivery, closing))
+            )
 
     asyncio.run(scenario())
 
@@ -255,21 +304,33 @@ def test_loop_retains_abandoned_delivery_until_actual_exit():
             Sink(), TelemetryLimits(delivery_timeout_seconds=0.001, shutdown_timeout_seconds=0.01)
         )
         delivery.bind()
-        assert delivery.submit(packet())
-        await entered.wait()
-        assert not await delivery.aclose()
-        await surviving.wait()
-        for _ in range(10):
-            await asyncio.sleep(0)
         owner = weakref.ref(delivery)
-        del delivery
-        gc.collect()
-        assert owner() is not None
-        released = True
-        waiters[-1]().set_result(None)
-        for _ in range(10):
+        try:
+            assert delivery.submit(packet())
             await asyncio.sleep(0)
-        gc.collect()
-        assert owner() is None
+            assert delivery._runner is not None
+            await wait_event_or_owner(entered, delivery._runner)
+            assert not await delivery.aclose()
+            await surviving.wait()
+            for _ in range(10):
+                await asyncio.sleep(0)
+            del delivery
+            gc.collect()
+            assert owner() is not None
+            released = True
+            waiters[-1]().set_result(None)
+            for _ in range(10):
+                await asyncio.sleep(0)
+            gc.collect()
+            assert owner() is None
+        finally:
+            released = True
+            for waiter_ref in waiters:
+                waiter = waiter_ref()
+                if waiter is not None and not waiter.done():
+                    waiter.set_result(None)
+            retained_delivery = owner()
+            if retained_delivery is not None:
+                await close_delivery_retained(retained_delivery)
 
     asyncio.run(scenario())

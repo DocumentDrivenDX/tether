@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Iterable
-from datetime import UTC
+from datetime import UTC, datetime
 
 from tether.types import Payload
 from tether.types.canonical import canonical, digest
@@ -28,10 +28,19 @@ def position(summary: SessionSummary, query: SessionQuery) -> tuple[str, str]:
     return date.astimezone(UTC).isoformat(), summary.id
 
 
+def _native_position(summary: SessionSummary, query: SessionQuery) -> tuple[datetime, str]:
+    date = summary.updated_at if query.order == "updated_desc" else summary.created_at
+    return date.astimezone(UTC), summary.id
+
+
 def matches(summary: SessionSummary, query: SessionQuery) -> bool:
+    return _matches(summary, query, set(query.tags_all))
+
+
+def _matches(summary: SessionSummary, query: SessionQuery, required_tags: set[str]) -> bool:
     exact = summary.owner == query.owner and (query.ref is None or summary.ref == query.ref)
     selected = query.status is None or summary.status in query.status
-    tagged = set(query.tags_all) <= set(summary.tags)
+    tagged = not required_tags or required_tags <= set(summary.tags)
     dates = (query.updated_after is None or summary.updated_at > query.updated_after) and (
         query.updated_before is None or summary.updated_at < query.updated_before
     )
@@ -73,17 +82,53 @@ def page(
     fingerprint = query_digest(query, tier)
     after = decode_cursor(cursor, fingerprint) if cursor is not None else None
     descending = query.order != "created_asc"
-    selected = sorted(
-        (s for s in values if matches(s, query)),
-        key=lambda s: position(s, query),
-        reverse=descending,
-    )
+    required_tags = set(query.tags_all)
+    selected_values = [summary for summary in values if _matches(summary, query, required_tags)]
+    try:
+        selected = sorted(
+            selected_values,
+            key=lambda summary: _native_position(summary, query),
+            reverse=descending,
+        )
+    except OverflowError:
+        # Preserve the original canonical-string ordering when UTC conversion
+        # cannot represent an extreme local datetime.
+        selected = sorted(
+            selected_values,
+            key=lambda summary: position(summary, query),
+            reverse=descending,
+        )
     if after is not None:
-        selected = [
-            s
-            for s in selected
-            if (position(s, query) < after if descending else position(s, query) > after)
-        ]
+        native_after: tuple[datetime, str] | None = None
+        try:
+            parsed = datetime.fromisoformat(after[0])
+            if parsed.tzinfo is None:
+                raise ValueError("cursor_date")
+            utc_after = parsed.astimezone(UTC)
+            if utc_after.isoformat() == after[0]:
+                native_after = (utc_after, after[1])
+        except (OverflowError, ValueError):
+            pass
+        if native_after is not None:
+            selected = [
+                summary
+                for summary in selected
+                if (
+                    _native_position(summary, query) < native_after
+                    if descending
+                    else _native_position(summary, query) > native_after
+                )
+            ]
+        else:
+            selected = [
+                summary
+                for summary in selected
+                if (
+                    position(summary, query) < after
+                    if descending
+                    else position(summary, query) > after
+                )
+            ]
     items = tuple(s.model_copy(deep=True) for s in selected[:limit])
     next_cursor = None
     if len(selected) > limit:

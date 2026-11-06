@@ -1,0 +1,51 @@
+{
+  "failed_committed_metrics": {
+    "results.entries_100_beginning.p99_ms": {
+      "actual": 2.166792,
+      "baseline_observed": 0.699375,
+      "committed_maximum": 0.8392499999999999
+    },
+    "results.entries_100_end.p99_ms": {
+      "actual": 1.033,
+      "baseline_observed": 0.655042,
+      "committed_maximum": 0.7860504
+    },
+    "results.entries_100_spread.p99_ms": {
+      "actual": 1.30575,
+      "baseline_observed": 0.718666,
+      "committed_maximum": 0.8623992
+    },
+    "results.list_50.p99_ms": {
+      "actual": 12.384667,
+      "baseline_observed": 9.010375,
+      "committed_maximum": 10.81245
+    }
+  },
+  "files": {
+    "apps-ratchet.json": {
+      "bytes": 78452,
+      "sha256": "6a4d5ff3cda111451eae0dcd4cb93b1b51e7b41fbd7709047eb90ca3d038dfe6"
+    },
+    "execution-failed.json": {
+      "bytes": 156663,
+      "sha256": "e12be7eb104246f560f5ad8ae2c4deaaa5b51d50ba2f5060f4ecf9e5def94168"
+    },
+    "store-measurement.json": {
+      "bytes": 82460,
+      "sha256": "6a7c25dd7a6331a070fa15c5122900e6d35d2ca2e222dd277113a786d4bbe8e8"
+    }
+  },
+  "launch_methodology_note": "baseline formal process preimported tether.client; actual shipped CLI launches benchmark_web directly. Import/setup precedes seeding/timing. Causal effect unknown.",
+  "limits": [
+    "Exact failed execution and completed store measurement preserved; no discarded failure or all7promotion.",
+    "Apps2metric actualratchetPASS is partial scope only; remaining5profiles never ran.",
+    "File hashes are source metadata, not retrospective proof of loaded module provenance.",
+    "No host-contention,GC,import-cause or product regression conclusion from this single failure.",
+    "No cap changes, baseline re-establishment or source edits."
+  ],
+  "operator_sha256": "075d86884c8c56dbf068cf3b5795514893599ef6fa6c7059262350121d93b579",
+  "schema_version": 1,
+  "scope": "actual source28 seven-profile CLI stopped at first local-store comparison; Apps comparison passed; remaining5profiles not measured",
+  "source_inventory_canonical_sha256": "db934b15a071e4fb43fe401d7c6589b91989a04ae1819a39f4289cad612d91bf",
+  "status": "failed-independent-regression-attempt"
+}

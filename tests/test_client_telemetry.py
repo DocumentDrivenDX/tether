@@ -2,8 +2,10 @@
 
 import asyncio
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from selected_profiles_process import await_retained
 from test_telemetry_ports import id_factory
 
 from tether import Tether
@@ -79,6 +81,24 @@ async def observed(request, tmp_path, limits, client_limits):
 
 def semantic(h):
     return [r for r in h.sink.records if r.kind in {"session_started", "session_settings"}]
+
+
+async def await_event_or_owners(event: asyncio.Event, *owners: asyncio.Future[object]) -> None:
+    waiter = asyncio.create_task(event.wait())
+    try:
+        done, _ = await asyncio.wait((*owners, waiter), return_when=asyncio.FIRST_COMPLETED)
+        if waiter not in done:
+            await next(owner for owner in owners if owner in done)
+            pytest.fail("operation completed before its client event")
+        assert waiter.result()
+    finally:
+        await await_retained(asyncio.create_task(settle_waiter(waiter)))
+
+
+async def settle_waiter(waiter: asyncio.Task[bool]) -> None:
+    if not waiter.done():
+        waiter.cancel()
+    await asyncio.gather(waiter, return_exceptions=True)
 
 
 async def test_client_create_settings_and_reads_have_exact_private_safe_context(observed):
@@ -373,7 +393,7 @@ async def test_cancelled_final_disclosure_retains_known_semantic_receipt(observe
     monkeypatch.setattr(h.policy, "authorize", policy)
     task = asyncio.create_task(h.client.create(ref="accepted"))
     try:
-        await asyncio.wait_for(entered.wait(), 1)
+        await await_event_or_owners(entered, cast(asyncio.Future[object], task))
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
@@ -418,7 +438,9 @@ async def test_concurrent_current_identities_isolate_policy_mutation(observed, m
         asyncio.create_task(h.app.client(actor).create(ref=actor.principal)) for actor in actors
     ]
     try:
-        await asyncio.wait_for(arrived.wait(), 1)
+        await await_event_or_owners(
+            arrived, *(cast(asyncio.Future[object], task) for task in tasks)
+        )
         release.set()
         made = await asyncio.gather(*tasks)
     finally:
@@ -469,10 +491,13 @@ async def test_client_hung_sink_does_not_hold_mutation_or_root(tmp_path, limits,
     await app.__aenter__()
     try:
         client = app.client(Actor(id="owner"))
-        made = await asyncio.wait_for(client.create(ref="fabricated"), 1)
-        changed = await asyncio.wait_for(client.update(made.id, title="Changed"), 1)
+        made = await client.create(ref="fabricated")
+        changed = await client.update(made.id, title="Changed")
         assert changed.title == "Changed"
-        await asyncio.wait_for(entered.wait(), 1)
+        await asyncio.sleep(0)
+        assert engine.observers.delivery._runner is not None
+        runner = engine.observers.delivery._runner
+        await await_event_or_owners(entered, cast(asyncio.Future[object], runner))
         assert not await app.aclose()
         reopened = await JsonlRoot.open(tmp_path)
         assert await reopened.aclose()
@@ -480,9 +505,9 @@ async def test_client_hung_sink_does_not_hold_mutation_or_root(tmp_path, limits,
         release.set()
         if not app.closed:
             await app.aclose()
-        await asyncio.wait_for(engine.wait_observers_closed(), 1)
+        await engine.wait_observers_closed()
         if app._cleanup is not None:
-            await asyncio.wait_for(app._cleanup, 1)
+            await app._cleanup
         assert app.drained
         assert await root.aclose()
 
@@ -552,7 +577,7 @@ async def test_owner_wide_follow_item_gates_use_exact_session_identity(observed)
     baseline = await h.store.watermark(h.actor.id)
     await h.store.update(made.id, h.actor.id, SessionPatch(title="Changed"))
     async with aclosing(h.client.follow(since=baseline)) as stream:
-        value = await asyncio.wait_for(anext(stream), 1)
+        value = await anext(stream)
         assert value.summary.id == made.id
     assert await h.app.aclose()
     gates = [r for r in h.sink.records if r.kind == "authorization"]

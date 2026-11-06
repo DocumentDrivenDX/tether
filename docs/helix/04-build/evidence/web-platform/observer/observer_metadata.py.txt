@@ -1,0 +1,83 @@
+"""Allowlisted shutdown-report metadata filtering for the private observer."""
+from __future__ import annotations
+
+import json
+import math
+
+_REPORT_NAMES = {"api", "ui", "client_host", "platform_resources", "postgres_resources", "postgres_root", "carrier_lifecycle"}
+_OUTSTANDING_NAMES = {"client_host", "postgres_root", "platform_resources", "api", "ui", "carrier_lifecycle"}
+_WORKER_MARKER = "TETHER_QUALIFICATION_WORKER_STARTED "
+_H2C_MARKER = "TETHER_DIAGNOSTIC_H2C status=passed"
+_RUNTIME_NAMES = {"novirhiza-tether", "novirhiza-tether-web-api", "novirhiza-tether-web-ui", "novirhiza-tether-databricks", "hypercorn", "databricks-sdk", "psycopg", "psycopg-binary"}
+
+
+def _safe_report(payload: str) -> dict[str, object] | None:
+    if len(payload) > 16_384:
+        return None
+    try:
+        value = json.loads(payload)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    complete = value.get("complete")
+    closed = value.get("closed")
+    outstanding = value.get("outstanding")
+    versions = value.get("asgi_http_versions")
+    signal_name = value.get("signal_name")
+    elapsed = value.get("signal_to_report_seconds")
+    budget = value.get("configured_shutdown_seconds")
+    runtime = value.get("runtime")
+    if type(complete) is not bool or signal_name not in {None, "SIGTERM", "SIGINT"}:
+        return None
+    if not isinstance(closed, list) or not isinstance(outstanding, list):
+        return None
+    if len(closed) > 16 or not outstanding or len(outstanding) > 16:
+        return None
+    if (
+        any(not isinstance(item, str) or item not in _REPORT_NAMES for item in closed)
+        or any(not isinstance(item, str) or item not in _OUTSTANDING_NAMES for item in outstanding)
+    ):
+        return None
+    if (
+        not isinstance(versions, list)
+        or not versions
+        or any(not isinstance(item, str) for item in versions)
+        or len(versions) != len(set(versions))
+        or "2" not in versions
+        or any(item not in {"1.1", "2"} for item in versions)
+    ):
+        return None
+    if not _finite_seconds(elapsed) or not _finite_seconds(budget):
+        return None
+    if not isinstance(runtime, dict):
+        return None
+    distributions = runtime.get("distributions")
+    if not isinstance(distributions, dict) or set(distributions) - _RUNTIME_NAMES:
+        return None
+    safe_distributions: dict[str, str | None] = {}
+    for name, version in distributions.items():
+        if version is not None and (not isinstance(version, str) or len(version) > 64):
+            return None
+        safe_distributions[name] = version
+    safe_runtime: dict[str, object] = {"distributions": safe_distributions}
+    for name in ("python", "platform", "architecture"):
+        part = runtime.get(name)
+        if not isinstance(part, str) or len(part) > 64:
+            return None
+        safe_runtime[name] = part
+    return {
+        "complete": complete,
+        "closed": closed,
+        "outstanding": outstanding,
+        "asgi_http_versions": versions,
+        "runtime": safe_runtime,
+        "signal_name": signal_name,
+        "signal_to_report_seconds": elapsed,
+        "configured_shutdown_seconds": budget,
+    }
+
+
+def _finite_seconds(value: object) -> bool:
+    return type(value) in {int, float} and math.isfinite(value) and 0 <= value <= 120
+

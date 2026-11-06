@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "status": "source-archive-only",
+  "scope": "Reviewed generic qualification operators and offline mocked lifecycle controls; no cloud execution or selected-profile qualification claimed.",
+  "files": [
+    {
+      "path": "run_qualification_ram.py.txt",
+      "sha256": "9268d81ae704565c7fb77e2d45f4c8f01901f86cbcf433de7243d29c57bb1937",
+      "bytes": 10120
+    },
+    {
+      "path": "run_managed_processes.py.txt",
+      "sha256": "64408757481287d489592d64f1e60fac797c322937f50abdb5b57cc6a0709f1f",
+      "bytes": 6331
+    },
+    {
+      "path": "offline-lifecycle-controls.json",
+      "sha256": "359621f3a66d5abaa4b410fafac8f32bc8765400def9287cf249344dede6bd33",
+      "bytes": 777
+    }
+  ],
+  "excluded": "Private operator inputs, identity references, settings, account/workspace/deployment identifiers, secret metadata and secret values."
+}

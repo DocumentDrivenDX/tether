@@ -11,6 +11,7 @@ import tokenize
 import tomllib
 from pathlib import Path
 
+from check_file_size import python_files
 from process import run_command
 
 LIMITS = {
@@ -93,8 +94,8 @@ async def check(root: Path, base: str = "HEAD") -> list[str]:
     ]
     if any(disables_shape(x) for x in ignores):
         problems.append("shape rule disabled in linter configuration")
-    for directory in ("src", "scripts", "tests"):
-        for path in (root / directory).rglob("*.py"):
+    for directory in ("src", "scripts", "tests", "packages", "examples"):
+        for path in python_files(root / directory):
             if suppressed(path.read_text(encoding="utf-8")):
                 problems.append(f"{path.relative_to(root)}: shape-rule suppression")
     return problems

@@ -1,0 +1,42 @@
+{
+  "status": "passed",
+  "scope": "offline mocked lifecycle controls; no cloud qualification",
+  "controls": [
+    {
+      "control": "stale-gate",
+      "outcome": "passed"
+    },
+    {
+      "control": "missing-case",
+      "outcome": "passed"
+    },
+    {
+      "control": "normal",
+      "outcome": "passed"
+    },
+    {
+      "control": "managed-failure",
+      "outcome": "passed"
+    },
+    {
+      "control": "collector-failure",
+      "outcome": "passed"
+    },
+    {
+      "control": "caller-interrupt",
+      "outcome": "passed"
+    },
+    {
+      "control": "unknown-create",
+      "outcome": "passed"
+    },
+    {
+      "control": "delete-failure",
+      "outcome": "passed"
+    },
+    {
+      "control": "operator-changed",
+      "outcome": "passed"
+    }
+  ]
+}

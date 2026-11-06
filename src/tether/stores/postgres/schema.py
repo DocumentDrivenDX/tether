@@ -11,6 +11,7 @@ from psycopg.pq import TransactionStatus
 from tether.types.execution import Actor, CommitUnknown, copy_actor
 from tether.types.storage import IntegrityError, StorageLimits, StoreError
 
+from .durability import NATIVE_POSTGRES_PROFILE, PostgresDurabilityProfile
 from .io import PendingIO
 from .profiles import Table, verify_tables
 from .revision2 import DDL as EXECUTION_DDL
@@ -90,12 +91,14 @@ async def inspect(
     schema: str,
     *,
     revision: int = REVISION,
+    durability_profile: PostgresDurabilityProfile = NATIVE_POSTGRES_PROFILE,
 ) -> UUID:
     await verify_tables(connection, schema, BASE_TABLES)
     cursor = await connection.execute(
         sql.SQL(
             "SELECT singleton, namespace, revision, checksum, current_setting('fsync'), "
-            "current_setting('full_page_writes'), current_setting('synchronous_commit') "
+            "current_setting('full_page_writes'), current_setting('synchronous_commit'), "
+            "current_setting('server_version_num') "
             "FROM {}.metadata"
         ).format(sql.Identifier(schema))
     )
@@ -109,8 +112,20 @@ async def inspect(
         or not isinstance(row[1], UUID)
     ):
         raise IntegrityError("database_revision_mismatch")
-    if row[4:] != ("on", "on", "on"):
+    settings = row[4:7]
+    if durability_profile.name == "native" and settings != ("on", "on", "on"):
         raise IntegrityError("unsupported_database_durability")
+    if durability_profile.name == "databricks-lakebase-pg18" and settings != ("off", "off", "on"):
+        raise IntegrityError("unsupported_managed_database_durability")
+    raw_server_version = row[7]
+    if isinstance(raw_server_version, bool) or not isinstance(raw_server_version, (int, str)):
+        raise IntegrityError("unsupported_database_version") from None
+    try:
+        server_version = int(raw_server_version)
+    except ValueError:
+        raise IntegrityError("unsupported_database_version") from None
+    if server_version // 10000 != 18:
+        raise IntegrityError("unsupported_database_version")
     if revision == 2:
         await verify_tables(connection, schema, EXECUTION_TABLES)
     return row[1]
@@ -131,7 +146,10 @@ def upgrade_sql(schema: str) -> tuple[str, ...]:
 
 
 async def _advance(
-    connection: AsyncConnection[tuple[object, ...]], schema: str, target: int
+    connection: AsyncConnection[tuple[object, ...]],
+    schema: str,
+    target: int,
+    durability_profile: PostgresDurabilityProfile,
 ) -> UUID:
     await verify_tables(connection, schema, BASE_TABLES)
     cursor = await connection.execute(
@@ -139,10 +157,10 @@ async def _advance(
     )
     row = await cursor.fetchone()
     if row == (1,) and target == 2:
-        await inspect(connection, schema, revision=1)
+        await inspect(connection, schema, revision=1, durability_profile=durability_profile)
         for statement in upgrade_sql(schema):
             await connection.execute(sql.SQL(cast(LiteralString, statement)))
-    return await inspect(connection, schema, revision=target)
+    return await inspect(connection, schema, revision=target, durability_profile=durability_profile)
 
 
 async def migrate(
@@ -152,7 +170,13 @@ async def migrate(
     schema: str,
     limits: StorageLimits | None = None,
     revision: int = REVISION,
+    durability_profile: PostgresDurabilityProfile = NATIVE_POSTGRES_PROFILE,
 ) -> UUID:
+    if (
+        durability_profile.name != "native"
+        and getattr(source, "durability_profile", None) != durability_profile
+    ):
+        raise IntegrityError("postgres_profile_attestation_mismatch")
     statements = migration_sql(schema, revision=revision)
     lock = int.from_bytes(hashlib.sha256(schema.encode()).digest()[:8], signed=True)
     actor = copy_actor(actor)
@@ -171,7 +195,7 @@ async def migrate(
                     )
                     row = await existing.fetchone()
                     if row is not None and row[0] is not None:
-                        identity = await _advance(connection, schema, revision)
+                        identity = await _advance(connection, schema, revision, durability_profile)
                     else:
                         occupied = await connection.execute(
                             "SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_class c "
@@ -183,7 +207,12 @@ async def migrate(
                             raise IntegrityError("unmanaged_database_schema")
                         for statement in statements:
                             await connection.execute(sql.SQL(cast(LiteralString, statement)))
-                        identity = await inspect(connection, schema, revision=revision)
+                        identity = await inspect(
+                            connection,
+                            schema,
+                            revision=revision,
+                            durability_profile=durability_profile,
+                        )
                     complete = True
             return identity
         except Exception as error:

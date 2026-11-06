@@ -29,6 +29,33 @@ The initial attempted journey approved a pending tool after restarting the offli
 
 Capture these when their specific journeys are qualified: deny a proposal; cancellation/unknown effect and explicit resume; model-profile configuration; summary compaction with retained facts; bounded history/follow in an application UI. These are editorial opportunities, not additional release requirements or accepted next-slice implementation contracts.
 
+### Browser approval, cancellation and restart (development source)
+
+The reference browser application is an unreleased addition. Its real Chromium
+journeys mount both UI and API under `/assistant`, approve an exact fabricated
+tool proposal by keyboard, reload committed history, cancel an accepted turn,
+close its live session, and resume a session after killing and reopening its
+fixture process. The fixture uses the public client host, HTTP API and production
+browser assets with an isolated temporary JSONL store. It makes no live model,
+Databricks, or general storage qualification claim.
+
+From the locked development checkout, reproduce with:
+
+```sh
+.venv/bin/python -m docs.capture.capture_web
+```
+
+For an installed-artifact capture, pass `--installed-python` pointing to a clean
+environment containing the matching built core, API and UI wheels. The capture
+command writes `media/web-journey-receipt.json` only after every journey passes;
+the receipt distinguishes source from installed-wheel execution and records
+source and image digests. `web-approval.png`, `web-conversation.png` and
+`web-mobile.png` are screenshots, not interactive or simulated sessions.
+Desktop and mobile assertions include no horizontal overflow, zero reported axe
+violations, text-only rendering of untrusted markup, and another owner's session
+returning the same refusal as an unknown session. Automated accessibility checks
+qualify the tested states; keyboard approval is exercised separately.
+
 ## Local preview
 
 From the repository root: `python3 -m http.server 4327 --bind 127.0.0.1 --directory docs`

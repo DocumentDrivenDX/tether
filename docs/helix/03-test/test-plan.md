@@ -33,6 +33,129 @@ ddx:
 
 **Out of scope**: Globally exactly-once remote effects, hostile in-process Python containment, unqualified model/server profiles, and operating-system-crash simulation in ordinary continuous integration. P1 target-specific reconciliation requires separate adapter evidence.
 
+## Functional time and coordination policy
+
+The owner's 2026-11-02 instruction is to let functional tests be slow and to
+separate performance qualification onto known hardware without confounding
+concurrent work. Audit Python, TypeScript, installed, browser and accessibility
+test paths for `timeout`, `wait_for`, sleeps, elapsed assertions and implicit
+framework limits before changing them. Classify each use by the behavior it
+proves; a blanket removal or larger constant does not satisfy this policy.
+When waiting for an entered/ready barrier, also observe the operation task's
+terminal state. If it completes or fails before the expected barrier, surface
+that result or an explicit protocol failure instead of waiting forever for an
+event it can no longer emit. Preserve task ownership and caller cancellation;
+use a cohesive state-wait helper where repeated tests need this coordination.
+This is a state transition check, not a replacement elapsed-time budget.
+
+| Timing use | Functional verification |
+|---|---|
+| Readiness, import, rendering, first output or ordinary completion | Await observable state, exact event, acknowledgment or EOF; use controlled barriers to arrange races. No startup-speed or response-speed pass criterion. |
+| Configured deadline, retry budget, heartbeat or credential validity | Control the relevant clock for mechanism tests; assert admitted/refused work, deadline propagation and state transitions rather than a tight elapsed window. |
+| Natural lease/token expiry in a selected integration profile | Keep genuine expiry and independent expired/fresh-state controls. Assert takeover, fencing or authorization facts; elapsed time alone is insufficient. |
+| Cancellation and physical worker/process ownership | Hold and release a real worker through barriers; assert retained ownership and exact eventual exit/drain through repeated cancellation. |
+| Necessary emergency hang protection | Declare an operator watchdog separately from behavior. Exhaustion leaves the gate incomplete with retained cleanup and last-state evidence; it never establishes a product latency failure or successful behavior. |
+| Workload latency, throughput, CPU or memory measurement | Explicit opt-in performance path under PRD NFR-7 admission; exclude real benchmark measurement from ordinary functional aggregates. |
+
+The grouped runner's inventory, group-size bounds, failure propagation and 85%
+branch-coverage floor remain required. Review its existing child watchdog under
+the policy above; do not hide missing cases with skips, collection filters or a
+lower coverage floor. Ordinary checks retain synthetic benchmark schema,
+ratchet-rejection and process-cleanup controls that prove logic without taking
+reference-workload measurements. Record excluded measurement nodes in the
+explicit performance inventory so test allocation remains complete.
+If pytest lanes are introduced, require an exhaustive, disjoint node inventory
+whose union equals the complete collection and whose entries name their lane.
+Do not use an unexplained global marker filter. Replace default measurement
+workloads with deterministic harness/math/schema/negative controls or tiny
+untimed correctness fixtures, retaining the unchanged global branch floor over
+scripts and all packages. Performance-only execution cannot conceal untested
+measurement or cleanup branches from the functional coverage gate.
+
+### Grouped-runner emergency containment
+
+For the runner-remediation phase, select a configurable 30-minute per-child
+emergency default as an operator resource-containment choice. This is not a
+measured functional requirement or a derived performance budget. An explicit
+operator override may change or disable it when another identified supervisor
+owns containment. Keep the existing group-size and inventory bounds. Apply the
+choice deliberately to functional suite children; do not silently widen every
+generic tooling or product deadline.
+
+The child owner must retain spawn, group termination, leader reaping and stream
+drain through repeated cancellation. Watchdog exhaustion records incomplete
+execution and a nonzero acceptance result after cleanup is confirmed, or an
+explicit unconfirmed-cleanup outcome if it cannot be proved. Preserve complete
+observed prior-group outcomes and identify pending nodes. A partial or malformed
+current JUnit file cannot supply invented passing results. Receipt producers and
+strict consumers must distinguish incomplete infrastructure from actual
+assertion failure; both prevent qualification. Fabricated held-child and
+descendant-pipe controls prove this path without waiting 30 minutes.
+
+Choose subprocess ownership explicitly at each job boundary. Functional suite
+children may own a retained process group; benchmark children nested beneath an
+existing supervisor must inherit its known group or register with that owner.
+Changing a generic launcher to create new sessions by default would let nested
+children escape their supervisor's hard-kill cleanup. Preserve existing caller
+ownership until deliberately migrated, with a small typed mode or explicit
+keyword and focused lifecycle reuse. Shared tooling must not depend on private
+temporary operator files. Controls cover both independent-group ownership and
+nested inherited ownership, using exact child/descendant state barriers.
+
+### Phase C implementation contract
+
+Keep tooling `Result.returncode` an integer for completed commands only.
+Emergency exhaustion, unresolved cleanup or interrupted dispatch must raise a
+typed incomplete exception with closed reason/phase metadata; they must never
+return a missing exit code or a zero-like success. Cancellation propagates only
+after owned cleanup has settled, with incomplete evidence written by the suite
+owner. Do not persist arbitrary exception text, argv, process identities or
+captured output as incomplete-reason metadata.
+
+Keep generic subprocess ownership unchanged by default. Add an explicit owned
+group option for the suite-job boundary and preserve inherited ownership for
+existing nested benchmark callers. A nested caller must not signal its shared
+parent group or claim its absence; the named outer supervisor owns that group.
+Retain the spawn future through cancellation, then retain cleanup before
+releasing the job boundary. Completed inherited calls establish their own child
+and stream result, not termination of their supervisor's whole group.
+
+Expose the suite emergency budget explicitly at the tooling composition root,
+defaulting to 1,800 seconds per child. Validate finite positive overrides;
+disabling it requires an explicit externally supervised mode. Collection and
+coverage commands also receive deliberate containment choices, never inferred
+product latency limits. The normal suite still collects every node under its
+configured roots and runs every node exactly once in the existing groups.
+
+Receipt status is `passed` only after complete trusted inventory, exact complete
+JUnit outcomes for every group, all required cases passed, stable source and the
+unchanged aggregate branch-coverage gate. A genuine assertion failure remains
+`failed`. An exhausted watchdog, canceled/incomplete command, missing or malformed
+report or incomplete group is `incomplete`; required skips cannot qualify.
+Retain only prior complete, validated group results when the current report is
+partial or malformed. Derive pending nodes from the trusted inventory; if
+collection itself was incomplete, say the inventory is incomplete rather than
+inventing pending cases. Acceptance remains nonzero for either failed or
+incomplete evidence.
+
+Pass the exact Python evidence path explicitly from the aggregate composition
+root through `quality.check`/`run_suite`, using a unique path when standalone.
+The aggregate producer and strict consumers must join its hash, source identity,
+status and complete outcomes before publishing or accepting `python-quality`
+as passed. A zero return code alone or a newer unrelated temporary receipt is
+insufficient. Include changed AGENTS.md policy bytes in the source29 inventory;
+old source28 inventories and receipts retain their original identity.
+
+Focused controls cover omitted/zero-like incomplete results; dispatch failure
+before a child exists; cancellation during spawn and cleanup; inherited versus
+owned groups; real exact-owned descendant cleanup; watchdog triggering after a
+held-state barrier; prior valid group followed by malformed/partial JUnit;
+incomplete collection; missing/duplicate nodes; unsafe generated IDs; skipped
+required cases; source/policy changes; 85% coverage rejection; and aggregate
+refusal of incomplete or mismatched Python evidence. Inject watchdog exhaustion
+deterministically; no short elapsed-speed assertions, 30-minute test waits,
+reference measurement or live service calls are needed.
+
 ## Selected Agent Qualification
 
 ADR-003 selects Pydantic AI Agent; ADR-002 selects model integration reuse. Test the production Tether integration on that runner, not an owned-loop alternative. The base includes pydantic-ai-slim; foundation-model SDKs remain selected optional extras. Public Tether payloads remain free of SDK types. SPIKE-004's 28 integration tests, three independent regressions and five process exits are bounded baseline evidence, not full release conformance.
@@ -76,7 +199,7 @@ Required P0 release capabilities pass their applicable gates before support is c
 7. **Context state exploration** (FR-35/45/49): cut every position in generated tool-group histories; each original is retained, summarized or explicitly omitted, never silently lost. Crash before summary commit, after summary commit, after context-use commit and before provider response. Changed redaction, profile, spec or scope invalidates summary reuse. A malicious summary response with a tool call is never dispatched.
 8. **Client reconnect** (FR-17 to FR-20/48): race snapshot with entry append, pending approval and answer; bootstrap reads through the returned head and follows after the atomic watermark. Same-commit events are all consumed. Retention loss restarts bootstrap; lag/outage/reconnect clears provisional attempts. A slow subscriber cannot stall another subscriber or the turn.
 9. **Telemetry and packaging** (FR-22/23/25/28/31/32/36): content-free metadata across success/failure/context paths, deterministic fabricated cassette replay, clean core install with no foundation-model provider SDK closure, source import boundaries and license texts. Reused upstream code retains its notices.
-10. **Reference journeys** (FR-29/30/33): zero-network/credential local JSONL reference profile with explicit fabricated model limits/estimator, plus an explicit volatile in-memory demo with `resume="off"`; terminal approval and context exhaustion are readable; an installed durable-store journey resumes with live identity. Quickstart and client performance use the PRD's proposed budgets until replaced by measurements.
+10. **Reference journeys** (FR-29/30/33): zero-network/credential local JSONL reference profile with explicit fabricated model limits/estimator, plus an explicit volatile in-memory demo with `resume="off"`; terminal approval and context exhaustion are readable; an installed durable-store journey resumes with live identity. Quickstart correctness asserts usable states and actions. Client and startup performance use the PRD NFR-7 definitions only in separate admitted performance qualification.
 
 11. **History and local sessions** (FR-50 to FR-53): JSONL content plus journal reopen accepted sessions, preserve ordering/digests and rebuild corrupted indexes; a second writer is refused. Inject torn records, failed content-before-ref writes, failed/unknown journal acknowledgment and orphan records. Hot snapshots/lists never scan content.
 12. **External source correlation/coverage** (FR-52/53; Gateway delivery is P1 FR-51): distinct session/turn/call/attempt ids before egress, dedicated request tags, separate header/body/provider invocation ids, bounded caller-scoped reads and no identity fallback. Inject delayed/missing/partial/duplicate/multi-invocation/ambiguous rows. The UI exposes holes; restart never guesses an effect. A controlled source double exercises generic P0 behavior; a separate live fabricated profile proof qualifies an actual Gateway source join at P1.

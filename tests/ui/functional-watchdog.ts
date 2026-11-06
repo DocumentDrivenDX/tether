@@ -1,0 +1,1 @@
+export const MAX_FUNCTIONAL_WATCHDOG_MS = 2_147_483_647;

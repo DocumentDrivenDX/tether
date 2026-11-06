@@ -5,6 +5,7 @@ from contextlib import suppress
 from threading import get_ident
 
 import pytest
+from selected_profiles_process import await_retained
 from test_gated_execution import Harness
 from test_retrieval_observers import ReadTool, observers
 
@@ -177,15 +178,20 @@ async def test_abandoned_hook_wait_retains_actual_operation(limits, times_out):
         limits=ExecutionLimits(hook_timeout_seconds=0.02 if times_out else 2),
     )
     task = asyncio.create_task(h.run())
+    entered_waiter = asyncio.create_task(entered.wait())
     try:
-        await asyncio.wait_for(entered.wait(), 1)
+        done, _ = await asyncio.wait((entered_waiter, task), return_when=asyncio.FIRST_COMPLETED)
+        if task in done:
+            await task
+            pytest.fail("provider hook operation completed before entry")
+        assert entered_waiter.result()
         if times_out:
-            result = await asyncio.wait_for(task, 1)
+            result = await task
             assert result.stop_reason == "model_denied"
         else:
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await asyncio.wait_for(task, 1)
+                await task
         assert h.engine.workers.busy(h.log.session.id)
         span = next(
             r
@@ -196,11 +202,18 @@ async def test_abandoned_hook_wait_retains_actual_operation(limits, times_out):
         assert span.finished
         assert span.error_reason == ("failed" if times_out else "cancelled")
     finally:
+        await await_retained(asyncio.create_task(settle_entry_waiter(entered_waiter)))
         release.set()
         await asyncio.gather(*tuple(h.engine.workers.active), return_exceptions=True)
         assert await h.engine.aclose()
     row = next(r for r in hooks(sink) if r.detail["method"] == "before_request")
     assert row.detail["outcome"] == ("raised" if times_out else "cancelled")
+
+
+async def settle_entry_waiter(waiter: asyncio.Task[bool]) -> None:
+    if not waiter.done():
+        waiter.cancel()
+    await asyncio.gather(waiter, return_exceptions=True)
 
 
 async def test_no_observer_constructs_no_step_identity_or_packet(limits, monkeypatch):

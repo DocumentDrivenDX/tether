@@ -60,7 +60,8 @@ class Followers:
         self, owner: str, identity: AttemptIdentity, offset: int, text: str
     ) -> None:
         key = (owner, identity.session_id, identity.turn_id)
-        self.active.setdefault(key, {})[identity.attempt_id] = identity.model_copy(deep=True)
+        active_identity = identity.model_copy(deep=True)
+        self.active.setdefault(key, {})[identity.attempt_id] = active_identity
         event = ReplyText(
             session_id=identity.session_id,
             turn_id=identity.turn_id,
@@ -68,13 +69,21 @@ class Followers:
             offset=offset,
             text=text,
         )
-        for (candidate_owner, selected), buffers in tuple(self.live.items()):
-            if candidate_owner != owner or (
-                selected is not None and selected != identity.session_id
-            ):
+        targets = tuple(
+            (candidate_owner, selected, buffer)
+            for (candidate_owner, selected), buffers in tuple(self.live.items())
+            if candidate_owner == owner and (selected is None or selected == identity.session_id)
+            for buffer in tuple(buffers)
+        )
+        for index, (candidate_owner, selected, buffer) in enumerate(targets, start=1):
+            if index > 1 and (index - 1) % 32 == 0:
+                await asyncio.sleep(0)
+                current = self.active.get(key, {}).get(identity.attempt_id)
+                if current is not active_identity:
+                    return
+            if buffer not in self.live.get((candidate_owner, selected), ()):
                 continue
-            for buffer in tuple(buffers):
-                buffer.put(event)
+            buffer.put(event)
 
     def finish_live(
         self,
@@ -95,6 +104,7 @@ class Followers:
                 continue
             for buffer in tuple(buffers):
                 buffer.finish(identity, reason)
+                buffer.retire(identity)
 
     def _subscribe(self, owner: str, session_id: str | None, buffer: LiveBuffer) -> None:
         self.live.setdefault((owner, session_id), set()).add(buffer)
@@ -261,7 +271,11 @@ class LiveBuffer:
         self.closed = False
 
     def put(self, value: ReplyText) -> None:
-        if self.closed or value.attempt_id in self.blocked | self.closed_attempts:
+        if (
+            self.closed
+            or value.attempt_id in self.blocked
+            or value.attempt_id in self.closed_attempts
+        ):
             return
         if len(canonical(value.model_dump(mode="json"))) > self.max_event_bytes:
             self._lose(value.attempt_id)
@@ -338,6 +352,11 @@ class LiveBuffer:
             self.reset(identity, reason)
         if self.values:
             self.ready.set()
+
+    def retire(self, identity: AttemptIdentity) -> None:
+        """Forget suppression markers after the engine seals this attempt's publisher."""
+        self.blocked.discard(identity.attempt_id)
+        self.closed_attempts.discard(identity.attempt_id)
 
     async def get(self) -> ReplyText | ReplyReset | Lagged:
         if self.missed_before and self.missed:

@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 from test_reference_model_profile import write_profile
+from textual.pilot import Pilot
 from textual.widgets import Button, Input, RichLog
+from tui_event_waits import (
+    let_pilot_screen_wait_use_outer_owner,
+    observe_session_shows,
+    wait_for_state_or_operation,
+)
 
 from tether.cli import demo, web_tools
 from tether.context.testing import fabricated_context
@@ -22,6 +30,11 @@ pytestmark = pytest.mark.anyio
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def pilot_screen_watchdog(monkeypatch):
+    let_pilot_screen_wait_use_outer_owner(monkeypatch)
 
 
 @pytest.fixture
@@ -86,29 +99,110 @@ def common_profile(tmp_path, monkeypatch):
     return config, seen_urls, calls
 
 
+async def _approve_common_tool(
+    app: DemoApp,
+    pilot: Pilot,
+    shown: asyncio.Event,
+    follower: asyncio.Task[None],
+    name: str,
+    arguments: dict[str, Any],
+) -> None:
+    async def pending_visible() -> bool:
+        assert app.client is not None
+        assert app.session_id is not None
+        pending = await app.client.pending(app.session_id)
+        lines = "\n".join(str(line) for line in app.query_one("#transcript", RichLog).lines)
+        return (
+            pending is not None
+            and pending.tool == name
+            and pending.arguments == arguments
+            and not app.query_one("#approve", Button).disabled
+            and name in lines
+        )
+
+    await wait_for_state_or_operation(shown, pending_visible, follower)
+    await pilot._wait_for_screen()
+    assert app.client is not None
+    assert app.session_id is not None
+    pending = await app.client.pending(app.session_id)
+    assert pending is not None
+    assert pending.tool == name
+    assert pending.arguments == arguments
+    assert not app.query_one("#approve", Button).disabled
+    assert name in "\n".join(str(line) for line in app.query_one("#transcript", RichLog).lines)
+    await pilot.click("#approve")
+
+
+async def _history_contains_message(client: Any, session_id: str, expected: str) -> bool:
+    start = 0
+    while True:
+        page = await client.history(session_id, start=start)
+        if any(
+            slot.value.record
+            and slot.value.record.message
+            and slot.value.record.message.content == expected
+            for slot in page.items
+        ):
+            return True
+        if page.next_start is None:
+            return False
+        if page.next_start <= start:
+            raise AssertionError("history_page_did_not_advance")
+        start = page.next_start
+
+
+async def _wait_for_final_common_tool_turn(
+    app: DemoApp,
+    pilot: Pilot,
+    shown: asyncio.Event,
+    follower: asyncio.Task[None],
+    client: Any,
+    session_id: str,
+    seedling: Path,
+) -> None:
+    async def final_state_visible() -> bool:
+        view = await client.get(session_id)
+        transcript = "\n".join(str(line) for line in app.query_one("#transcript", RichLog).lines)
+        final_message = "All fabricated tools completed."
+        history_has_final = await _history_contains_message(client, session_id, final_message)
+        file_exists = await asyncio.to_thread(seedling.is_file)
+        return (
+            await client.pending(session_id) is None
+            and app.query_one("#approve", Button).disabled
+            and file_exists
+            and view.summary.status == "idle"
+            and history_has_final
+            and final_message in transcript
+        )
+
+    await wait_for_state_or_operation(shown, final_state_visible, follower)
+    await pilot._wait_for_screen()
+    assert await asyncio.to_thread(seedling.read_text) == "fabricated seedling"
+    assert await client.pending(session_id) is None
+    assert app.query_one("#approve", Button).disabled
+
+
 async def test_all_common_tools_through_tui_approval(tmp_path, common_profile):
     config, seen_urls, calls = common_profile
     app = DemoApp(tmp_path / "journal", model_config=config)
-    async with asyncio.timeout(30), app.run_test() as pilot:
+    shown = observe_session_shows(app)
+    async with app.run_test() as pilot:
         assert app.client is not None
         assert app.session_id is not None
+        client = app.client
+        session_id = app.session_id
+        follower = app._follower
+        assert follower is not None
         app.query_one("#message", Input).value = "Exercise the fabricated common tools"
         await pilot.click("#send")
-        await pilot.pause()
-        assert not (tmp_path / "seedling.txt").exists()
-        for name, arguments in calls:
-            pending = await app.client.pending(app.session_id)
-            assert pending is not None
-            assert pending.tool == name
-            assert pending.arguments == arguments
-            assert not app.query_one("#approve", Button).disabled
-            lines = "\n".join(str(line) for line in app.query_one("#transcript", RichLog).lines)
-            assert name in lines
-            await pilot.click("#approve")
-            await pilot.pause()
-        assert (tmp_path / "seedling.txt").read_text() == "fabricated seedling"
-        assert await app.client.pending(app.session_id) is None
-        assert app.query_one("#approve", Button).disabled
+        for index, (name, arguments) in enumerate(calls):
+            if index == 0:
+                assert not (tmp_path / "seedling.txt").exists()
+            await _approve_common_tool(app, pilot, shown, follower, name, arguments)
+
+        await _wait_for_final_common_tool_turn(
+            app, pilot, shown, follower, client, session_id, tmp_path / "seedling.txt"
+        )
         assert len(seen_urls) == 2
         assert "q=fabricated+seedling" in seen_urls[0]
         assert seen_urls[1] == "https://example.org/seedling"

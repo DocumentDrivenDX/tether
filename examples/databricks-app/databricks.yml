@@ -1,0 +1,9 @@
+bundle:
+  name: tether-carrier-example
+
+resources:
+  apps:
+    tether_carrier_example:
+      name: tether-carrier-example
+      source_code_path: .
+

@@ -1,0 +1,25 @@
+{
+  "name": "@tether/client",
+  "version": "0.2.0-dev.0",
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "styles",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "NOTICE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  },
+  "peerDependencies": {}
+}

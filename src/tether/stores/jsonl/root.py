@@ -183,6 +183,16 @@ class JsonlRoot:
         self._finalize_close()
         return True
 
+    async def wait_closed(self) -> bool:
+        """Wait for initiated physical closure without owning the admitted futures."""
+        self._check_loop()
+        if not self._closed:
+            raise RuntimeError("jsonl_root_not_closing")
+        while active := self._active | set(self.workers.active):
+            await asyncio.wait(active)
+        self._finalize_close()
+        return True
+
     def _finalize_close(self) -> None:
         if self._lock_fd is not None:
             os.close(self._lock_fd)

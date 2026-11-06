@@ -1,0 +1,28 @@
+{
+  "collected_case_count": 2407,
+  "evidence_kind": "sanitized-historical-summary",
+  "failed_case_names": [
+    "tests/test_public_host_ownership.py::test_borrowed_view_close_preserves_other_client_and_accepted_work"
+  ],
+  "limits": [
+    "No alias is presented as an executed node ID.",
+    "This summary cannot satisfy a current acceptance or exact-test receipt gate.",
+    "Historical aggregate hashes continue to identify the original private bytes, not this summary."
+  ],
+  "observed_outcome_counts": {
+    "failed": 1,
+    "passed": 1708
+  },
+  "original_exit_code": 1,
+  "original_filename": "full15-python.json",
+  "original_recorded_at": "2026-10-31T19:22:38.413360+00:00",
+  "original_sha256": "3db5d63bd83ddc59fcd3c3da0e6acf297a198af50224c419d28b0183769500e7",
+  "original_status": "failed",
+  "qualification_status": "historical only; not exact node-pass proof or current release evidence",
+  "sanitization": "Original receipt retained privately byte-for-byte. Runtime-generated invalid-URL parameter IDs contained fabricated credential-shaped userinfo; exact IDs and per-node results are omitted instead of renamed.",
+  "schema_version": 1,
+  "source_inventory_entries": 642,
+  "source_inventory_map_sha256": "54d33aff42ba4fa6259284a862b6d3b5bd92e2062195e7787dc0cb1330e2569c",
+  "source_stable": true,
+  "summarized_at": "2026-10-31T19:49:19.171841+00:00"
+}

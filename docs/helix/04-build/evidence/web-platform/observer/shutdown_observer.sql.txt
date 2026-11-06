@@ -1,0 +1,38 @@
+-- Operator-only provisioning. Substitute placeholders locally in the approved
+-- dedicated diagnostic schema; this file is never called by app startup.
+CREATE TABLE {{diagnostic_schema}}.shutdown_observer (
+    invocation_id text PRIMARY KEY CHECK (invocation_id ~ '^[A-Za-z0-9_-]{1,128}$'),
+    process_uuid char(32) NOT NULL CHECK (process_uuid ~ '^[0-9a-f]{32}$'),
+    base_candidate_sha256 char(64) NOT NULL,
+    app_source_sha256 char(64) NOT NULL,
+    databricks_wheel_sha256 char(64) NOT NULL,
+    loaded_composition_sha256 char(64) NOT NULL,
+    observer_sha256 char(64) NOT NULL,
+    probe_sha256 char(64) NOT NULL,
+    report jsonb NOT NULL,
+    report_print_returned boolean NOT NULL,
+    main_returned boolean NOT NULL,
+    signal_to_main_return_seconds double precision,
+    h2c_completed_before_signal boolean NOT NULL,
+    transport jsonb NOT NULL,
+    overlay_snapshot_sha256 char(64) NOT NULL,
+    statement_started_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+    inserted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CHECK (base_candidate_sha256 ~ '^[0-9a-f]{64}$'),
+    CHECK (app_source_sha256 ~ '^[0-9a-f]{64}$'),
+    CHECK (databricks_wheel_sha256 ~ '^[0-9a-f]{64}$'),
+    CHECK (loaded_composition_sha256 ~ '^[0-9a-f]{64}$'),
+    CHECK (observer_sha256 ~ '^[0-9a-f]{64}$'),
+    CHECK (probe_sha256 ~ '^[0-9a-f]{64}$'),
+    CHECK (overlay_snapshot_sha256 ~ '^[0-9a-f]{64}$'),
+    CHECK (
+        signal_to_main_return_seconds IS NULL
+        OR signal_to_main_return_seconds BETWEEN 0 AND 120
+    ),
+    CHECK (inserted_at >= statement_started_at)
+);
+REVOKE ALL ON {{diagnostic_schema}}.shutdown_observer FROM PUBLIC;
+GRANT USAGE ON SCHEMA {{diagnostic_schema}} TO {{infrastructure_database_role}};
+GRANT INSERT ON {{diagnostic_schema}}.shutdown_observer TO {{infrastructure_database_role}};
+GRANT USAGE ON SCHEMA {{diagnostic_schema}} TO {{observer_reader_database_role}};
+GRANT SELECT ON {{diagnostic_schema}}.shutdown_observer TO {{observer_reader_database_role}};

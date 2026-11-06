@@ -1,0 +1,58 @@
+{
+  "abort_reason": "readiness_not_reached_within_1800s",
+  "actual_benchmark_child_started": false,
+  "actual_measured_profiles": [],
+  "bindings": {
+    "baseline_unchanged": true,
+    "execution_plan_sha256": "46d7a27e04275bc9049bbfbf5e96d36b7599a8460d27acaa81c7cdea929c81e6",
+    "fabricated_controls_receipt_sha256": "8e7e6d0474e7db5b451e0bb88108371241691c5012741b17c93d2ddd67928ee4",
+    "owner_sha256": "e462c466a36361c1fea5a22a599412d3359d5f8a54b0a270962519684fbf8899",
+    "pre_and_post_full_inventory_match": true,
+    "source_inventory_canonical_sha256": "db934b15a071e4fb43fe401d7c6589b91989a04ae1819a39f4289cad612d91bf",
+    "source_inventory_files": 701,
+    "store_baseline_sha256": "fa4254c486b779c4fab953be78981cc51b8a3fae2b75d51da0b4eff1a58310b9"
+  },
+  "files": {
+    "condition-samples.jsonl": {
+      "bytes": 47645,
+      "sha256": "7a9eea071d71bcd974989d20a8d5bac7b4c609c921e4711e17049fed9a8f5350"
+    },
+    "execution-summary.json": {
+      "bytes": 3700,
+      "sha256": "d666d7024841fcb5bccee9d9207230f694f810ce030fc17defa9e60a7a3a92e0"
+    }
+  },
+  "intended_profile": "store",
+  "limits": [
+    "This is DEFER, not a performance PASS or a completed metric FAIL.",
+    "All previous actual CLI failures remain retained and authoritative; readiness samples cannot explain their earlier timings.",
+    "Sampled conditions are not continuous-state proof or restoration of unrecorded baseline conditions.",
+    "Full source inventory was checked before and after only; minute samples checked small bound files/runtime, not all product source files.",
+    "Thermal and low-power values remain unknown where unsupported.",
+    "The18,000-second benchmark deadline was never armed because no benchmark was started.",
+    "Performance acceptance, all-seven comparison, task/criterion closure and deployment/publication remain pending.",
+    "No automatic rerun, readiness extension, cap adjustment, rebaseline or all-seven follow-on is authorized by this evidence."
+  ],
+  "measurement_exists": false,
+  "qualification_exists": false,
+  "raw_receipt_field_limit": "profiles_observed=[store] identifies the selected intended profile in the executed owner; under defer it does not establish any actual store observation. Raw receipt bytes are preserved unchanged.",
+  "readiness": {
+    "all_sample_loads_known": true,
+    "all_sample_power_ac": true,
+    "all_sample_small_bindings_match": true,
+    "configured_maximum_seconds": 1800,
+    "exact_total_owner_elapsed_seconds": "not recorded in raw execution summary; do not substitute last sample elapsed for total runtime",
+    "first_sample_at_utc": "2026-11-02T18:12:03.760185+00:00",
+    "first_sample_elapsed_seconds": 0.035,
+    "last_sample_at_utc": "2026-11-02T18:41:03.783023+00:00",
+    "last_sample_elapsed_seconds": 1740.032,
+    "load_averages_1_5_15_each_at_most": 5.0,
+    "quiet_sample_count": 0,
+    "required_consecutive_quiet_samples": 3,
+    "sample_count": 30,
+    "sample_indices_exact_0_through_29": true
+  },
+  "schema_version": 1,
+  "scope": "Actual bounded readiness observation only; no performance measurement or comparison occurred.",
+  "status": "deferred_no_workload_started"
+}

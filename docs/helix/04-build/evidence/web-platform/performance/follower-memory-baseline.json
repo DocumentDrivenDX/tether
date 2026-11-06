@@ -1,0 +1,101 @@
+{
+  "identity": {
+    "measurements.aggregate_1000_followers.ready_followers": 1000,
+    "measurements.aggregate_1000_followers.registered_followers": 1000,
+    "measurements.causal_occupancy.coalesced_live": {
+      "distinct_attempts": 1,
+      "events": 1,
+      "later_delta_chunks": 32,
+      "text_bytes": 32767,
+      "total_model_text_bytes": 32768
+    },
+    "measurements.causal_occupancy.live_buffer": {
+      "capacity": 32,
+      "occupancy": 32
+    },
+    "measurements.causal_occupancy.persisted_queue": {
+      "capacity": 32,
+      "changes_enqueued_after_one_consumed": 32,
+      "journal_commits_preseeded_before_baseline": 35,
+      "occupancy": 32,
+      "overflow_probe_pending_before_snapshot": true
+    },
+    "measurements.event_text_bytes.coalesced_buffered_per_sample.max_bytes": 32767,
+    "measurements.event_text_bytes.coalesced_buffered_per_sample.min_bytes": 32767,
+    "measurements.event_text_bytes.coalesced_buffered_per_sample.sample_count": 100,
+    "measurements.event_text_bytes.live_buffer_max_per_sample.max_bytes": 760,
+    "measurements.event_text_bytes.live_buffer_max_per_sample.min_bytes": 760,
+    "measurements.event_text_bytes.live_buffer_max_per_sample.sample_count": 100,
+    "measurements.serialized_event_payload_bytes.coalesced_event_per_sample.sample_count": 100,
+    "measurements.serialized_event_payload_bytes.live_buffer_max_per_sample.sample_count": 100,
+    "measurements.single_follower_coalesced_live_event_python_growth_bytes.sample_count": 100,
+    "measurements.single_follower_empty_active_persisted_queue_current_python_bytes.sample_count": 100,
+    "measurements.single_follower_full_live_buffer_python_growth_bytes.sample_count": 100,
+    "measurements.single_follower_full_persisted_queue_python_growth_bytes.sample_count": 100,
+    "versions": {
+      "architecture": "arm64",
+      "platform": "Darwin",
+      "python": "3.11.17"
+    },
+    "workload": {
+      "aggregate_followers": 1000,
+      "coalesced_buffered_text_bytes": 32767,
+      "coalesced_response_limit_bytes": 65536,
+      "coalesced_total_model_text_bytes": 32768,
+      "event_text_bytes": 760,
+      "held_turns": 32,
+      "live_buffer_capacity": 32,
+      "max_active_turns": 32,
+      "max_read_bytes": 1048576,
+      "overflow_active_turns": 32,
+      "persisted_queue_capacity": 32,
+      "queue_size": 32,
+      "single_follower_trials": 100
+    }
+  },
+  "metrics": {
+    "measurements.aggregate_1000_followers.python_retained_growth_bytes": {
+      "maximum": 22450275.599999998,
+      "observed": 18708563.0
+    },
+    "measurements.aggregate_1000_followers.whole_process_peak_rss_after_bytes": {
+      "maximum": 194032435.2,
+      "observed": 161693696.0
+    },
+    "measurements.single_follower_coalesced_live_event_python_growth_bytes.max_bytes": {
+      "maximum": 1106126.4,
+      "observed": 921772.0
+    },
+    "measurements.single_follower_coalesced_live_event_python_growth_bytes.p99_bytes": {
+      "maximum": 1106126.4,
+      "observed": 921772.0
+    },
+    "measurements.single_follower_empty_active_persisted_queue_current_python_bytes.max_bytes": {
+      "maximum": 25744.8,
+      "observed": 21454.0
+    },
+    "measurements.single_follower_empty_active_persisted_queue_current_python_bytes.p99_bytes": {
+      "maximum": 23916.0,
+      "observed": 19930.0
+    },
+    "measurements.single_follower_full_live_buffer_python_growth_bytes.max_bytes": {
+      "maximum": 1704660.0,
+      "observed": 1420550.0
+    },
+    "measurements.single_follower_full_live_buffer_python_growth_bytes.p99_bytes": {
+      "maximum": 1681207.2,
+      "observed": 1401006.0
+    },
+    "measurements.single_follower_full_persisted_queue_python_growth_bytes.max_bytes": {
+      "maximum": 173288.4,
+      "observed": 144407.0
+    },
+    "measurements.single_follower_full_persisted_queue_python_growth_bytes.p99_bytes": {
+      "maximum": 173223.6,
+      "observed": 144353.0
+    }
+  },
+  "profile": "public-follower-retained-python",
+  "receipt_sha256": "72566a777f6d0d2a483eab79ede1aebb3470085c7ffb96abc411b4e5f342e816",
+  "tolerance": 1.2
+}

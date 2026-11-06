@@ -1,0 +1,34 @@
+{
+  "apps_ratchet_partial_sha256": "6a4d5ff3cda111451eae0dcd4cb93b1b51e7b41fbd7709047eb90ca3d038dfe6",
+  "baseline_files_unchanged": true,
+  "baseline_sha256_after": {
+    "apps": "1810306b2c8f6fdf625e6d0cde58b219f8d65cb22568089c2cdfd42a5325a00e",
+    "client": "383f557530711f44be1e9cd8f377fb9b754c3e4c58cc52610ba5065b63efb633",
+    "engine": "edfa3544ab377f4de5c3ef81340bfc69aff11d9d84b8e8fc6b322b16d6608946",
+    "follower-memory": "af3d25909abd9fdf093dc9c7d9d2122f0fe0f298c85cc91eea0a3e2df2b2ac97",
+    "memory-store": "67888969d42de21c1aa4185b87e39ab3d47abda3a683ba3401c680cf64bae1d1",
+    "store": "fa4254c486b779c4fab953be78981cc51b8a3fae2b75d51da0b4eff1a58310b9",
+    "volatile-client": "bdc379f0efa53ada8ad94c07ac71cb8ff5c1efdf5629c3614e6a05a7dfce39d9"
+  },
+  "baseline_sha256_before": {
+    "apps": "1810306b2c8f6fdf625e6d0cde58b219f8d65cb22568089c2cdfd42a5325a00e",
+    "client": "383f557530711f44be1e9cd8f377fb9b754c3e4c58cc52610ba5065b63efb633",
+    "engine": "edfa3544ab377f4de5c3ef81340bfc69aff11d9d84b8e8fc6b322b16d6608946",
+    "follower-memory": "af3d25909abd9fdf093dc9c7d9d2122f0fe0f298c85cc91eea0a3e2df2b2ac97",
+    "memory-store": "67888969d42de21c1aa4185b87e39ab3d47abda3a683ba3401c680cf64bae1d1",
+    "store": "fa4254c486b779c4fab953be78981cc51b8a3fae2b75d51da0b4eff1a58310b9",
+    "volatile-client": "bdc379f0efa53ada8ad94c07ac71cb8ff5c1efdf5629c3614e6a05a7dfce39d9"
+  },
+  "checked_at": "2026-11-02T16:49:47.650101+00:00",
+  "failed_execution_sha256": "e12be7eb104246f560f5ad8ae2c4deaaa5b51d50ba2f5060f4ecf9e5def94168",
+  "first_failed_store_measurement_sha256": "6a7c25dd7a6331a070fa15c5122900e6d35d2ca2e222dd277113a786d4bbe8e8",
+  "limits": [
+    "Apps2metric pass is partial scope only; overall7profile attempt01 failed and5localprofiles didnotrun.",
+    "Same frozen Apps observation may be input to the one later authorized repeat; no second Apps measurement claimed.",
+    "Current source/baseline file checks do not retrospectively prove past loadedmodule provenance or explain timing tails."
+  ],
+  "schema_version": 1,
+  "scope": "failed actual attempt01 precommand baseline hashes vs currentpostfailure unchanged files; no rerun of measurement",
+  "source_inventory_canonical_sha256": "db934b15a071e4fb43fe401d7c6589b91989a04ae1819a39f4289cad612d91bf",
+  "status": "verified-readonly"
+}

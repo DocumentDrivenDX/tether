@@ -11,6 +11,7 @@ from tether.types.execution import Actor, CommitUnknown, copy_actor
 from tether.types.lifetime import WorkerLifetime
 from tether.types.storage import IntegrityError, StorageLimits, StoreError
 
+from .durability import NATIVE_POSTGRES_PROFILE, PostgresDurabilityProfile
 from .io import PendingIO
 from .namespace import Namespace, RootWorkers, acquire
 from .schema import idle, inspect, qualified
@@ -19,10 +20,27 @@ from .source import ConnectionSource as ConnectionSource
 T = TypeVar("T")
 
 
+def _verify_profile_source(
+    source: ConnectionSource,
+    durability_profile: PostgresDurabilityProfile,
+) -> None:
+    if durability_profile.name == "native":
+        return
+    if getattr(source, "durability_profile", None) != durability_profile:
+        raise IntegrityError("postgres_profile_attestation_mismatch")
+
+
 class DatabaseRoot:
-    def __init__(self, source: ConnectionSource, schema: str, limits: StorageLimits) -> None:
+    def __init__(
+        self,
+        source: ConnectionSource,
+        schema: str,
+        limits: StorageLimits,
+        durability_profile: PostgresDurabilityProfile,
+    ) -> None:
         qualified(schema)
         self.source, self.schema, self.limits = source, schema, limits.model_copy(deep=True)
+        self.durability_profile = durability_profile
         self._namespace: Namespace | None = None
         self._workers: RootWorkers | None = None
         self._io = PendingIO(self.limits, self._release)
@@ -35,14 +53,18 @@ class DatabaseRoot:
         actor: Actor,
         schema: str,
         limits: StorageLimits | None = None,
+        durability_profile: PostgresDurabilityProfile = NATIVE_POSTGRES_PROFILE,
     ) -> Self:
-        root = cls(source, schema, limits or StorageLimits())
+        _verify_profile_source(source, durability_profile)
+        root = cls(source, schema, limits or StorageLimits(), durability_profile)
 
         async def bootstrap() -> None:
             async with source(copy_actor(actor), None) as connection:
                 idle(connection)
                 async with connection.transaction():
-                    identity = await inspect(connection, schema)
+                    identity = await inspect(
+                        connection, schema, durability_profile=durability_profile
+                    )
             root._namespace = acquire(identity, root)
             root._workers = RootWorkers(root._namespace.workers)
 
@@ -82,7 +104,11 @@ class DatabaseRoot:
             async with self.source(copy_actor(actor), session_id) as connection:
                 idle(connection)
                 async with connection.transaction():
-                    identity = await inspect(connection, self.schema)
+                    identity = await inspect(
+                        connection,
+                        self.schema,
+                        durability_profile=self.durability_profile,
+                    )
                     if self._namespace is None or identity != self._namespace.identity:
                         raise IntegrityError("database_namespace_mismatch")
                     result = await operation(connection)
@@ -126,6 +152,18 @@ class DatabaseRoot:
     def _release(self) -> None:
         if self._io.closed and not self._io.active and self._namespace is not None:
             self._namespace.release(self)
+
+    async def wait_closed(self) -> bool:
+        """Await admitted I/O and actual workers; cancelling this wait owns neither."""
+        self.check_loop()
+        if not self._io.closed:
+            raise RuntimeError("database_root_not_closing")
+        while active := set(self._io.active) | set(self.workers.active):
+            # asyncio.wait never cancels the supplied futures when its waiter is
+            # cancelled. Other roots may share workers, so recheck after each drain.
+            await asyncio.wait(active)
+        self._release()
+        return True
 
     async def aclose(self) -> bool:
         self.check_loop()

@@ -1,0 +1,45 @@
+{
+  "actual_attempt04_operator_sha256": "13b36ed8dcf6655553e238c7739ae18c80ff450a66af9b216f6fae04dfb9344a",
+  "files": {
+    "contextual-policy-controls27.json": {
+      "bytes": 916,
+      "sha256": "70f3129d67728e9f73326f6a8d9d5c2e9276775130f2e66009c905d935fd0b0b"
+    },
+    "contextual_policy_controls27.py.txt": {
+      "bytes": 15529,
+      "sha256": "6e714f927956567dfc0fef3d0e33fd0f11b201023ffac64108f175c4c0365459"
+    },
+    "run_qualification_ram_contextual27.py.txt": {
+      "bytes": 15517,
+      "sha256": "13b36ed8dcf6655553e238c7739ae18c80ff450a66af9b216f6fae04dfb9344a"
+    }
+  },
+  "limits": [
+    "No selected-case or manual acceptance pass from archive or control success.",
+    "Initial, expired/no prior or opaque hint, host, child protocol and different errors are not translated.",
+    "No secrets, operator input references, lifecycle secret IDs, URLs or private identity metadata are archived here."
+  ],
+  "managed_operator_sha256": "64408757481287d489592d64f1e60fac797c322937f50abdb5b57cc6a0709f1f",
+  "policy": {
+    "assertions": "unchanged fresh mint, exact /Me identity active and protected200; AC6 real expiry controls unchanged",
+    "classification": "conditional typed signal to existing restore loop; not proof of transient cause",
+    "credential_source": "injected-factory",
+    "eligibility": [
+      "prior successful fresh mint",
+      "prior unsigned JWT expiry hint still future",
+      "unchanged config hash, host, clientID and secret"
+    ],
+    "failure_match": {
+      "exact_args": [
+        "identity_credential_rejected"
+      ],
+      "exact_type": "RuntimeError"
+    },
+    "freshness": "always call original producer; never return cached bearer after failure; server may return identical token text",
+    "retry_owner": "unchanged fresh_workspace_access90second absolute deadline,2second pauses,minremaining30seconds; no new retry loop",
+    "scope": "explicit injected RAM CredentialFactory; same producer/secret/profile/host/clientID with config hash before/after",
+    "unmatched_errors": "propagate unchanged; cancellation direct before post-check"
+  },
+  "schema_version": 1,
+  "status": "source-and-offline-controls-only; actual attempt04 pending"
+}

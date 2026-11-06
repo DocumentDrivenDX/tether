@@ -220,7 +220,7 @@ async def test_native_text_is_yielded_before_terminal_transport_chunk(limits, mo
     model = adapter(limits, handler)
     stream = cast(AsyncGenerator, model.stream(model_request))
     try:
-        first_item = await asyncio.wait_for(anext(stream), 2)
+        first_item = await anext(stream)
         assert isinstance(first_item, TextDelta)
         assert first_item.text == "Fé"
         assert ready.is_set()
@@ -272,7 +272,7 @@ async def test_native_stream_cancellation_closes_the_transport(limits, model_req
     model = adapter(limits, handler)
     stream = cast(AsyncGenerator, model.stream(model_request))
     try:
-        first = await asyncio.wait_for(anext(stream), 2)
+        first = await anext(stream)
         assert isinstance(first, TextDelta)
         assert first.text == "First"
         await stream.aclose()

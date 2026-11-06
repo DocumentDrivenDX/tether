@@ -1,0 +1,22 @@
+{
+  "limits": [
+    "Existing source27 baseline caps unchanged; no re-establishment or standalone fabricated comparison.",
+    "Actual7CLI parent16320 owns independent comparison; no all-profile pass before terminal receipt.",
+    "100 real opens/list50 on exact deployment/export, persistent sequentialHTTP2/preacquiredRAM; unknown managedserver hardware.",
+    "No largecatalog/serverCPU/coldstart/SLA or selected identity acceptance inference."
+  ],
+  "measurement": {
+    "bytes": 79088,
+    "file": "apps-measurement.json",
+    "sha256": "e893043a333e7729dffb7ca9ee7da702e96841d0d9eb7d4b807cc35b6277f885"
+  },
+  "operator": {
+    "path": "docs/helix/04-build/evidence/web-platform/apps-performance/run_apps_performance27_fixed.py.txt",
+    "provenance": "reviewed boundedEOF fix; source-only archive; actual measurement evidence is the separate receipt",
+    "sha256": "a5bf66c9ebb768b58f8daca446eb5e39e4250c2f8a0a361b3693e808f592ac9e"
+  },
+  "schema_version": 1,
+  "scope": "fresh current source28 external Apps observation only; all7 actual regression CLI still running",
+  "source_inventory_canonical_sha256": "db934b15a071e4fb43fe401d7c6589b91989a04ae1819a39f4289cad612d91bf",
+  "status": "single-completed-observation; seven-profile comparison pending"
+}

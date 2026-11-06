@@ -8,8 +8,10 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from threading import Event, get_ident
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from selected_profiles_process import await_retained
 from test_engine_telemetry import make_engine, spec
 from test_gated_execution import DemoTool, final, proposal
 from test_guarded_tracing import BrokenTracer
@@ -17,6 +19,7 @@ from test_resume_engine import interrupted
 from test_resume_engine import recovery as recovery
 from test_telemetry_ports import id_factory
 
+from tether.engine.observers.delivery import AuditDelivery
 from tether.engine.observers.facade import Observers
 from tether.engine.observers.metadata import Scope
 from tether.engine.workers import Workers
@@ -50,6 +53,38 @@ def phases(sink):
     return {r.kind.removeprefix("x.executor."): r for r in sink.records}
 
 
+async def await_event_or_owner(event: asyncio.Event, owner: asyncio.Future[object]) -> None:
+    waiter = asyncio.create_task(event.wait())
+    try:
+        done, _ = await asyncio.wait((waiter, owner), return_when=asyncio.FIRST_COMPLETED)
+        if owner in done and waiter not in done:
+            await owner
+            pytest.fail("operation completed before its worker event")
+        assert waiter.result()
+    finally:
+        await await_retained(asyncio.create_task(settle_waiter(waiter)))
+
+
+async def settle_waiter(waiter: asyncio.Task[bool]) -> None:
+    if not waiter.done():
+        waiter.cancel()
+    await asyncio.gather(waiter, return_exceptions=True)
+
+
+async def settle_worker_delivery(
+    caller: asyncio.Future[object],
+    workers: Workers,
+    release: asyncio.Event,
+    sink_release: asyncio.Event,
+    delivery: AuditDelivery,
+) -> None:
+    release.set()
+    sink_release.set()
+    await asyncio.gather(caller, *tuple(workers.active), return_exceptions=True)
+    await delivery.aclose()
+    await delivery.wait_closed()
+
+
 @pytest.mark.parametrize("synchronous", [True, False])
 async def test_actual_body_parent_context_and_copied_metadata(synchronous):
     sink, tracer = ListAuditSink(capacity=32), RecordingTracer(id_factory(), capacity=32)
@@ -78,7 +113,7 @@ async def test_actual_body_parent_context_and_copied_metadata(synchronous):
         )
         assert tracer.current_ids() == parent.ids
     assert await workers.close(1)
-    assert await observers.delivery.aclose(deadline=asyncio.get_running_loop().time() + 1)
+    assert await observers.delivery.aclose()
     rows = phases(sink)
     assert set(rows) == {"entered", "exited", "completed"}
     assert rows["exited"].detail["outcome"] == "returned"
@@ -119,7 +154,7 @@ async def test_abandoned_wait_and_late_body_exit_are_distinct(synchronous, fail)
 
     def sync_body():
         loop.call_soon_threadsafe(entered.set)
-        assert thread_release.wait(2)
+        thread_release.wait()
         if fail:
             raise ValueError("late exception content marker")
         return "late result content marker"
@@ -139,10 +174,10 @@ async def test_abandoned_wait_and_late_body_exit_are_distinct(synchronous, fail)
         )
     )
     try:
-        await entered.wait()
+        await await_event_or_owner(entered, cast(asyncio.Future[object], caller))
         caller.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(caller, 0.5)
+            await caller
         assert workers.busy("session")
         assert_abandoned_span_lifetime(tracer)
         assert not await workers.close(0.01)
@@ -151,7 +186,7 @@ async def test_abandoned_wait_and_late_body_exit_are_distinct(synchronous, fail)
         thread_release.set()
         await asyncio.gather(*tuple(workers.active), return_exceptions=True)
         assert await workers.close(1)
-        assert await observers.delivery.aclose(deadline=loop.time() + 1)
+        assert await observers.delivery.aclose()
     rows = phases(sink)
     assert set(rows) == {"entered", "outstanding", "exited", "completed"}
     assert rows["outstanding"].detail["waiter_abandoned"] is True
@@ -176,7 +211,7 @@ async def test_raw_exit_precedes_returned_live_awaitable_completion():
         workers.call("session", lambda: returned, observe=observation(observers))
     )
     try:
-        await entered.wait()
+        await await_event_or_owner(entered, cast(asyncio.Future[object], caller))
         # One loop rendezvous settles the raw executor callbacks, not the child.
         raw_exited = asyncio.Event()
 
@@ -196,7 +231,7 @@ async def test_raw_exit_precedes_returned_live_awaitable_completion():
         release.set()
         assert await caller == "fabricated"
         assert await workers.close(1)
-        assert await observers.delivery.aclose(deadline=asyncio.get_running_loop().time() + 1)
+        assert await observers.delivery.aclose()
     rows = phases(sink)
     assert rows["exited"].detail["returned_awaitable"] is True
     assert rows["completed"].detail["returned_awaitable"] is True
@@ -209,7 +244,7 @@ async def test_refused_admission_and_queued_cancel_never_claim_body_entry(monkey
     loop = asyncio.get_running_loop()
     pool = ThreadPoolExecutor(max_workers=1)
     barrier = Event()
-    occupied = pool.submit(barrier.wait, 2)
+    occupied = pool.submit(barrier.wait)
     original = loop.run_in_executor
     monkeypatch.setattr(
         loop, "run_in_executor", lambda executor, function, *args: original(pool, function, *args)
@@ -234,7 +269,7 @@ async def test_refused_admission_and_queued_cancel_never_claim_body_entry(monkey
         await asyncio.to_thread(pool.shutdown)
         assert occupied.done()
         assert await workers.close(1)
-        assert await observers.delivery.aclose(deadline=loop.time() + 1)
+        assert await observers.delivery.aclose()
     assert not called
     assert "entered" not in phases(sink)
     assert "exited" not in phases(sink)
@@ -387,7 +422,7 @@ async def test_late_exit_after_observer_seal_is_counted_and_cannot_hold_root(tmp
 
     caller = asyncio.create_task(workers.call("session", child, observe=observation(observers)))
     try:
-        await entered.wait()
+        await await_event_or_owner(entered, cast(asyncio.Future[object], caller))
         caller.cancel()
         with pytest.raises(asyncio.CancelledError):
             await caller
@@ -493,24 +528,41 @@ async def test_worker_exit_releases_root_while_observational_sink_is_still_runni
         return "fabricated"
 
     caller = asyncio.create_task(workers.call("session", child, observe=observation(observers)))
+    root_closed = False
     try:
-        await entered.wait()
-        await emitting.wait()
+        owner = cast(asyncio.Future[object], caller)
+        await await_event_or_owner(entered, owner)
+        if observers.delivery._runner is None:
+            await asyncio.sleep(0)
+        assert observers.delivery._runner is not None
+        await await_event_or_owner(
+            emitting, cast(asyncio.Future[object], observers.delivery._runner)
+        )
         caller.cancel()
         with pytest.raises(asyncio.CancelledError):
             await caller
         release.set()
         await asyncio.gather(*tuple(workers.active), return_exceptions=True)
         assert await root.aclose()
+        root_closed = True
         assert not await observers.delivery.aclose()
         assert observers.delivery.stats.active
         replacement = await JsonlRoot.open(tmp_path)
         assert await replacement.aclose()
     finally:
-        release.set()
-        sink_release.set()
-        await asyncio.wait_for(observers.delivery.wait_closed(), 1)
-        assert await root.aclose()
+        await await_retained(
+            asyncio.create_task(
+                settle_worker_delivery(
+                    cast(asyncio.Future[object], caller),
+                    workers,
+                    release,
+                    sink_release,
+                    observers.delivery,
+                )
+            )
+        )
+        if not root_closed:
+            assert await root.aclose()
 
 
 async def test_async_task_cancelled_before_entry_makes_no_body_claim(monkeypatch):
@@ -551,8 +603,12 @@ async def test_submission_failure_is_completion_without_physical_entry(monkeypat
         raise RuntimeError("submission content marker")
 
     monkeypatch.setattr(asyncio.get_running_loop(), "run_in_executor", refuse)
+    entered = asyncio.Event()
+    caller = asyncio.create_task(
+        workers.call("session", lambda: "fabricated", observe=observation(observers))
+    )
     with pytest.raises(RuntimeError, match="submission content marker"):
-        await workers.call("session", lambda: "fabricated", observe=observation(observers))
+        await await_event_or_owner(entered, cast(asyncio.Future[object], caller))
     assert await workers.close(1)
     assert await observers.delivery.aclose()
     rows = phases(sink)

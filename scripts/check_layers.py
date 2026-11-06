@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from boundaries.checker import check_tree
+from boundaries.debt import load_debt
 
 
 def main() -> int:
@@ -11,6 +12,9 @@ def main() -> int:
         print(problem)
     if not problems:
         print("Layer boundaries: pass")
+        count = sum(map(len, load_debt(Path.cwd()).values()))
+        if count:
+            print(f"Recorded WP-10 migration exceptions: {count}; release gate requires zero")
     return bool(problems)
 
 

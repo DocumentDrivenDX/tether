@@ -23,6 +23,31 @@ names exact versions, workloads, boundary refusals and process-fault evidence. A
 operating systems, Python versions, model servers, native media/reasoning, Gateway joins
 and the OpenTelemetry exporter require separate qualification.
 
+## Embeddable web interfaces (unreleased)
+
+The public `tether.client` boundary now supplies typed protocols, explicit
+`ClientHost` construction and ownership, journal-backed turn results and targeted
+cancellation. The terminal UI, HTTP API and Databricks carrier consume that
+boundary. Sharing the same server and durable storage lets browser and remote
+terminal clients view and operate the same authorized sessions.
+
+Optional components are separate artifacts in this repository:
+
+| Component | Python distribution or npm package |
+|---|---|
+| HTTP API with injected authentication and client provider | `novirhiza-tether-web-api` |
+| Static browser assets and ASGI host | `novirhiza-tether-web-ui` |
+| Databricks Apps composition | `novirhiza-tether-databricks` |
+| Framework-free browser transport | `@tether/client` |
+| Injected React hooks and replaceable components | `@tether/react`, `@tether/ui` |
+
+These development artifacts are not published releases. Their source, installed
+consumer, real browser and live platform evidence is tracked in the
+[implementation plan](docs/helix/04-build/web-platform-implementation-plan.md).
+The platform-neutral browser journey uses fabricated model/tool data. Databricks
+Apps and Lakebase qualification remains separately recorded; local proof does
+not qualify a hosted profile.
+
 ## Offline reference client
 
 From a clone, `uv run --frozen --python 3.11 --no-dev --extra tui tether` starts a

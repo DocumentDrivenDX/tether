@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "source_count": 697,
+  "source_sha256": "d89c61ab673ac9506ae26ee1dc4d31ba09bfd6442a9bc97d1be6d777cc3309b3",
+  "ledger_sha256": "541899a1b6c82caa972605b8ad8bd3bc1e4f81b1c1e3394600458c038b8f41eb",
+  "verified_profiles": [
+    "store",
+    "memory-store",
+    "client",
+    "volatile-client",
+    "engine",
+    "follower-memory"
+  ],
+  "scope": "root receipt integrity review; no target adoption or regression claim"
+}

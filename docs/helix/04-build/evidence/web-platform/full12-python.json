@@ -1,0 +1,25 @@
+{
+  "collected_case_count": 2292,
+  "evidence_kind": "sanitized-historical-summary",
+  "failed_case_names": [],
+  "limits": [
+    "No alias is presented as an executed node ID.",
+    "This summary cannot satisfy a current acceptance or exact-test receipt gate.",
+    "Historical aggregate hashes continue to identify the original private bytes, not this summary."
+  ],
+  "observed_outcome_counts": {
+    "passed": 2292
+  },
+  "original_exit_code": 0,
+  "original_filename": "full12-python.json",
+  "original_recorded_at": "2026-10-31T17:23:17.116725+00:00",
+  "original_sha256": "9ceda347cff029ffd30aff62385bf228349263839703edcc081d0cfaf3dde0f0",
+  "original_status": "passed",
+  "qualification_status": "historical only; not exact node-pass proof or current release evidence",
+  "sanitization": "Original receipt retained privately byte-for-byte. Runtime-generated invalid-URL parameter IDs contained fabricated credential-shaped userinfo; exact IDs and per-node results are omitted instead of renamed.",
+  "schema_version": 1,
+  "source_inventory_entries": 629,
+  "source_inventory_map_sha256": "5ba3c0d2ec09374bee62bdbf3665fb5c938d333c695e89af2d5935b2d5a80fd5",
+  "source_stable": true,
+  "summarized_at": "2026-10-31T19:49:19.164656+00:00"
+}

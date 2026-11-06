@@ -19,3 +19,13 @@ build/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+
+# Optional web packages and verification output
+node_modules/
+.vite/
+coverage/
+playwright-report/
+test-results/
+artifacts/
+*.tsbuildinfo
+packages/web-ui/src/tether_web_ui/assets/

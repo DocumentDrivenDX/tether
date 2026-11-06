@@ -38,6 +38,25 @@ class SessionReads:
         self.feed: dict[str, list[PersistedChange]] = {}
         self.lock = asyncio.Lock()
         self._failed = False
+        self._change_event = asyncio.Event()
+
+    def _wake_change_readers(self) -> None:
+        """Rotate and signal the current generation while publishing under lock."""
+        previous = self._change_event
+        self._change_event = asyncio.Event()
+        previous.set()
+
+    def _mark_failed(self) -> None:
+        if not self._failed:
+            self._failed = True
+            self._wake_change_readers()
+
+    async def _wait_for_change(self, event: asyncio.Event) -> None:
+        try:
+            async with asyncio.timeout(self.files.limits.change_poll_seconds):
+                await event.wait()
+        except TimeoutError:
+            pass
 
     def _check_loop(self) -> None:
         if asyncio.get_running_loop() is not self._loop:
@@ -185,9 +204,10 @@ class SessionReads:
                 batch = tuple(c for c in retained if c.seq > position)[
                     : self.files.limits.page_limit
                 ]
+                wake = None if batch else self._change_event
             for change in batch:
                 position = change.seq
                 if session_id is None or change.session_id == session_id:
                     yield change.model_copy(deep=True)
-            if not batch:
-                await asyncio.sleep(self.files.limits.change_poll_seconds)
+            if not batch and wake is not None:
+                await self._wait_for_change(wake)

@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: proposed
   owner: Erik LaBianca
-  updated: 2026-10-22
+  updated: 2026-10-29
   authoring:
     home: repo
   links:
@@ -29,7 +29,7 @@ A user interface needs three things from a harness: a list of sessions, the cont
 
 ## Decision
 
-We will expose the session list and session data to a UI through one in-process, asynchronous Python API, the client API, built from summary/page reads, an atomic reconnect snapshot, a feed, and commands. The library contains no HTTP, WebSocket, or server-sent-events surface; a server is an adapter written over this API.
+We will expose the session list and session data to a UI through one in-process, asynchronous Python API, the client API, built from summary/page reads, an atomic reconnect snapshot, a feed, and commands. The core contains no HTTP, WebSocket, or server-sent-events surface. Optional HTTP API and browser UI modules are one-way consumers of this boundary, independently extensible or replaceable under FR-65/NFR-9.
 
 - **List.** Sessions for an owner, from summaries the store keeps current as part of each write, filtered and ordered, in pages addressed by an opaque keyset cursor. A list never reads a transcript and does not compute a total by default.
 - **Read.** One session's view (its summary, settings, tools, pending confirmation, and turn index) and its entries in pages addressed by position, forward or backward.
@@ -41,10 +41,10 @@ We will expose the session list and session data to a UI through one in-process,
 ## Why We Chose This
 
 ### Over an HTTP and server-sent-events server in the library
-It would make tether usable from any language and from a browser directly, at the cost of a server dependency, a security surface (authentication, cross-origin rules), and a deployment opinion. The vision excludes it; an adapter over the client API serves a browser.
+Bundling server behavior into core would require server dependencies and deployment choices for every embedder. Optional adapter modules provide reusable web components while applications retain identity, lifecycle and deployment ownership. Their public factories receive typed client dependencies; they cannot reach into runtime or storage internals.
 
 ### Keeping the existing application server
-The consuming application exposes the client API through its existing authenticated routes and streaming connection. This boundary does not require a new service, a second agent runtime or an AgentKit integration. TypeScript browser code uses the application's wire contract; Python continues to host the library. Any shared schema generation belongs to that application until a reusable client package is explicitly selected. ADR-003 records the language and runtime-adoption decision.
+The consuming application exposes the client API through its existing authenticated routes and streaming connection. This boundary does not require a new service, a second agent runtime or an AgentKit integration. TypeScript browser code uses the application's wire contract; Python continues to host the library. The optional HTTP adapter owns its versioned wire schemas and conversion. Applications may replace that adapter or its browser UI independently. Browser code consumes the HTTP contract; Python interface modules consume the public client boundary. ADR-003 records the language and runtime-adoption decision.
 
 ### Over interfaces reading the store directly
 It couples every interface to the store's schema, bypasses ownership checks, and gives no change feed. A store would no longer be replaceable behind a port.
@@ -59,7 +59,7 @@ It adds a schema and an execution layer for three reads. The Python API keeps th
 
 **Good**: A UI can list thousands of sessions without reading transcripts, follow a live turn with deltas, and resume after a disconnect. One object serves a terminal UI and a web server. The store's schema stays private.
 
-**Trade-offs**: Every store must maintain summaries and a change feed transactionally (the conformance suite checks it). Non-Python consumers need an adapter. Keyset cursors do not support jumping to page N. A retained window bounds how far back a follower can resume.
+**Trade-offs**: Typed client/factory contracts and adapter wire schemas become compatibility obligations. Extensions require explicit supported seams and substitution tests; private implementation inheritance is not an extension contract. Every store must maintain summaries and a change feed transactionally (the conformance suite checks it). Non-Python consumers need an adapter. Keyset cursors do not support jumping to page N. A retained window bounds how far back a follower can resume.
 
 **Drift signals to watch**: An interface importing a store module. A list that reads entries. An offset or a total count on the hot path. A feed event carrying a whole transcript. A subscriber queue without a bound. A server framework imported by the core.
 

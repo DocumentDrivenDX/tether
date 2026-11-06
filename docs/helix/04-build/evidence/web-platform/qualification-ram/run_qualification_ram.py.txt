@@ -1,0 +1,157 @@
+"""Exact-owned temporary OAuth secret, held in RAM, for the unchanged collector."""
+from __future__ import annotations
+import argparse
+import asyncio
+import configparser
+import hashlib
+import importlib.util
+import json
+import os
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+
+def write_private(path, value):
+    temporary = path.with_name(path.name + '.pending')
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as stream:
+        json.dump(value, stream, indent=2, sort_keys=True)
+        stream.write('\n')
+    temporary.replace(path)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--execute-exact-owned-temporary-secret', action='store_true', required=True)
+    for flag in ('project-root','source-map','aggregate','lifecycle-output','managed-operator','managed-output','cleanup-plan','next-cleanup-plan'):
+        parser.add_argument('--'+flag, type=Path, required=True)
+    own, remaining = parser.parse_known_args()
+    root = own.project_root.resolve()
+    if Path.cwd().resolve() != root:
+        raise RuntimeError('operator_project_cwd_required')
+    sys.path[:0] = [str(root/'scripts'),str(root/'src'),str(root/'examples/databricks-app/src')]
+    import qualify_selected_profiles as collector
+    from selected_profiles_identity_credentials import refresh_workspace_credential_from_secret
+    from selected_profiles_identity_admin import _account_client, _account_service_principal, _account_user, _azure_cli_username, _read_reference, _read_target, _verify_target_workspace_binding
+    from web_artifacts import inventory
+    from web_gate_receipt import verify_aggregate
+    from selected_profiles_evidence import browser_versions
+    from qualify_web_platform import profile_from_environment
+    from qualify_live_apps_config import safe_origin
+    from databricks.sdk import WorkspaceClient
+    from databricks.sdk.config import Config
+    sys.argv = [str(root/'scripts/qualify_selected_profiles.py'),*remaining]
+    args = collector._parse_args()
+    expected_cases = ['US-068-AC2','US-068-AC4','US-068-AC7','US-068-AC9','US-068-AC10','US-068-AC3','US-068-AC6']
+    if args.case != expected_cases:
+        raise RuntimeError('operator_all_seven_ordered_cases_required')
+    if any(p.exists() for p in (own.lifecycle_output,own.managed_output,own.next_cleanup_plan,args.output)):
+        raise RuntimeError('operator_fresh_outputs_required')
+    source = json.loads(own.source_map.read_text())
+    gate = verify_aggregate(root,own.aggregate)
+    if gate.get('status') != 'passed' or gate.get('source_sha256') != source or inventory(root) != source:
+        raise RuntimeError('operator_current_successful_aggregate_required')
+    settings = profile_from_environment(json.loads(args.settings_file.read_text()))
+    browser_versions(args.browser_receipt,source,profile=args.profile,origin=safe_origin(settings.url))
+    admin_reference = args.identity_admin_reference
+    if admin_reference is None:
+        raise RuntimeError('operator_account_admin_reference_required')
+    account_host,account_id,operator_id,workspace_id = _read_reference(admin_reference)
+    principal_id,client_id = _read_target(args.identity_reference)
+    config = configparser.ConfigParser()
+    config.read(args.service_config_file)
+    host = config.get(args.service_profile,'host')
+    if config.get(args.service_profile,'client_id') != client_id:
+        raise RuntimeError('operator_service_profile_identity_mismatch')
+    workspace = WorkspaceClient(config=Config(profile=args.profile,http_timeout_seconds=8,retry_timeout_seconds=2))
+    human = workspace.current_user.me()
+    app = workspace.apps.get(json.loads(args.app_reference_file.read_text())['name'])
+    app_client_id = getattr(app,'service_principal_client_id',None)
+    if workspace.config.host != host or not isinstance(app_client_id,str) or not app_client_id or app_client_id == client_id:
+        raise RuntimeError('operator_workspace_or_separate_identity_mismatch')
+    account = _account_client(account_host,account_id)
+    operator = _account_user(account,operator_id)
+    username = _azure_cli_username()
+    if operator[0] != operator_id or not operator[2] or not operator[3] or not operator[1] or operator[1].casefold() != username.casefold() or (human.user_name or '').casefold() != username.casefold():
+        raise RuntimeError('operator_existing_account_authority_unverified')
+    target = _account_service_principal(account,principal_id)
+    if target.id != principal_id or target.application_id != client_id or target.active is not True:
+        raise RuntimeError('operator_exact_owned_identity_unverified')
+    _verify_target_workspace_binding(account,account_id,workspace_id,principal_id,workspace.get_workspace_id)
+    baseline = {s.id for s in account.service_principal_secrets.list(principal_id)}
+    record = {'schema_version':1,'status':'in_progress','created_at':datetime.now(UTC).isoformat(),
+              'secret_value_storage':'RAM-and-anonymous-pipe-only','baseline_secret_ids':sorted(baseline),
+              'operator_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              'managed_operator_sha256':hashlib.sha256(own.managed_operator.read_bytes()).hexdigest(),
+              'credential_parent_sha256':hashlib.sha256((root/'scripts/selected_profiles_identity_credentials.py').read_bytes()).hexdigest(),
+              'credential_child_sha256':hashlib.sha256((root/'scripts/selected_profiles_identity_child.py').read_bytes()).hexdigest(),
+              'source_sha256':source,'secret_id':None,'revocation_verified':False}
+    write_private(own.lifecycle_output,record)
+    created = None
+    phase = 'create_exact_owned_temporary_secret'
+    try:
+        created = account.service_principal_secrets.create(principal_id,lifetime='14400s',scopes=['all-apis'])
+        record.update(secret_id=created.id,expire_time=created.expire_time)
+        write_private(own.lifecycle_output,record)
+        if not created.id or not created.secret or created.id in baseline:
+            raise RuntimeError('operator_new_secret_response_invalid')
+        plan = json.loads(own.cleanup_plan.read_text())
+        plan['supersedes'] = str(own.cleanup_plan)
+        plan.setdefault('additional_temporary_secrets',[]).append({'principal_id':principal_id,'secret_id':created.id,'expire_time':created.expire_time,'lifecycle_receipt':str(own.lifecycle_output),'value_storage':'RAM-only','final_cleanup_required_unless_revocation_verified':True})
+        write_private(own.next_cleanup_plan,plan)
+        async def factory():
+            return await refresh_workspace_credential_from_secret(args.service_profile,args.service_config_file,created.secret,host)
+        phase = 'managed_public_process_cases'
+        spec = importlib.util.spec_from_file_location('owned_managed_operator',own.managed_operator)
+        managed = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(managed)
+        managed_args = argparse.Namespace(profile=args.profile,service_profile=args.service_profile,
+            service_config_file=Path(args.service_config_file),service_secret_reference=Path(args.service_secret_reference),
+            settings_file=args.settings_file,source_inventory=own.source_map,output=own.managed_output)
+        asyncio.run(managed.qualify(managed_args,credential_factory=factory))
+        phase = 'all_seven_unchanged_collector_cases'
+        collector._execute(args,credential_factory=factory)
+        if inventory(root) != source:
+            raise RuntimeError('operator_source_changed')
+        record['status'] = 'passed'
+    except BaseException as error:
+        record.update(status='failed',failure_phase=phase,exception_class=type(error).__name__)
+        if created is None and phase == 'create_exact_owned_temporary_secret':
+            try:
+                observed_ids = {s.id for s in account.service_principal_secrets.list(principal_id)}
+                record['potential_unacknowledged_secret_ids'] = sorted(observed_ids-baseline)
+                record['uncertain_creation_requires_exact_metadata_audit'] = True
+            except Exception as metadata_error:
+                record['uncertain_creation_metadata_exception_class'] = type(metadata_error).__name__
+        raise
+    finally:
+        if created is not None and created.id and created.id not in baseline:
+            try:
+                account.service_principal_secrets.delete(principal_id,created.id)
+                remaining_ids = {s.id for s in account.service_principal_secrets.list(principal_id)}
+                if created.id in remaining_ids:
+                    raise RuntimeError('operator_secret_revocation_unverified')
+                record['revocation_verified'] = True
+            except BaseException as cleanup_error:
+                record.update(status='failed',cleanup_exception_class=type(cleanup_error).__name__)
+        operator_unchanged = hashlib.sha256(Path(__file__).read_bytes()).hexdigest() == record['operator_sha256']
+        managed_unchanged = hashlib.sha256(own.managed_operator.read_bytes()).hexdigest() == record['managed_operator_sha256']
+        record['private_operator_hashes_unchanged'] = operator_unchanged and managed_unchanged
+        if not record['private_operator_hashes_unchanged']:
+            record.update(status='failed',failure_phase='private_operator_provenance_changed')
+        record['recorded_at'] = datetime.now(UTC).isoformat()
+        write_private(own.lifecycle_output,record)
+    if record['status'] != 'passed' or not record['revocation_verified']:
+        raise RuntimeError('operator_qualification_or_cleanup_failed')
+    print(json.dumps({'status':'passed','managed_cases':2,'selected_cases':7,'temporary_secret_revoked':True}),flush=True)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except BaseException as error:
+        if isinstance(error,SystemExit):
+            raise
+        print(json.dumps({'status':'failed','exception_class':type(error).__name__}),flush=True)
+        raise SystemExit(1) from None

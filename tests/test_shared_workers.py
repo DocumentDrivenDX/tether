@@ -2,6 +2,7 @@
 
 import asyncio
 from threading import Event
+from typing import TypeVar
 
 import pytest
 from test_resume_engine import build
@@ -14,17 +15,33 @@ from tether.types.lifetime import WorkerLifetime
 from tether.types.storage import RootBusy, SessionInit
 
 pytestmark = pytest.mark.anyio
+T = TypeVar("T")
+
+
+async def _await_worker_entry(entry: asyncio.Event, operation: asyncio.Task[T]) -> None:
+    waiting = asyncio.create_task(entry.wait())
+    try:
+        done, _ = await asyncio.wait({waiting, operation}, return_when=asyncio.FIRST_COMPLETED)
+        entered = waiting in done
+    finally:
+        if not waiting.done():
+            waiting.cancel()
+        await asyncio.gather(waiting, return_exceptions=True)
+    if entered:
+        return
+    await operation
+    raise AssertionError("operation ended before worker entry")
 
 
 async def test_replacement_engine_and_lease_refuse_until_actual_exit(recovery):
     h = recovery
     run = build(h)
-    entered, release = Event(), Event()
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
 
     def blocked(ctx, args):
-        entered.set()
-        if not release.wait(5):
-            raise TimeoutError("test_worker_release")
+        loop.call_soon_threadsafe(entered.set)
+        release.wait()
         return "Fabricated"
 
     run.tool.run = blocked
@@ -39,7 +56,7 @@ async def test_replacement_engine_and_lease_refuse_until_actual_exit(recovery):
 
     task = asyncio.create_task(execute())
     try:
-        assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 3), 4)
+        await _await_worker_entry(entered, task)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
@@ -62,15 +79,16 @@ async def test_namespace_isolation_and_shutdown_sealing():
     first, second = Workers(1), Workers(1)
     first.scopes["same"] = WorkerLifetime()
     second.scopes["same"] = WorkerLifetime()
-    entered, release = Event(), Event()
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
 
     def blocked():
-        entered.set()
-        return release.wait(5)
+        loop.call_soon_threadsafe(entered.set)
+        return release.wait()
 
     waiting = asyncio.create_task(first.call("same", blocked))
     try:
-        assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 3), 4)
+        await _await_worker_entry(entered, waiting)
         assert await second.call("same", lambda: "independent") == "independent"
         first.scopes["same"].closed = True
         from tether.types.execution import ExecutionDenied
@@ -91,15 +109,16 @@ async def test_root_close_retains_lock_for_another_engines_actual_worker(recover
     root.limits = root.limits.model_copy(update={"shutdown_seconds": 0.01})
     engine = build(h).engine
     engine.workers.scopes["session"] = h.store.workers
-    entered, release = Event(), Event()
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
 
     def blocked():
-        entered.set()
-        return release.wait(5)
+        loop.call_soon_threadsafe(entered.set)
+        return release.wait()
 
     waiting = asyncio.create_task(engine.workers.call("session", blocked))
     try:
-        assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 3), 4)
+        await _await_worker_entry(entered, waiting)
         waiting.cancel()
         with pytest.raises(asyncio.CancelledError):
             await waiting
@@ -131,3 +150,14 @@ async def test_wrong_loop_refuses_before_executor_submission():
     assert not executed.is_set()
     assert not workers.active
     assert not scope.active
+
+
+async def test_worker_entry_barrier_surfaces_terminal_operation_without_entry():
+    entry = asyncio.Event()
+
+    async def finish_without_entry():
+        return None
+
+    operation = asyncio.create_task(finish_without_entry())
+    with pytest.raises(AssertionError, match="ended before worker entry"):
+        await _await_worker_entry(entry, operation)

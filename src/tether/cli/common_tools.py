@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from tether.types.execution import Effect, Replay, Tool, ToolContext
+from tether.client import Effect, Replay, Tool, ToolContext
 
 from .web_tools import load_page, search_web
 

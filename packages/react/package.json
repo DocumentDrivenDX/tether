@@ -1,0 +1,27 @@
+{
+  "name": "@tether/react",
+  "version": "0.2.0-dev.0",
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "styles",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "NOTICE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@tether/client": "0.2.0-dev.0",
+    "@tanstack/react-query": "5.105.0"
+  },
+  "peerDependencies": {
+    "react": "19.3.1"
+  }
+}

@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+from pathlib import Path
+
+OPERATOR = Path('/private/tmp/tether-apps-performance-archived-operator27-fixed.py')
+SPEC = importlib.util.spec_from_file_location('apps_operator27_fixed', OPERATOR)
+assert SPEC is not None and SPEC.loader is not None
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+
+
+class ChunkReader:
+    def __init__(self, chunks: list[bytes]) -> None:
+        self.chunks = list(chunks)
+        self.started = asyncio.Event()
+
+    async def read(self, amount: int) -> bytes:
+        self.started.set()
+        if not self.chunks:
+            return b''
+        chunk = self.chunks.pop(0)
+        if len(chunk) > amount:
+            self.chunks.insert(0, chunk[amount:])
+            return chunk[:amount]
+        return chunk
+
+
+class BlockedReader:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def read(self, amount: int) -> bytes:
+        del amount
+        self.started.set()
+        await self.release.wait()
+        return b''
+
+
+class BrokenReader:
+    async def read(self, amount: int) -> bytes:
+        del amount
+        raise BrokenPipeError('fabricated pipe failure')
+
+
+def test_parent_limit_accepts_exact_bytes_across_many_short_reads() -> None:
+    async def run() -> None:
+        limit = MODULE.MAX_OUTPUT
+        reader = ChunkReader([b'a' * 65536, b'b' * 65536, b'c' * (limit - 131072)])
+        output = await MODULE.read_bounded(reader, limit, 'child_output_limit')
+        assert len(output) == limit
+        assert output[:1] == b'a' and output[65536:65537] == b'b'
+        assert output[-1:] == b'c'
+    asyncio.run(run())
+
+
+def test_parent_limit_refuses_one_byte_over_limit_after_eof_reads() -> None:
+    async def run() -> None:
+        with_error = ChunkReader([b'x' * MODULE.MAX_OUTPUT, b'y'])
+        try:
+            await MODULE.read_bounded(with_error, MODULE.MAX_OUTPUT, 'child_output_limit')
+        except RuntimeError as error:
+            assert str(error) == 'child_output_limit'
+        else:
+            raise AssertionError('oversized child output was accepted')
+    asyncio.run(run())
+
+
+def test_cli_stdout_and_stderr_limits_are_independent_and_bounded() -> None:
+    async def run() -> None:
+        stdout, stderr = await asyncio.gather(
+            MODULE.read_bounded(ChunkReader([b'o' * 32768, b'o' * 32768]), 65536, 'cli_output_limit'),
+            MODULE.read_bounded(ChunkReader([b'e' * 20000, b'e' * 45536]), 65536, 'cli_output_limit'),
+        )
+        assert len(stdout) == len(stderr) == 65536
+        for reader in (ChunkReader([b'x' * 65536, b'y']), ChunkReader([b'x' * 65536 + b'y'])):
+            try:
+                await MODULE.read_bounded(reader, 65536, 'cli_output_limit')
+            except RuntimeError as error:
+                assert str(error) == 'cli_output_limit'
+            else:
+                raise AssertionError('oversized CLI output was accepted')
+    asyncio.run(run())
+
+
+def test_read_error_is_not_reclassified_or_swallowed() -> None:
+    async def run() -> None:
+        try:
+            await MODULE.read_bounded(BrokenReader(), 10, 'child_output_limit')
+        except BrokenPipeError as error:
+            assert type(error) is BrokenPipeError
+        else:
+            raise AssertionError('pipe failure was swallowed')
+    asyncio.run(run())
+
+
+def test_cancellation_and_deadline_propagate_from_blocked_read() -> None:
+    async def run() -> None:
+        reader = BlockedReader()
+        task = asyncio.create_task(MODULE.read_bounded(reader, 10, 'child_output_limit'))
+        await asyncio.wait_for(reader.started.wait(), timeout=1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError('read cancellation was swallowed')
+
+        timed_reader = BlockedReader()
+        try:
+            async with asyncio.timeout(0.01):
+                await MODULE.read_bounded(timed_reader, 10, 'child_output_limit')
+        except TimeoutError:
+            assert timed_reader.started.is_set()
+        else:
+            raise AssertionError('read deadline was swallowed')
+    asyncio.run(run())

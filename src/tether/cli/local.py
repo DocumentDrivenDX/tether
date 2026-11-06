@@ -12,7 +12,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from tether.types import JsonValue, Payload, PositiveInt
+from tether.client import JsonValue, Payload, PositiveInt
 
 from .profile import FileAuthorization, ReferenceModelProfile, load_profile
 
@@ -199,13 +199,15 @@ async def resolve_profile(
 
 
 async def databricks_profile(selected: LocalModelOptions) -> ReferenceModelProfile:
-    from tether.adapters.databricks import CliProfile
+    from tether.client.databricks import DatabricksCliProfile, DatabricksCliSettings
 
     if selected.databricks_profile is None:
         raise ValueError("Databricks profile required")
-    source = CliProfile(selected.databricks_profile)
+    source = DatabricksCliProfile(DatabricksCliSettings(selected.databricks_profile))
     host = await source.host()
-    source = CliProfile(selected.databricks_profile, expected_host=host)
+    source = DatabricksCliProfile(
+        DatabricksCliSettings(selected.databricks_profile, expected_host=host)
+    )
     names = await source.models()
     if selected.model_name is not None and selected.model_name not in names:
         raise ValueError(

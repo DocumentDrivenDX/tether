@@ -1,0 +1,2275 @@
+{
+  "$defs": {
+    "AcceptedTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Id"
+        },
+        "result_url": {
+          "title": "Result Url",
+          "type": "string"
+        },
+        "state": {
+          "const": "accepted",
+          "default": "accepted",
+          "title": "State",
+          "type": "string"
+        },
+        "turn_id": {
+          "minLength": 1,
+          "title": "Turn Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "turn_id",
+        "result_url"
+      ],
+      "title": "AcceptedTurn",
+      "type": "object"
+    },
+    "Answer": {
+      "additionalProperties": false,
+      "properties": {
+        "approved": {
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "approved"
+      ],
+      "title": "Answer",
+      "type": "object"
+    },
+    "AttachmentRef": {
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "media_type": {
+          "title": "Media Type",
+          "type": "string"
+        },
+        "read": {
+          "title": "Read",
+          "type": "boolean"
+        },
+        "size_bytes": {
+          "format": "tether-counter",
+          "minimum": 0,
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Size Bytes",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "withheld": {
+          "default": false,
+          "title": "Withheld",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "filename",
+        "media_type",
+        "size_bytes",
+        "read"
+      ],
+      "title": "AttachmentRef",
+      "type": "object"
+    },
+    "AttemptIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "model_call_id": {
+          "title": "Model Call Id",
+          "type": "string"
+        },
+        "purpose": {
+          "enum": [
+            "answer",
+            "summary",
+            "correction"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "span_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Span Id"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trace Id"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "model_call_id",
+        "attempt_id",
+        "purpose"
+      ],
+      "title": "AttemptIdentity",
+      "type": "object"
+    },
+    "CallDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/AttemptIdentity"
+        },
+        "observations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HistoryValue"
+          },
+          "title": "Observations",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "receipt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResponseReceipt"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "receipts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ResponseReceipt"
+          },
+          "title": "Receipts",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "pending",
+            "denied",
+            "unavailable",
+            "missing",
+            "partial",
+            "ambiguous",
+            "unsupported",
+            "integrity_error"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity",
+        "status"
+      ],
+      "title": "CallDetail",
+      "type": "object"
+    },
+    "CallDetailRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "model_call_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Call Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "model_call_ids"
+      ],
+      "title": "CallDetailRequest",
+      "type": "object"
+    },
+    "CallManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "args_digest": {
+          "title": "Args Digest",
+          "type": "string"
+        },
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "effect": {
+          "enum": [
+            "read_only",
+            "effectful"
+          ],
+          "title": "Effect",
+          "type": "string"
+        },
+        "position": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Position",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "replay": {
+          "enum": [
+            "safe",
+            "unsafe"
+          ],
+          "title": "Replay",
+          "type": "string"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        },
+        "tool_digest": {
+          "title": "Tool Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "position",
+        "call_id",
+        "tool",
+        "args_digest",
+        "tool_digest",
+        "effect",
+        "replay"
+      ],
+      "title": "CallManifest",
+      "type": "object"
+    },
+    "Change": {
+      "discriminator": {
+        "mapping": {
+          "entries_appended": "#/$defs/EntriesAppendedEvent",
+          "lagged": "#/$defs/LaggedEvent",
+          "reply_reset": "#/$defs/ReplyResetEvent",
+          "reply_text": "#/$defs/ReplyTextEvent",
+          "resync_required": "#/$defs/ResyncRequiredEvent",
+          "session_removed": "#/$defs/SessionRemovedEvent",
+          "session_updated": "#/$defs/SessionUpdatedEvent"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/SessionUpdatedEvent"
+        },
+        {
+          "$ref": "#/$defs/SessionRemovedEvent"
+        },
+        {
+          "$ref": "#/$defs/EntriesAppendedEvent"
+        },
+        {
+          "$ref": "#/$defs/ReplyTextEvent"
+        },
+        {
+          "$ref": "#/$defs/ReplyResetEvent"
+        },
+        {
+          "$ref": "#/$defs/LaggedEvent"
+        },
+        {
+          "$ref": "#/$defs/ResyncRequiredEvent"
+        }
+      ]
+    },
+    "ClientCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "methods": {
+          "additionalProperties": {
+            "enum": [
+              "supported",
+              "unsupported"
+            ],
+            "type": "string"
+          },
+          "title": "Methods",
+          "type": "object"
+        },
+        "tiers": {
+          "additionalProperties": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "type": "string"
+          },
+          "propertyNames": {
+            "enum": [
+              "live",
+              "archive"
+            ]
+          },
+          "title": "Tiers",
+          "type": "object"
+        }
+      },
+      "required": [
+        "methods",
+        "tiers"
+      ],
+      "title": "ClientCapabilities",
+      "type": "object"
+    },
+    "ConfirmRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "answer": {
+          "$ref": "#/$defs/Answer"
+        }
+      },
+      "required": [
+        "answer"
+      ],
+      "title": "ConfirmRequest",
+      "type": "object"
+    },
+    "ConfirmResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "const": false,
+          "default": false,
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "state": {
+          "$ref": "#/$defs/SessionView"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "ConfirmResponse",
+      "type": "object"
+    },
+    "CreateSessionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "settings": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Settings",
+          "type": "object"
+        },
+        "spec": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spec"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "required": [
+        "request_id"
+      ],
+      "title": "CreateSessionRequest",
+      "type": "object"
+    },
+    "EffectInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "intent_index": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Intent Index",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "invocation_id": {
+          "title": "Invocation Id",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "invocation_id",
+        "tool",
+        "intent_index",
+        "reason"
+      ],
+      "title": "EffectInfo",
+      "type": "object"
+    },
+    "EffectPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/EffectInfo"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_start": {
+          "anyOf": [
+            {
+              "format": "tether-counter",
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string",
+              "x-tether-counter": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Start"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "EffectPage",
+      "type": "object"
+    },
+    "EntriesAppendedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/Entry"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "last_in_commit": {
+          "title": "Last In Commit",
+          "type": "boolean"
+        },
+        "seq": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Seq",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "entries_appended",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "session_id",
+        "entries",
+        "last_in_commit",
+        "type"
+      ],
+      "title": "EntriesAppendedEvent",
+      "type": "object"
+    },
+    "Entry": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "call_manifest": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CallManifest"
+          },
+          "title": "Call Manifest",
+          "type": "array"
+        },
+        "facts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Facts",
+          "type": "object"
+        },
+        "history_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoryRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "index": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Index",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        }
+      },
+      "required": [
+        "kind",
+        "index",
+        "at"
+      ],
+      "title": "Entry",
+      "type": "object"
+    },
+    "EntryPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Entry"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_start": {
+          "anyOf": [
+            {
+              "format": "tether-counter",
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string",
+              "x-tether-counter": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Start"
+        },
+        "partial": {
+          "default": false,
+          "title": "Partial",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "next_start"
+      ],
+      "title": "EntryPage",
+      "type": "object"
+    },
+    "HistoryLinkRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "message_index": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Message Index",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "previous": {
+          "$ref": "#/$defs/HistoryRef"
+        },
+        "verified": {
+          "$ref": "#/$defs/HistoryRef"
+        }
+      },
+      "required": [
+        "message_index",
+        "previous",
+        "verified",
+        "key"
+      ],
+      "title": "HistoryLinkRequest",
+      "type": "object"
+    },
+    "HistoryPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/HistorySlot"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_start": {
+          "anyOf": [
+            {
+              "format": "tether-counter",
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string",
+              "x-tether-counter": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Start"
+        },
+        "partial": {
+          "default": false,
+          "title": "Partial",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "next_start"
+      ],
+      "title": "HistoryPage",
+      "type": "object"
+    },
+    "HistoryRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "message",
+            "model_exchange",
+            "summary"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Message"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "request": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "response": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "HistoryRecord",
+      "type": "object"
+    },
+    "HistoryRef": {
+      "additionalProperties": false,
+      "properties": {
+        "codec": {
+          "default": "tether-message-v1",
+          "title": "Codec",
+          "type": "string"
+        },
+        "component": {
+          "default": "record",
+          "enum": [
+            "record",
+            "request",
+            "response",
+            "assistant",
+            "summary"
+          ],
+          "title": "Component",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "default": "message",
+          "enum": [
+            "message",
+            "model_exchange",
+            "summary"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "owner": {
+          "default": "",
+          "title": "Owner",
+          "type": "string"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "session_id": {
+          "default": "",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "key",
+        "sha256"
+      ],
+      "title": "HistoryRef",
+      "type": "object"
+    },
+    "HistorySlot": {
+      "additionalProperties": false,
+      "properties": {
+        "entry_index": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Entry Index",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "value": {
+          "$ref": "#/$defs/HistoryValue"
+        }
+      },
+      "required": [
+        "entry_index",
+        "value"
+      ],
+      "title": "HistorySlot",
+      "type": "object"
+    },
+    "HistoryValue": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "record": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoryRecord"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ref": {
+          "$ref": "#/$defs/HistoryRef"
+        },
+        "retry_after_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After Seconds"
+        },
+        "source_locator": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Source Locator",
+          "type": "object"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "pending",
+            "denied",
+            "unavailable",
+            "missing",
+            "partial",
+            "ambiguous",
+            "unsupported",
+            "integrity_error"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "status"
+      ],
+      "title": "HistoryValue",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "LaggedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "missed": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Missed",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "type": {
+          "const": "lagged",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "missed",
+        "type"
+      ],
+      "title": "LaggedEvent",
+      "type": "object"
+    },
+    "Message": {
+      "additionalProperties": false,
+      "properties": {
+        "attachments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AttachmentRef"
+          },
+          "title": "Attachments",
+          "type": "array"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "is_error": {
+          "default": false,
+          "title": "Is Error",
+          "type": "boolean"
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant",
+            "tool"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Call Id"
+        },
+        "tool_calls": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ToolCall"
+          },
+          "title": "Tool Calls",
+          "type": "array"
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ],
+      "title": "Message",
+      "type": "object"
+    },
+    "PageSessionSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/SessionSummary"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "Page[SessionSummary]",
+      "type": "object"
+    },
+    "PendingConfirmation": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "title": "Actor Id",
+          "type": "string"
+        },
+        "args_digest": {
+          "title": "Args Digest",
+          "type": "string"
+        },
+        "arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Arguments"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "history_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoryRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "history_status": {
+          "anyOf": [
+            {
+              "const": "not_loaded",
+              "type": "string"
+            },
+            {
+              "enum": [
+                "ready",
+                "pending",
+                "denied",
+                "unavailable",
+                "missing",
+                "partial",
+                "ambiguous",
+                "unsupported",
+                "integrity_error"
+              ],
+              "type": "string"
+            }
+          ],
+          "default": "ready",
+          "title": "History Status"
+        },
+        "invocation_id": {
+          "title": "Invocation Id",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "requested_at": {
+          "format": "date-time",
+          "title": "Requested At",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "spec_digest": {
+          "title": "Spec Digest",
+          "type": "string"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        },
+        "tool_digest": {
+          "title": "Tool Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "invocation_id",
+        "args_digest",
+        "tool_digest",
+        "spec_digest",
+        "actor_id",
+        "tool",
+        "arguments",
+        "requested_at"
+      ],
+      "title": "PendingConfirmation",
+      "type": "object"
+    },
+    "ProblemDetails": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "instance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instance"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locator"
+        },
+        "retry_after_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After Seconds"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "status": {
+          "title": "Status",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "type": {
+          "default": "about:blank",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "status",
+        "detail",
+        "code",
+        "retryable"
+      ],
+      "title": "ProblemDetails",
+      "type": "object"
+    },
+    "ReplyResetEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "outage",
+            "cancelled",
+            "reconnect"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "reply_reset",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "attempt_id",
+        "reason",
+        "type"
+      ],
+      "title": "ReplyResetEvent",
+      "type": "object"
+    },
+    "ReplyTextEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "offset": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Offset",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "reply_text",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "attempt_id",
+        "offset",
+        "text",
+        "type"
+      ],
+      "title": "ReplyTextEvent",
+      "type": "object"
+    },
+    "ResolveRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "completed",
+            "not_completed"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "outcome",
+        "reason"
+      ],
+      "title": "ResolveRequest",
+      "type": "object"
+    },
+    "ResponseReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "provider_invocation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Invocation Id"
+        },
+        "provider_request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Request Id"
+        },
+        "request_id_source": {
+          "enum": [
+            "header",
+            "body",
+            "none"
+          ],
+          "title": "Request Id Source",
+          "type": "string"
+        },
+        "response_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Id"
+        },
+        "schema_profile": {
+          "title": "Schema Profile",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "endpoint",
+        "schema_profile",
+        "request_id_source"
+      ],
+      "title": "ResponseReceipt",
+      "type": "object"
+    },
+    "ResyncRequiredEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "enum": [
+            "too_old",
+            "gap"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "type": {
+          "const": "resync_required",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "type"
+      ],
+      "title": "ResyncRequiredEvent",
+      "type": "object"
+    },
+    "SendRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "attachments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AttachmentRef"
+          },
+          "title": "Attachments",
+          "type": "array"
+        },
+        "request_id": {
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "spec": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spec"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "text"
+      ],
+      "title": "SendRequest",
+      "type": "object"
+    },
+    "SessionQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "default": "updated_desc",
+          "enum": [
+            "updated_desc",
+            "created_desc",
+            "created_asc"
+          ],
+          "title": "Order",
+          "type": "string"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "tags_all": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags All",
+          "type": "array"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "updated_after": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Updated After"
+        },
+        "updated_before": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Updated Before"
+        }
+      },
+      "required": [
+        "owner"
+      ],
+      "title": "SessionQuery",
+      "type": "object"
+    },
+    "SessionRemovedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "last_in_commit": {
+          "title": "Last In Commit",
+          "type": "boolean"
+        },
+        "seq": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Seq",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "session_removed",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "session_id",
+        "last_in_commit",
+        "type"
+      ],
+      "title": "SessionRemovedEvent",
+      "type": "object"
+    },
+    "SessionSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "seq": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Seq",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "through_index": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$|^-1$",
+          "title": "Through Index",
+          "type": "string",
+          "x-tether-counter": true,
+          "x-tether-counter-signed": true
+        },
+        "view": {
+          "$ref": "#/$defs/SessionView"
+        }
+      },
+      "required": [
+        "view",
+        "through_index",
+        "seq"
+      ],
+      "title": "SessionSnapshot",
+      "type": "object"
+    },
+    "SessionSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "active_turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Turn Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "entry_count": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Entry Count",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "last_seq": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Last Seq",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "last_turn_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Turn At"
+        },
+        "message_count": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Message Count",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "partial": {
+          "default": false,
+          "title": "Partial",
+          "type": "boolean"
+        },
+        "pending": {
+          "default": false,
+          "title": "Pending",
+          "type": "boolean"
+        },
+        "preview": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preview"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
+        "resumable": {
+          "default": false,
+          "title": "Resumable",
+          "type": "boolean"
+        },
+        "spec_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spec Id"
+        },
+        "status": {
+          "default": "idle",
+          "enum": [
+            "idle",
+            "running",
+            "waiting",
+            "interrupted",
+            "closed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "tier": {
+          "default": "live",
+          "enum": [
+            "live",
+            "archive"
+          ],
+          "title": "Tier",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "turn_count": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Turn Count",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "unresolved_effect_count": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Unresolved Effect Count",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/TokenUsage"
+        },
+        "usage_complete": {
+          "default": true,
+          "title": "Usage Complete",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "owner",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "SessionSummary",
+      "type": "object"
+    },
+    "SessionUpdatedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "last_in_commit": {
+          "title": "Last In Commit",
+          "type": "boolean"
+        },
+        "seq": {
+          "format": "tether-counter",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Seq",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "summary": {
+          "$ref": "#/$defs/SessionSummary"
+        },
+        "type": {
+          "const": "session_updated",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "summary",
+        "last_in_commit",
+        "type"
+      ],
+      "title": "SessionUpdatedEvent",
+      "type": "object"
+    },
+    "SessionView": {
+      "additionalProperties": false,
+      "properties": {
+        "pending": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PendingConfirmation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "settings": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Settings",
+          "type": "object"
+        },
+        "specs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SpecRef"
+          },
+          "title": "Specs",
+          "type": "object"
+        },
+        "summary": {
+          "$ref": "#/$defs/SessionSummary"
+        },
+        "tools": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ToolInfo"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "tools_status": {
+          "default": "not_loaded",
+          "enum": [
+            "not_loaded",
+            "ready",
+            "unsupported"
+          ],
+          "title": "Tools Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "title": "SessionView",
+      "type": "object"
+    },
+    "SpecRef": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "SpecRef",
+      "type": "object"
+    },
+    "TokenUsage": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_read_tokens": {
+          "anyOf": [
+            {
+              "format": "tether-counter",
+              "minimum": 0,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string",
+              "x-tether-counter": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cache Read Tokens"
+        },
+        "cache_write_tokens": {
+          "anyOf": [
+            {
+              "format": "tether-counter",
+              "minimum": 0,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string",
+              "x-tether-counter": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cache Write Tokens"
+        },
+        "input_tokens": {
+          "format": "tether-counter",
+          "minimum": 0,
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Input Tokens",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "output_tokens": {
+          "format": "tether-counter",
+          "minimum": 0,
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Output Tokens",
+          "type": "string",
+          "x-tether-counter": true
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "format": "tether-counter",
+              "minimum": 0,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string",
+              "x-tether-counter": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reasoning Tokens"
+        }
+      },
+      "required": [
+        "input_tokens",
+        "output_tokens"
+      ],
+      "title": "TokenUsage",
+      "type": "object"
+    },
+    "ToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Arguments",
+          "type": "object"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "arguments"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    },
+    "ToolInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "tool_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Digest"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ToolInfo",
+      "type": "object"
+    },
+    "TurnResult": {
+      "additionalProperties": false,
+      "properties": {
+        "messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Message"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "pending": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PendingConfirmation"
+          },
+          "title": "Pending",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "stop_reason": {
+          "title": "Stop Reason",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "turn_id",
+        "stop_reason"
+      ],
+      "title": "TurnResult",
+      "type": "object"
+    },
+    "UpdateSessionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "settings": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Settings"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tags"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "title": "UpdateSessionRequest",
+      "type": "object"
+    }
+  },
+  "$id": "https://tether.invalid/schemas/http-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tether HTTP v1 schema registry"
+}

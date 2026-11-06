@@ -6,6 +6,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from selected_profiles_process import await_retained
 from test_client_reads import CurrentPolicy
 from test_client_reads import harness as harness
 from test_gated_execution import final
@@ -82,15 +83,45 @@ async def turns(request, tmp_path, limits, client_limits):
     assert app.drained
 
 
-async def entered(model):
-    async with asyncio.timeout(5):
-        await model.entered.wait()
+async def event_or_operation_terminal(event, owner):
+    ready = asyncio.create_task(event.wait())
+    try:
+        done, _ = await asyncio.wait({ready, owner}, return_when=asyncio.FIRST_COMPLETED)
+        if owner in done and ready not in done:
+            await owner
+            raise AssertionError("operation terminated before event witness")
+        await ready
+    finally:
+        if not ready.done():
+            ready.cancel()
+        await _settle_tasks(ready)
+
+
+async def _settle_tasks(*tasks: asyncio.Future):
+    async def settle() -> None:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    await await_retained(asyncio.create_task(settle()))
+
+
+async def entered(model, owner):
+    await event_or_operation_terminal(model.entered, owner)
+
+
+async def test_event_wait_surfaces_owner_terminal_before_event():
+    async def completed() -> str:
+        return "completed"
+
+    owner = asyncio.create_task(completed())
+    with pytest.raises(AssertionError, match="terminated before event"):
+        await event_or_operation_terminal(asyncio.Event(), owner)
+    assert owner.result() == "completed"
 
 
 async def test_send_returns_after_atomic_acceptance_and_duplicate_shares_one_task(turns):
     h = turns
     first = await h.client.send(h.sid, "Fabricated", request_id="same")
-    await entered(h.model)
+    await entered(h.model, h.app.turns.jobs[h.sid].task)
     snapshot = await h.client.snapshot(h.sid)
     assert snapshot.view.summary.status == "running"
     assert snapshot.view.summary.active_turn_id == first.turn_id
@@ -136,7 +167,7 @@ async def test_same_request_key_binds_canonical_requested_input(turns, change):
 async def test_canceling_a_result_waiter_does_not_cancel_owned_turn(turns):
     h = turns
     handle = await h.client.send(h.sid, "Fabricated")
-    await entered(h.model)
+    await entered(h.model, h.app.turns.jobs[h.sid].task)
     waiting = asyncio.create_task(handle.result())
     await asyncio.sleep(0)
     waiting.cancel()
@@ -150,7 +181,7 @@ async def test_canceling_a_result_waiter_does_not_cancel_owned_turn(turns):
 async def test_explicit_cancel_cancels_owned_task_and_pending_cancel_returns_false(turns):
     h = turns
     handle = await h.client.send(h.sid, "Fabricated")
-    await entered(h.model)
+    await entered(h.model, h.app.turns.jobs[h.sid].task)
     assert await h.client.cancel(h.sid)
     with pytest.raises(asyncio.CancelledError):
         await handle.result()
@@ -176,20 +207,27 @@ async def test_canceled_send_waiter_leaves_acceptance_owned_and_retryable(turns,
 
     monkeypatch.setattr(h.history, "put", blocked)
     sending = asyncio.create_task(h.client.send(h.sid, "Fabricated", request_id="retry"))
-    async with asyncio.timeout(5):
-        await writing.wait()
-    job = h.app.turns.jobs[h.sid]
-    sending.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await sending
-    assert not job.task.done()
-    release.set()
-    h.model.release.set()
-    await asyncio.shield(job.task)
-    retry = await h.client.send(h.sid, "Fabricated", request_id="retry")
-    assert retry.turn_id == job.start.turn_id
-    assert (await retry.result()).stop_reason == "final"
-    assert len(h.model.requests) == 1
+    job = None
+    try:
+        await event_or_operation_terminal(writing, sending)
+        job = h.app.turns.jobs[h.sid]
+        sending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await sending
+        assert not job.task.done()
+        release.set()
+        h.model.release.set()
+        await asyncio.shield(job.task)
+        retry = await h.client.send(h.sid, "Fabricated", request_id="retry")
+        assert retry.turn_id == job.start.turn_id
+        assert (await retry.result()).stop_reason == "final"
+        assert len(h.model.requests) == 1
+    finally:
+        release.set()
+        h.model.release.set()
+        await _settle_tasks(sending)
+        if job is not None:
+            await _settle_tasks(job.task)
 
 
 async def test_completed_retry_reconstructs_originals_without_an_engine_run(turns, monkeypatch):
@@ -262,12 +300,18 @@ async def test_owned_heartbeat_keeps_running_lease_current(turns, monkeypatch):
         renewed.set()
 
     monkeypatch.setattr(h.store, "heartbeat", heartbeat)
-    handle = await h.client.send(h.sid, "Fabricated")
-    async with asyncio.timeout(5):
-        await renewed.wait()
-    assert h.sid in h.app.turns.jobs
-    h.model.release.set()
-    assert (await handle.result()).stop_reason == "final"
+    job = None
+    try:
+        handle = await h.client.send(h.sid, "Fabricated")
+        job = h.app.turns.jobs[h.sid]
+        await event_or_operation_terminal(renewed, job.task)
+        assert h.sid in h.app.turns.jobs
+        h.model.release.set()
+        assert (await handle.result()).stop_reason == "final"
+    finally:
+        h.model.release.set()
+        if job is not None:
+            await _settle_tasks(job.task)
 
 
 async def test_heartbeat_failure_cancels_agent_and_propagates_lease_loss(turns, monkeypatch):
@@ -279,7 +323,7 @@ async def test_heartbeat_failure_cancels_agent_and_propagates_lease_loss(turns, 
 
     monkeypatch.setattr(h.store, "heartbeat", lost)
     handle = await h.client.send(h.sid, "Fabricated")
-    await entered(h.model)
+    await entered(h.model, h.app.turns.jobs[h.sid].task)
     with pytest.raises(LeaseLost):
         await handle.result()
     assert not h.engine._running
@@ -307,14 +351,13 @@ async def test_retry_rechecks_canonical_key_under_lease_after_stale_empty_lookup
         return await original(*args, **kwargs)
 
     monkeypatch.setattr(h.store, "lookup", stale_once)
-    async with asyncio.timeout(5):
-        if conflict:
-            with pytest.raises(RequestConflict):
-                await h.client.send(h.sid, "Changed", request_id="race")
-        else:
-            retry = await h.client.send(h.sid, "Fabricated", request_id="race")
-            assert retry.turn_id == first.turn_id
-            assert await retry.result() == expected
+    if conflict:
+        with pytest.raises(RequestConflict):
+            await h.client.send(h.sid, "Changed", request_id="race")
+    else:
+        retry = await h.client.send(h.sid, "Fabricated", request_id="race")
+        assert retry.turn_id == first.turn_id
+        assert await retry.result() == expected
     assert lookups == 2
     assert (await h.client.snapshot(h.sid)).through_index == before.through_index
     assert len(h.model.requests) == 1
@@ -401,13 +444,17 @@ async def test_shutdown_owns_and_cancels_send_before_acceptance(turns, monkeypat
 
     monkeypatch.setattr(h.history, "put", blocked)
     sending = asyncio.create_task(h.client.send(h.sid, "Fabricated", request_id="closing"))
-    async with asyncio.timeout(5):
-        await writing.wait()
-    assert await h.app.aclose()
-    with pytest.raises(asyncio.CancelledError):
-        await sending
-    assert not h.app.turns.jobs
-    assert not h.model.requests
+    try:
+        await event_or_operation_terminal(writing, sending)
+        assert await h.app.aclose()
+        with pytest.raises(asyncio.CancelledError):
+            await sending
+        assert not h.app.turns.jobs
+        assert not h.model.requests
+    finally:
+        if not sending.done():
+            sending.cancel()
+        await _settle_tasks(sending)
 
 
 async def test_shutdown_finishes_inflight_heartbeat_and_retains_root_ownership(turns, monkeypatch):
@@ -423,27 +470,25 @@ async def test_shutdown_finishes_inflight_heartbeat_and_retains_root_ownership(t
         await original(*args)
 
     monkeypatch.setattr(h.store, "heartbeat", held)
-    await h.client.send(h.sid, "Fabricated")
-    async with asyncio.timeout(5):
-        await entered_heartbeat.wait()
-    h.model.release.set()
-    async with asyncio.timeout(5):
-        await h.engine._idle.wait()
-    job = h.app.turns.jobs[h.sid]
-    assert not job.task.done()
-    h.app.limits = h.app.limits.model_copy(update={"shutdown_timeout_seconds": 0.02})
+    job = None
     try:
-        async with asyncio.timeout(1):
-            assert not await h.app.aclose()
+        await h.client.send(h.sid, "Fabricated")
+        job = h.app.turns.jobs[h.sid]
+        await event_or_operation_terminal(entered_heartbeat, job.task)
+        h.model.release.set()
+        await event_or_operation_terminal(h.engine._idle, job.task)
+        assert not job.task.done()
+        h.app.limits = h.app.limits.model_copy(update={"shutdown_timeout_seconds": 0.02})
+        assert not await h.app.aclose()
         assert not h.store.files._closed
         if isinstance(h.store.files, JsonlRoot):
             with pytest.raises(RootBusy):
                 await JsonlRoot.open(h.store.files.path)
     finally:
         release.set()
+        h.model.release.set()
         if h.app._cleanup is not None:
-            async with asyncio.timeout(5):
-                await asyncio.shield(h.app._cleanup)
+            await asyncio.shield(h.app._cleanup)
     assert h.app.drained
     assert not h.app.turns.jobs
     assert h.store.files._closed
@@ -457,12 +502,26 @@ async def test_old_handle_cannot_cancel_a_newer_owned_turn(turns):
     h.model.entered.clear()
     h.model.release.clear()
     second = await h.client.send(h.sid, "Second fabricated turn")
-    await entered(h.model)
+    await entered(h.model, h.app.turns.jobs[h.sid].task)
     await first.cancel()
     assert (await h.client.snapshot(h.sid)).view.summary.active_turn_id == second.turn_id
     h.model.release.set()
     assert (await second.result()).stop_reason == "final"
     assert len(h.model.requests) == 2
+
+
+async def test_client_targeted_cancel_checks_turn_identity_and_result_is_durable(turns):
+    h = turns
+    handle = await h.client.send(h.sid, "Fabricated", request_id="cancel-target")
+    await entered(h.model, h.app.turns.jobs[h.sid].task)
+    assert not await h.client.cancel_turn(h.sid, "stale-turn")
+    assert (await h.client.snapshot(h.sid)).view.summary.active_turn_id == handle.turn_id
+    assert await h.client.cancel_turn(h.sid, handle.turn_id)
+    with pytest.raises(asyncio.CancelledError):
+        await handle.result()
+    result = await h.client.turn_result(h.sid, handle.turn_id)
+    assert result is not None
+    assert result.stop_reason == "cancelled"
 
 
 async def test_cancel_on_waiting_approval_does_not_decline_it(harness):
@@ -547,7 +606,7 @@ async def test_new_input_clears_interrupted_resumable_projection(turns, monkeypa
     monkeypatch.setattr(h.engine, "_create", original)
     h.model.entered.clear()
     second = await h.client.send(h.sid, "New fabricated input")
-    await entered(h.model)
+    await entered(h.model, h.app.turns.jobs[h.sid].task)
     running = await h.client.get(h.sid)
     assert running.summary.status == "running"
     assert not running.summary.resumable

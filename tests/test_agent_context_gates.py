@@ -6,6 +6,7 @@ import pytest
 from test_agent_context import fixture, run
 from test_gated_execution import final
 
+import tether.engine.context.step as context_step
 from tether.context import FullContext
 from tether.context.testing import FixedEstimator, fabricated_context
 from tether.engine.governance import AllowAll
@@ -22,6 +23,21 @@ pytestmark = pytest.mark.anyio
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture
+def context_timers(monkeypatch):
+    timers: list[asyncio.Timeout] = []
+
+    def timeout_at(_deadline):
+        timer = asyncio.Timeout(None)
+        timers.append(timer)
+        return timer
+
+    # Arm the real deadline at the target phase's entry barrier, so preparation
+    # speed cannot race away the hydration/worker behavior being observed.
+    monkeypatch.setattr(context_step.asyncio, "timeout_at", timeout_at)
+    return timers
 
 
 @pytest.mark.parametrize("kind", ["context_preparation", "context_use"])
@@ -49,15 +65,16 @@ async def test_rejected_or_unknown_context_facts_never_enter_model_port(limits, 
         assert not [e for e in h.log.entries if e.kind == "model_attempt"]
 
 
-async def test_initial_history_hydration_is_inside_context_deadline(limits):
+async def test_initial_history_hydration_is_inside_context_deadline(limits, context_timers):
     entered, finished = asyncio.Event(), asyncio.Event()
-    config = fabricated_context()["context_config"].model_copy(update={"timeout_seconds": 0.02})
+    config = fabricated_context()["context_config"]
     async with fixture(limits, context_config=config) as h:
         original = h.history.read
 
         async def read(*args, **kwargs):
             entered.set()
             try:
+                context_timers[-1].reschedule(asyncio.get_running_loop().time())
                 await asyncio.Event().wait()
             finally:
                 finished.set()
@@ -66,18 +83,20 @@ async def test_initial_history_hydration_is_inside_context_deadline(limits):
         h.history.read = read
         result = await asyncio.wait_for(run(h), 1)
         assert entered.is_set()
+        assert any(timer.expired() for timer in context_timers)
         assert finished.is_set()
         assert (result.stop_reason, result.reason) == ("context_unavailable", "context_failed")
         assert not h.model.requests
 
 
-async def test_timed_out_estimator_retains_its_actual_worker_until_exit(limits):
+async def test_timed_out_estimator_retains_its_actual_worker_until_exit(limits, context_timers):
     entered, release, exited = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
     class Blocked:
         async def estimate(self, request):
             entered.set()
             try:
+                context_timers[-1].reschedule(asyncio.get_running_loop().time())
                 try:
                     await release.wait()
                 except asyncio.CancelledError:
@@ -88,15 +107,18 @@ async def test_timed_out_estimator_retains_its_actual_worker_until_exit(limits):
             finally:
                 exited.set()
 
-    config = fabricated_context()["context_config"].model_copy(update={"timeout_seconds": 0.02})
+    config = fabricated_context()["context_config"]
     async with fixture(limits, context_config=config, estimator=Blocked()) as h:
-        result = await asyncio.wait_for(run(h), 1)
-        assert entered.is_set()
-        assert not exited.is_set()
-        assert result.reason == "context_failed"
-        assert not h.model.requests
-        assert h.engine.workers.busy(h.log.session.id)
-        release.set()
+        try:
+            result = await asyncio.wait_for(run(h), 1)
+            assert entered.is_set()
+            assert any(timer.expired() for timer in context_timers)
+            assert not exited.is_set()
+            assert result.reason == "context_failed"
+            assert not h.model.requests
+            assert h.engine.workers.busy(h.log.session.id)
+        finally:
+            release.set()
         await asyncio.wait_for(exited.wait(), 1)
 
 

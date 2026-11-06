@@ -1,0 +1,16 @@
+{
+  "files": {
+    "README.md": "62be541309e5251d9ba0b2444786bd9a47f5b010496bfedd1179db41136608db",
+    "observer_launcher.py.txt": "0c9d6ab1baa7dc2ea25d6c2af8238d2545850b923f1f9739ec22ae02bcaf1063",
+    "observer_metadata.py.txt": "cbd671c24d7f92fabf5290f43815ddaed8f2a5216e717121e79e11988fa2e0a4",
+    "prepare_overlay.py.txt": "1f32f727126f6d68233f8c409cd5343fc9ea1823753a0e288fee1a2d95b42dba",
+    "read_observer.py.txt": "d64439b9efbcebb06bee73a888a6198963935849e4d4e25894a8507c463a805c",
+    "run_instrumented_qualification.py.txt": "1e1e2bb023a7b9ee3f24c7613fc844cdc1d1e917388cc74f06c705a962c37ac6",
+    "shutdown_observer.sql.txt": "7e467a9be7f96ade48df3e76ae33135529627e6b32d97122ccaae4601f90bb07",
+    "test_contract.py.txt": "3fc15576ecc57dd9550c3c75fa249357f7bae9070eb797727a64121fcc580ee4",
+    "test_failure_diagnostics.py.txt": "b12e6aaeab4fba36f011136acae956f519abd1aac5e8b48e2911a9d26a7c9133",
+    "tether_h2c_probe.py.txt": "a1e48cc5b2cb971797580bb7a64274716628849865f037ae64a632899d980937"
+  },
+  "qualification_status": "source-only; no live result included",
+  "schema_version": 1
+}

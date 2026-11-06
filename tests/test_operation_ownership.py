@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from contextvars import ContextVar
 from threading import Event
+from typing import Any
 
 import pytest
 
@@ -25,6 +26,43 @@ pytestmark = pytest.mark.anyio
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+async def _await_state_or_terminal(entry: asyncio.Event, *operations: asyncio.Future[Any]) -> None:
+    waiting = asyncio.create_task(entry.wait())
+    try:
+        done, _ = await asyncio.wait({waiting, *operations}, return_when=asyncio.FIRST_COMPLETED)
+        entered = waiting in done
+    finally:
+        if not waiting.done():
+            waiting.cancel()
+        await asyncio.gather(waiting, return_exceptions=True)
+    if entered:
+        return
+    for operation in operations:
+        if operation in done:
+            await operation
+    raise AssertionError("operation ended before worker entry")
+
+
+async def test_state_barrier_surfaces_failed_handoff_while_child_stays_owned():
+    entry, child_started, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def held_child():
+        child_started.set()
+        await release.wait()
+
+    child = asyncio.create_task(held_child())
+    await _await_state_or_terminal(child_started, child)
+    handoff = asyncio.get_running_loop().create_future()
+    handoff.set_exception(RuntimeError("fabricated handoff failure"))
+    try:
+        with pytest.raises(RuntimeError, match="fabricated handoff failure"):
+            await _await_state_or_terminal(entry, child, handoff)
+        assert not child.done()
+    finally:
+        release.set()
+        await child
 
 
 async def test_async_cancellation_returns_without_releasing_actual_child_or_root(tmp_path):
@@ -43,10 +81,10 @@ async def test_async_cancellation_returns_without_releasing_actual_child_or_root
 
     caller = asyncio.create_task(workers.call("session", child))
     try:
-        await entered.wait()
+        await _await_state_or_terminal(entered, caller)
         caller.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(caller, 0.5)
+            await caller
         assert root.workers.busy("session")
         assert not await workers.close(0.01)
         assert not await root.aclose()
@@ -66,8 +104,9 @@ async def test_executor_return_handoff_never_publishes_idle_and_adopts_after_can
     scope = WorkerLifetime(lambda: idle.append(True))
     workers = Workers(1)
     workers.scopes["session"] = scope
-    entered, returned = Event(), Event()
+    entered, returned = asyncio.Event(), Event()
     child_entered, release, adopted = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    loop = asyncio.get_running_loop()
 
     async def child():
         child_entered.set()
@@ -79,22 +118,22 @@ async def test_executor_return_handoff_never_publishes_idle_and_adopts_after_can
         return "late"
 
     task = asyncio.create_task(child())
-    await child_entered.wait()
+    await _await_state_or_terminal(child_entered, task)
 
     def function():
-        entered.set()
-        if not returned.wait(3):
-            raise TimeoutError("fabricated return barrier")
+        loop.call_soon_threadsafe(entered.set)
+        returned.wait()
         return task
 
     caller = asyncio.create_task(workers.call("session", function))
     try:
-        assert await asyncio.to_thread(entered.wait, 2)
+        await _await_state_or_terminal(entered, caller)
+        completion = next(iter(workers.active))
         caller.cancel()
         with pytest.raises(asyncio.CancelledError):
             await caller
         returned.set()
-        await adopted.wait()
+        await _await_state_or_terminal(adopted, task, completion)
         assert not workers.executors
         assert scope.busy("session")
         assert not idle
@@ -109,7 +148,8 @@ async def test_executor_return_handoff_never_publishes_idle_and_adopts_after_can
 
 async def test_cancel_before_raw_return_does_not_start_fresh_coroutine():
     workers = Workers(1)
-    entered, returned = Event(), Event()
+    entered, returned = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
     bodies = []
 
     async def child():
@@ -119,14 +159,13 @@ async def test_cancel_before_raw_return_does_not_start_fresh_coroutine():
     coroutine = child()
 
     def function():
-        entered.set()
-        if not returned.wait(3):
-            raise TimeoutError("fabricated return barrier")
+        loop.call_soon_threadsafe(entered.set)
+        returned.wait()
         return coroutine
 
     caller = asyncio.create_task(workers.call("session", function))
     try:
-        assert await asyncio.to_thread(entered.wait, 2)
+        await _await_state_or_terminal(entered, caller)
         caller.cancel()
         with pytest.raises(asyncio.CancelledError):
             await caller
@@ -161,7 +200,7 @@ async def test_operation_bound_refuses_before_starting_another_body():
 
     caller = asyncio.create_task(workers.call("first", held))
     try:
-        await entered.wait()
+        await _await_state_or_terminal(entered, caller)
         with pytest.raises(ExecutionDenied, match="operation_capacity"):
             await workers.call("second", lambda: bodies.append(True))
         assert not bodies
@@ -205,11 +244,11 @@ async def test_actual_async_child_retained_after_dropping_all_caller_owners():
                 cancelled.set()
 
     caller = asyncio.create_task(workers.call("session", child))
-    await entered.wait()
+    await _await_state_or_terminal(entered, caller)
     caller.cancel()
     with pytest.raises(asyncio.CancelledError):
         await caller
-    await cancelled.wait()
+    await _await_state_or_terminal(cancelled, next(iter(workers.active)))
     assert not await workers.close(0.001)
     owner = weakref.ref(workers)
     del caller, workers
@@ -240,12 +279,11 @@ async def test_queued_cancellation_never_enters_function(monkeypatch):
 
     def blocked():
         loop.call_soon_threadsafe(entered.set)
-        if not release.wait(3):
-            raise TimeoutError("fabricated release barrier")
+        release.wait()
 
     first = asyncio.create_task(workers.call("first", blocked))
     try:
-        await entered.wait()
+        await _await_state_or_terminal(entered, first)
         queued = asyncio.create_task(workers.call("second", lambda: effects.append(True)))
         await asyncio.sleep(0)
         assert len(workers.executors) == 2
@@ -287,13 +325,13 @@ async def test_late_child_failure_is_consumed_and_parent_context_isolated():
     loop.set_exception_handler(lambda loop, context: unhandled.append(context))
     caller = asyncio.create_task(workers.call("session", child))
     try:
-        await entered.wait()
+        await _await_state_or_terminal(entered, caller)
         assert ambient.get() == "parent"
         caller.cancel()
         with pytest.raises(asyncio.CancelledError):
             await caller
         release.set()
-        await settled.wait()
+        await _await_state_or_terminal(settled, next(iter(workers.active)))
         assert not workers.active
         del caller
         gc.collect()
@@ -352,16 +390,27 @@ async def test_depth_rejection_drains_later_running_task_without_releasing_owner
         return "late"
 
     task = asyncio.create_task(held())
-    await entered.wait()
+    await _await_state_or_terminal(entered, task)
     loop = asyncio.get_running_loop()
     value = task
     for _ in range(MAX_AWAITABLE_CHAIN + 2):
         previous = loop.create_future()
         previous.set_result(value)
         value = previous
+    operation_started = asyncio.Event()
+    original_operation = workers._operation
+
+    def track_operation(session_id, function):
+        operation = original_operation(session_id, function)
+        operation_started.set()
+        return operation
+
+    workers._operation = track_operation
     caller = asyncio.create_task(workers.call("session", lambda: value))
     try:
-        await cancelled.wait()
+        await _await_state_or_terminal(operation_started, caller)
+        completion = next(iter(workers.active))
+        await _await_state_or_terminal(cancelled, task, completion, caller)
         assert workers.busy("session")
         assert not caller.done()
         assert not await workers.close(0.001)
@@ -379,7 +428,7 @@ async def test_resolved_future_cycle_is_refused_without_spinning_forever():
     first.set_result(second)
     second.set_result(first)
     with pytest.raises(ExecutionDenied, match="worker_awaitable_cycle"):
-        await asyncio.wait_for(workers.call("session", lambda: first), 1)
+        await workers.call("session", lambda: first)
     assert not workers.active
 
 
@@ -397,7 +446,7 @@ async def test_cancel_request_failure_preserves_waiter_and_actual_child_ownershi
             raise RuntimeError("fabricated cancellation failure")
 
     child = RefusesCancel(held())
-    await entered.wait()
+    await _await_state_or_terminal(entered, child)
     caller = asyncio.create_task(workers.call("session", lambda: child))
     # Raw return/adoption is observed without retaining a waiter on the completion proxy.
     raw_done = asyncio.Event()
@@ -409,7 +458,7 @@ async def test_cancel_request_failure_preserves_waiter_and_actual_child_ownershi
 
     workers._executor_finished = finished
     try:
-        await raw_done.wait()
+        await _await_state_or_terminal(raw_done, caller)
         caller.cancel()
         with pytest.raises(asyncio.CancelledError):
             await caller

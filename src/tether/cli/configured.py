@@ -6,25 +6,34 @@ import base64
 import hashlib
 from typing import TYPE_CHECKING
 
-from tether.types import ModelExecutionLimits
-from tether.types.context import ContextConfig, ModelLimits, TokenEstimator
-from tether.types.execution import Actor, AgentSpec
+from tether.client import (
+    Actor,
+    AgentSpec,
+    ContextConfig,
+    ModelExecutionLimits,
+    ModelLimits,
+    TokenEstimator,
+)
 
 from .profile import FileAuthorization, ReferenceModelProfile, read_bounded
 
 if TYPE_CHECKING:
-    from tether.adapters.openai_compat import OpenAICompatModel
+    from tether.client.compatible import CompatibleModel
 
 
 async def configured_model(
     profile: ReferenceModelProfile,
     limits: ModelExecutionLimits,
     tool_names: tuple[str, ...],
-) -> tuple[OpenAICompatModel, ContextConfig, TokenEstimator, Actor, AgentSpec]:
+) -> tuple[CompatibleModel, ContextConfig, TokenEstimator, Actor, AgentSpec]:
     """Construct the selected optional adapter without importing its SDK in base mode."""
 
     try:
-        from tether.adapters.openai_compat import OpenAICompatModel, TokenizerProfile
+        from tether.client.compatible import (
+            CompatibleModel,
+            CompatibleModelSettings,
+            TokenizerSettings,
+        )
     except ImportError:
         raise RuntimeError("openai_extra_required") from None
 
@@ -32,7 +41,7 @@ async def configured_model(
         vocabulary = b"".join(
             base64.b64encode(bytes([n])) + b" " + str(n).encode() + b"\n" for n in range(256)
         )
-        tokenizer = TokenizerProfile(
+        tokenizer = TokenizerSettings(
             id="local-byte-budget",
             revision="1",
             encoding_name="local-byte-budget",
@@ -47,7 +56,7 @@ async def configured_model(
             tool_framing_tokens=64,
         )
     else:
-        tokenizer = TokenizerProfile.model_validate(profile.tokenizer_profile)
+        tokenizer = TokenizerSettings.model_validate(profile.tokenizer_profile)
         if profile.vocabulary_path is None:
             raise ValueError("model_vocabulary_required")
         try:
@@ -58,15 +67,17 @@ async def configured_model(
             raise ValueError("model_vocabulary_bytes") from None
     if profile.context_window_tokens <= profile.output_tokens + profile.safety_margin_tokens:
         raise ValueError("model_context_limit")
-    adapter = OpenAICompatModel(
-        base_url=profile.base_url,
-        tiers={"demo": profile.model_name},
-        limits=limits,
-        output_limit_field=profile.output_limit_field,
-        supports_parallel_tool_calls=profile.databricks_profile is None,
-        request_tags_header="Databricks-Ai-Gateway-Request-Tags"
-        if profile.databricks_profile
-        else "X-Tether-Request-Tags",
+    adapter = CompatibleModel(
+        CompatibleModelSettings(
+            base_url=profile.base_url,
+            tiers={"demo": profile.model_name},
+            limits=limits,
+            output_limit_field=profile.output_limit_field,
+            supports_parallel_tool_calls=profile.databricks_profile is None,
+            request_tags_header="Databricks-Ai-Gateway-Request-Tags"
+            if profile.databricks_profile
+            else "X-Tether-Request-Tags",
+        )
     )
     context = ContextConfig(
         limits={
@@ -92,11 +103,13 @@ async def configured_model(
     if profile.databricks_profile is not None:
         from urllib.parse import urlsplit
 
-        from tether.adapters.databricks import CliProfile
+        from tether.client.databricks import DatabricksCliProfile, DatabricksCliSettings
 
         address = urlsplit(profile.base_url)
-        credential = CliProfile(
-            profile.databricks_profile, expected_host=address.scheme + "://" + address.netloc
+        credential = DatabricksCliProfile(
+            DatabricksCliSettings(
+                profile.databricks_profile, expected_host=address.scheme + "://" + address.netloc
+            )
         )
     actor = Actor(
         id="demo",

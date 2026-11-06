@@ -1,0 +1,62 @@
+{
+  "aggregate_receipt_sha256": "b630d80f4a9a24d4e4d75ce7ad54b98b4c6397a72a34a4819fe43c67cd53a860",
+  "apps_operator_sha256": "a5bf66c9ebb768b58f8daca446eb5e39e4250c2f8a0a361b3693e808f592ac9e",
+  "apps_original_failed_attempt": {
+    "file": "../../apps-performance/attempt27-01-failed.json",
+    "sha256": "9949d1c8a8e641043419e73bfd2a6428efc4ca17c3d10b85bc25214324b19744"
+  },
+  "kind": "seven-completed-source27-measurements-for-explicit-first-baseline-adoption",
+  "limits": [
+    "Seven actual measurements; original source27 six-only archive manifest preserved.",
+    "Strict schema/source/hash checks are not a historical regression comparison or final acceptance.",
+    "Apps server hardware is unknown managed; stable50-item sequential read pages only."
+  ],
+  "profiles": {
+    "apps": {
+      "bytes": 78959,
+      "file": "apps-measurement.json",
+      "profile": "apps-public-client-read",
+      "sha256": "3acc508dc86fe1c3e9819aa20adfffc4cc0b463a6b4696ef176a08139f266505"
+    },
+    "client": {
+      "bytes": 82458,
+      "file": "client-measurement.json",
+      "profile": "local-posix-jsonl-public-client",
+      "sha256": "d9497599b2505de8dd5aa66960a29584fd1a74b9dcc7c6b16d8bbfb0ae0deebc"
+    },
+    "engine": {
+      "bytes": 220203,
+      "file": "engine-measurement.json",
+      "profile": "public-engine-exclusive-wall",
+      "sha256": "2bacd0b87e87932a5095696a0ee87ca8c9ac4ce79dae7db4835e26a9657d3edc"
+    },
+    "follower-memory": {
+      "bytes": 222751,
+      "file": "follower-memory-measurement.json",
+      "profile": "public-follower-retained-python",
+      "sha256": "72566a777f6d0d2a483eab79ede1aebb3470085c7ffb96abc411b4e5f342e816"
+    },
+    "memory-store": {
+      "bytes": 82371,
+      "file": "memory-store-measurement.json",
+      "profile": "memoryfiles-jsonl-reference-capacity",
+      "sha256": "9bb8a3e5c90b27a979c80d60251c7e8876b1eb18c36b4d9564fff7c7c8ff60db"
+    },
+    "store": {
+      "bytes": 82336,
+      "file": "store-measurement.json",
+      "profile": "local-posix-jsonl",
+      "sha256": "116a140498251fd08aeb7a2e856e4e5c1e458d396c81a83e8b9a7f6e4717dbe6"
+    },
+    "volatile-client": {
+      "bytes": 80987,
+      "file": "volatile-client-measurement.json",
+      "profile": "volatile-public-client",
+      "sha256": "651a71deeae1f23896390a8c749111793bf07f740b15fb8fab3afb70df7292e7"
+    }
+  },
+  "schema_version": 1,
+  "six_profile_execution_ledger_sha256": "8c44fd41628a0acb3ffb5237b9b6e72c4f211489ff8034cc8316be6782ba18ed",
+  "source_inventory_canonical_sha256": "4eb2d3e8f38e08604eb617ec6de70b50c48838be00aafc1c7aba1238e923c986",
+  "source_map_file_sha256": "50fb753df6fe88d4c27e6939a5fbcda162c5300eb71f6c87a509c1a1e4e828c2"
+}

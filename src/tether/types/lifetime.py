@@ -1,8 +1,9 @@
 """Process-local actual-worker ownership, scoped to a storage namespace."""
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextvars import Context
+from typing import TypeVar
 
 
 class WorkerLifetime:
@@ -53,3 +54,18 @@ class WorkerLifetime:
     def _tick(self) -> None:
         self._retainer = None
         self._retain()
+
+
+T = TypeVar("T")
+
+
+async def settle_completion(operation: Awaitable[T]) -> tuple[T, bool]:
+    """Return physical completion plus any deferred waiter cancellation."""
+    task = asyncio.ensure_future(operation)
+    cancelled = False
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+    return task.result(), cancelled

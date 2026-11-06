@@ -1,0 +1,55 @@
+{
+  "actual_failure": {
+    "cause": "unknown; peer stderr was DEVNULL and no readiness event/peer-stage receipt was retained",
+    "exception_class": "TimeoutError",
+    "lease_expiry_or_fencing_assertions_reached": false,
+    "lease_seconds_unchanged": 30,
+    "managed_total_seconds_unchanged": 240,
+    "open_timeout_seconds_unchanged": 20,
+    "selected_cases_reached": false,
+    "stage": "first hold-peer initial readiness in natural_expiry_fencing",
+    "wait_boundary": "stdin.drain plus first bounded protocol event"
+  },
+  "files": {
+    "diagnostic-failed.json": {
+      "bytes": 615,
+      "sha256": "cd83a2f9ccee5b6d982e70afa77a4056151ec8e9a677e6d5871a77aa646a2502"
+    },
+    "lifecycle-sanitized.json": {
+      "bytes": 78433,
+      "sha256": "0a8372de58536361c3c4c5015a68009f447351d57d44167575f8ddc95a89d67b"
+    },
+    "owner-failed.json": {
+      "bytes": 994,
+      "sha256": "b64aed9464a0e7cdc3c49b90a54b0fed3104c5781dc98dbfdb2f0786a79d7a55"
+    }
+  },
+  "limits": [
+    "Exact private lifecycle and cleanup-plan bytes remain private; only their hashes and allowlisted lifecycle facts are retained here.",
+    "No raw owner-log contents, identifiers, hosts, tokens, secret values, expiry identifiers or global configuration hashes were copied.",
+    "No managed or selected passing node is inferred from partial setup, warmup, identity correlation or cleanup.",
+    "Current and later host pressure or owner reports of other jobs do not establish this earlier timeout cause.",
+    "Original 20/30/240 component bounds and 7200 outer owner remain unchanged; no automatic retry, secret mint, role change, source edit or cap fitting is authorized.",
+    "Managed2, selected7, performance56, Root manual acceptance and final audit/postcheck/cleanup remain pending in their own scopes."
+  ],
+  "owner": {
+    "elapsed_seconds": 171.615,
+    "exit_code": 1,
+    "process_group_cleanup_confirmed": true,
+    "source_inventory_unchanged": true
+  },
+  "private_cleanup_plan_sha256": "24d5ff9705df1ba2707091b42bb42594e0e7e446068bbf8d1004f2352ade7049",
+  "schema_version": 1,
+  "secret": {
+    "limit": "Requested secret lifetime does not prove the separate natural OAuth/database credential-expiry case; selected AC6 never ran.",
+    "natural_credential_expiry_qualified": false,
+    "new_exact_temporary_secret_created": true,
+    "requested_lifetime_seconds": 14400,
+    "revocation_verified": true,
+    "secret_id_or_value_published": false,
+    "storage": "RAM-and-anonymous-pipe-only"
+  },
+  "source_inventory_canonical_sha256": "db934b15a071e4fb43fe401d7c6589b91989a04ae1819a39f4289cad612d91bf",
+  "source_inventory_entries": 701,
+  "status": "failed-before-managed-or-selected-acceptance"
+}

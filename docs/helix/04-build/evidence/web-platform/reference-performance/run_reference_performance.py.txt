@@ -1,0 +1,166 @@
+"""Serial, full reference measurements after the frozen aggregate succeeds."""
+import asyncio
+import argparse
+import hashlib
+import json
+import os
+import signal
+import sys
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT: Path
+BOOTSTRAP = '''import pathlib, runpy, sys
+root = pathlib.Path.cwd().resolve()
+script = pathlib.Path(sys.argv[1]).resolve()
+if script.parent != root / "scripts":
+    raise RuntimeError("measurement_script_root_mismatch")
+sys.path.insert(0, str(root / "scripts"))
+sys.path.insert(0, str(root / "src"))
+import tether.client
+if pathlib.Path(tether.client.__file__).resolve() != root / "src/tether/client/__init__.py":
+    raise RuntimeError("measurement_import_root_mismatch")
+sys.argv = sys.argv[1:]
+runpy.run_path(str(script), run_name="__main__")
+'''
+
+
+async def _await_cleanup(task):
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            continue
+    task.result()
+
+
+async def _terminate_group(child):
+    try:
+        os.killpg(child.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    await child.wait()
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            os.killpg(child.pid, 0)
+        except ProcessLookupError:
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError('measurement_process_group_cleanup_timeout')
+        await asyncio.sleep(0.025)
+
+
+async def measure(argv, deadline):
+    spawning = asyncio.create_task(asyncio.create_subprocess_exec(
+        *argv, cwd=ROOT, start_new_session=True,
+    ))
+    cancelled = False
+    while not spawning.done():
+        try:
+            await asyncio.shield(spawning)
+        except asyncio.CancelledError:
+            cancelled = True
+    child = spawning.result()
+    if cancelled:
+        await _await_cleanup(asyncio.create_task(_terminate_group(child)))
+        raise asyncio.CancelledError
+    try:
+        async with asyncio.timeout(deadline):
+            returncode = await child.wait()
+    except BaseException:
+        # The client measurement owns separate API/follower descendants too.
+        # They inherit this dedicated process group; kill the whole group.
+        cleanup = asyncio.create_task(_terminate_group(child))
+        await _await_cleanup(cleanup)
+        raise
+    try:
+        os.killpg(child.pid, 0)
+    except ProcessLookupError:
+        return returncode
+    cleanup = asyncio.create_task(_terminate_group(child))
+    await _await_cleanup(cleanup)
+    raise RuntimeError('measurement_descendant_outlived_parent')
+
+
+async def main():
+    global ROOT
+    parser = argparse.ArgumentParser()
+    for name in ('project-root', 'source-map', 'machine-profile', 'aggregate', 'output'):
+        parser.add_argument('--' + name, required=True, type=Path)
+    args = parser.parse_args()
+    ROOT = args.project_root.resolve()
+    if not (ROOT / 'src/tether/client/__init__.py').is_file():
+        raise RuntimeError('measurement_project_root_invalid')
+    sys.path.insert(0, str(ROOT / 'scripts'))
+    from web_artifacts import inventory
+    from web_gate_receipt import verify_aggregate
+    from web_performance import validate_measurement
+    gate_path, destination = args.aggregate, args.output
+    operator_path = Path(__file__).resolve()
+    operator_sha256 = hashlib.sha256(operator_path.read_bytes()).hexdigest()
+    source = json.loads(args.source_map.read_text())
+    machine_profile_sha256 = hashlib.sha256(args.machine_profile.read_bytes()).hexdigest()
+    gate = verify_aggregate(ROOT, gate_path)
+    if gate.get('status') != 'passed' or gate.get('source_sha256') != source:
+        raise RuntimeError('current_successful_aggregate_required')
+    if inventory(ROOT) != source:
+        raise RuntimeError('frozen_source_changed')
+    destination.mkdir(mode=0o700)
+    measurements = destination / 'measurements'
+    measurements.mkdir()
+    records = []
+    for name, profile, script, arguments, deadline in (
+        ('store', 'local-posix-jsonl', 'benchmark_web.py',
+         ['--storage', 'posix'], 18000),
+        ('memory-store', 'memoryfiles-jsonl-reference-capacity', 'benchmark_web.py',
+         ['--storage', 'memory'], 18000),
+        ('client', 'local-posix-jsonl-public-client', 'benchmark_client.py',
+         ['--storage', 'posix', '--followers', '1000', '--samples', '100'], 3600),
+        ('volatile-client', 'volatile-public-client', 'benchmark_client.py',
+         ['--storage', 'volatile', '--followers', '1000', '--samples', '100'], 3600),
+        ('engine', 'public-engine-exclusive-wall', 'benchmark_engine.py',
+         ['--samples', '100'], 1800),
+        ('follower-memory', 'public-follower-retained-python', 'benchmark_follower_memory.py',
+         ['--samples', '100', '--followers', '1000', '--queue-size', '32'], 3600),
+    ):
+        started = datetime.now(UTC).isoformat()
+        target = measurements / f'{name}-measurement.json'
+        returncode = await measure(
+            [str(ROOT / '.venv/bin/python'), '-c', BOOTSTRAP, str(ROOT / 'scripts' / script),
+             *arguments, '--output', str(target)],
+            deadline,
+        )
+        if returncode:
+            raise RuntimeError('full_reference_workload_failed:' + name)
+        observed = json.loads(target.read_text())
+        if observed.get('profile') != profile:
+            raise RuntimeError('measurement_profile_mismatch:' + name)
+        validate_measurement(name, observed)
+        if observed.get('source_sha256') != source or inventory(ROOT) != source:
+            raise RuntimeError('measurement_source_changed:' + name)
+        records.append({
+            'profile': name, 'started_at': started,
+            'measurement_profile': profile,
+            'completed_at': datetime.now(UTC).isoformat(),
+            'deadline_seconds': deadline, 'returncode': returncode,
+            'measurement_sha256': hashlib.sha256(target.read_bytes()).hexdigest(),
+        })
+        print(json.dumps({'completed_full_measurement': name}), flush=True)
+    if hashlib.sha256(args.machine_profile.read_bytes()).hexdigest() != machine_profile_sha256:
+        raise RuntimeError('machine_profile_changed')
+    if hashlib.sha256(operator_path.read_bytes()).hexdigest() != operator_sha256:
+        raise RuntimeError('measurement_operator_changed')
+    (destination / 'serial-measurement-execution.json').write_text(json.dumps({
+        'status': 'passed', 'scope': 'full measurements only; no target adoption or regression claim',
+        'source_sha256': source,
+        'machine_profile_sha256': machine_profile_sha256,
+        'operator_sha256': operator_sha256,
+        'aggregate_receipt_sha256': hashlib.sha256(gate_path.read_bytes()).hexdigest(),
+        'executions': records,
+    }, indent=2, sort_keys=True) + '\n')
+
+
+if __name__ == '__main__':
+    asyncio.run(main())

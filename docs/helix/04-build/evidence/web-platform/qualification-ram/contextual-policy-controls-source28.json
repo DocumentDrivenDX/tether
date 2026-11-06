@@ -1,0 +1,26 @@
+{
+  "cloud_or_secret_operations": false,
+  "elapsed_seconds": 3.004,
+  "finished_at_utc": "2026-11-02T16:11:09.866346+00:00",
+  "operator_sha256": "13b36ed8dcf6655553e238c7739ae18c80ff450a66af9b216f6fae04dfb9344a",
+  "production_constants_after": {
+    "deadline_seconds": 90.0,
+    "poll_interval_seconds": 2.0,
+    "protected_status_default_seconds": 30.0
+  },
+  "production_constants_restored": true,
+  "pytest_exit_code": 0,
+  "pytest_summary": [
+    "13 passed in 2.90s"
+  ],
+  "schema_version": 1,
+  "source_inventory_matches_after": true,
+  "source_inventory_matches_before": true,
+  "source_inventory_unchanged": true,
+  "source_map_entries": 701,
+  "source_map_sha256": "e9fd30ce202100eed5598c041f34359411b06a7f9ebcbb438db63b5bbe6878ec",
+  "started_at_utc": "2026-11-02T16:11:06.862327+00:00",
+  "status": "passed",
+  "suite": "13 contextual credential factory controls; source-only offline controls",
+  "test_sha256": "6e714f927956567dfc0fef3d0e33fd0f11b201023ffac64108f175c4c0365459"
+}

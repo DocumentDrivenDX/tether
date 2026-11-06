@@ -1,0 +1,748 @@
+from __future__ import annotations
+
+import hashlib
+import asyncio
+import contextlib
+import importlib.util
+import io
+import json
+import os
+import sys
+import types
+import unittest
+import zipfile
+from enum import Enum
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+PRODUCT_ROOT = Path(os.environ.get("TETHER_PROJECT_ROOT", Path.cwd())).resolve()
+if not (PRODUCT_ROOT / "scripts/web_transport_receipt.py").is_file():
+    raise RuntimeError("run private controls from the project root")
+probe = types.ModuleType("tether_h2c_probe")
+probe.probe_h2c = lambda *args, **kwargs: None
+sys.modules["tether_h2c_probe"] = probe
+sys.path.insert(0, str(ROOT / "src"))
+spec = importlib.util.spec_from_file_location("observer_launcher", ROOT / "src/observer_launcher.py")
+assert spec is not None and spec.loader is not None
+observer = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = observer
+exec(compile((ROOT / "src/observer_launcher.py").read_text(), str(ROOT / "src/observer_launcher.py"), "exec"), observer.__dict__)
+reader_spec = importlib.util.spec_from_file_location("read_observer", ROOT / "src/read_observer.py")
+assert reader_spec is not None and reader_spec.loader is not None
+reader = importlib.util.module_from_spec(reader_spec)
+sys.modules[reader_spec.name] = reader
+exec(compile((ROOT / "src/read_observer.py").read_text(), str(ROOT / "src/read_observer.py"), "exec"), reader.__dict__)
+validator_spec = importlib.util.spec_from_file_location(
+    "web_transport_receipt", PRODUCT_ROOT / "scripts/web_transport_receipt.py"
+)
+assert validator_spec is not None and validator_spec.loader is not None
+validator = importlib.util.module_from_spec(validator_spec)
+sys.modules[validator_spec.name] = validator
+exec(
+    compile((PRODUCT_ROOT / "scripts/web_transport_receipt.py").read_text(), str(PRODUCT_ROOT / "scripts/web_transport_receipt.py"), "exec"),
+    validator.__dict__,
+)
+runner_spec = importlib.util.spec_from_file_location(
+    "private_instrumented_runner", ROOT / "run_instrumented_qualification.py"
+)
+assert runner_spec is not None and runner_spec.loader is not None
+runner = importlib.util.module_from_spec(runner_spec)
+sys.modules[runner_spec.name] = runner
+runner_spec.loader.exec_module(runner)
+sys.path.insert(0, str(ROOT))
+prepare_spec = importlib.util.spec_from_file_location(
+    "private_prepare_overlay", ROOT / "prepare_overlay.py"
+)
+assert prepare_spec is not None and prepare_spec.loader is not None
+prepare = importlib.util.module_from_spec(prepare_spec)
+sys.modules[prepare_spec.name] = prepare
+prepare_spec.loader.exec_module(prepare)
+
+
+class ObserverContractTests(unittest.IsolatedAsyncioTestCase):
+    def test_sdk_enum_status_values_are_normalized(self) -> None:
+        class Status(Enum):
+            RUNNING = "RUNNING"
+            ACTIVE = "ACTIVE"
+            STOPPED = "STOPPED"
+
+        self.assertEqual(runner._status_value(types.SimpleNamespace(state=Status.RUNNING)), "RUNNING")
+        self.assertEqual(runner._status_value(types.SimpleNamespace(state=Status.ACTIVE)), "ACTIVE")
+        self.assertEqual(runner._status_value(types.SimpleNamespace(state=Status.STOPPED)), "STOPPED")
+
+    def test_launcher_disables_workspace_bytecode_writes(self) -> None:
+        self.assertTrue(observer_module().sys.dont_write_bytecode)
+
+    def test_candidate_overlay_allows_only_launcher_and_diagnostic_manifest_delta(self) -> None:
+        base_manifest = '\n'.join((
+            'command:', '  - "uv"', '  - "run"', '  - "--locked"',
+            '  - "python"', '  - "src/app.py"', 'env:',
+            '  - name: TETHER_QUALIFICATION_SCENARIO', '    value: "shared-session"',
+        )) + '\n'
+        values = {
+            'TETHER_DIAG_BASE_CANDIDATE_SHA256': 'd' * 64,
+            'TETHER_DIAG_SCHEMA': 'fabricated_observer_schema',
+            'TETHER_DIAG_PROBE_NONCE': 'a' * 32,
+            'TETHER_DIAG_PROTECTED_PATH': '/api/v1/capabilities',
+        }
+        overlay_manifest = runner._expected_app_manifest(base_manifest, values)
+        self.assertIsNotNone(overlay_manifest)
+        base = {'app.yaml': 'base-manifest-hash', 'src/app.py': 'app-source-hash', 'uv.lock': 'lock-hash'}
+        overlay = {
+            **base,
+            'observer_payload_inventory.json': 'inventory-hash',
+            'src/observer_launcher.py': 'observer-hash',
+            'src/observer_metadata.py': 'metadata-hash',
+            'src/read_observer.py': 'reader-hash',
+            'src/tether_h2c_probe.py': 'probe-hash',
+        }
+        check = runner._candidate_bytes_equal
+        inventory_text = json.dumps({"schema_version": 1, "files": sorted(overlay)})
+        self.assertTrue(check(base, overlay, base_manifest, overlay_manifest or '', values, inventory_text))
+        changed_private_setting = overlay_manifest.replace('shared-session', 'default') if overlay_manifest else ''
+        self.assertFalse(check(base, overlay, base_manifest, changed_private_setting, values, inventory_text))
+        extra = {**overlay, 'src/credential-dump.py': 'extra'}
+        self.assertFalse(check(base, extra, base_manifest, overlay_manifest or '', values, inventory_text))
+        missing_observer = dict(overlay)
+        missing_observer.pop('src/read_observer.py')
+        self.assertFalse(check(base, missing_observer, base_manifest, overlay_manifest or '', values, inventory_text))
+        self.assertFalse(check(base, overlay, base_manifest, (overlay_manifest or '') + '# extra\n', values, inventory_text))
+        self.assertFalse(check(base, overlay, base_manifest, overlay_manifest or '', values, '{"schema_version":1,"files":[]}'))
+
+    def test_overlay_builder_generates_self_including_path_inventory(self) -> None:
+        with __import__("tempfile").TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            base = root / "base"
+            (base / "src").mkdir(parents=True)
+            (base / "app.yaml").write_text(
+                '\n'.join((
+                    'command:', '  - "uv"', '  - "run"', '  - "--locked"',
+                    '  - "python"', '  - "src/app.py"', 'env:',
+                    '  - name: TETHER_QUALIFICATION_SCENARIO', '    value: "shared-session"',
+                )) + '\n'
+            )
+            (base / "uv.lock").write_text("version = 1\n")
+            (base / "src/app.py").write_text("# fabricated app source\n")
+            settings_path = root / "settings.json"
+            settings_path.write_text(json.dumps({
+                "TETHER_QUALIFICATION_APP": "fabricated-app",
+                "TETHER_QUALIFICATION_SCENARIO": "shared-session",
+                "TETHER_PG_ENDPOINT": "fabricated-endpoint",
+            }))
+            output = root / "overlay"
+            result = prepare.prepare_overlay(base, output, settings_path, "fabricated_observer_schema", PRODUCT_ROOT)
+            inventory = json.loads((output / "observer_payload_inventory.json").read_text())
+            actual = sorted(path.relative_to(output).as_posix() for path in output.rglob("*") if path.is_file())
+            self.assertEqual(inventory, {"schema_version": 1, "files": actual})
+            self.assertIn("observer_payload_inventory.json", inventory["files"])
+            overlay_hashes = {
+                path.relative_to(output).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in output.rglob("*") if path.is_file()
+            }
+            self.assertEqual(result["overlay_snapshot_sha256"], runner._digest_inventory(overlay_hashes))
+            self.assertTrue(result["candidate_modules_byte_identical"])
+            values = json.loads((root / "overlay-settings.json").read_text())
+            self.assertEqual(values["TETHER_QUALIFICATION_SCENARIO"], "shared-session")
+            self.assertEqual(values["TETHER_DIAG_SCHEMA"], "fabricated_observer_schema")
+
+    async def test_h2c_and_protected_scope_are_nonce_bound(self) -> None:
+        nonce = "a" * 32
+        nonce_hash = hashlib.sha256(nonce.encode()).hexdigest()
+        process_uuid = "b" * 32
+        seen: list[dict[str, Any]] = []
+
+        async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+            del receive
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+            seen.append(scope)
+
+        proxy = observer._ObservedASGI(app, nonce, process_uuid, nonce_hash, "/api/v1/capabilities")
+        async def invoke(path: str, version: str, candidate_nonce: str) -> list[dict[str, Any]]:
+            sent: list[dict[str, Any]] = []
+            scope = {
+                "type": "http", "path": path, "http_version": version,
+                "headers": [(b"x-tether-qualification-h2c-probe", candidate_nonce.encode())],
+            }
+            async def receive() -> dict[str, str]:
+                return {"type": "http.request"}
+            async def send(message: dict[str, Any]) -> None:
+                sent.append(message)
+            await proxy(scope, receive, send)
+            return sent
+
+        await invoke("/", "2", nonce)
+        protected = await invoke("/api/v1/capabilities", "1.1", nonce)
+        await invoke("/api/v1/capabilities", "2", "c" * 32)
+        self.assertEqual(proxy.observed_version(nonce), "2")
+        self.assertEqual(proxy.ingress["asgi_http_version"], "1.1")
+        self.assertEqual(proxy.ingress["response_status"], 200)
+        self.assertTrue(proxy.ingress["observed"])
+        headers = dict(protected[0]["headers"])
+        self.assertEqual(headers[b"x-tether-diagnostic-process"], process_uuid.encode())
+        self.assertEqual(headers[b"x-tether-diagnostic-nonce-sha256"], nonce_hash.encode())
+        self.assertEqual(headers[b"x-tether-diagnostic-asgi-http-version"], b"1.1")
+        self.assertEqual(b"".join(message.get("body", b"") for message in protected), b"ok")
+        self.assertEqual(len(seen), 3)
+
+    def test_report_filter_bounds_metadata(self) -> None:
+        runtime = {
+            "python": "3.13.1", "platform": "Linux", "architecture": "x86_64",
+            "distributions": {"hypercorn": "0.18.0", "psycopg": "3.3.6"},
+        }
+        payload = {
+            "complete": False,
+            "closed": ["api", "ui"],
+            "outstanding": ["client_host", "postgres_root"],
+            "asgi_http_versions": ["1.1", "2"],
+            "runtime": runtime,
+            "signal_name": "SIGTERM",
+            "signal_to_report_seconds": 13.2,
+            "configured_shutdown_seconds": 14.0,
+            "untrusted": "discarded",
+        }
+        safe = observer._safe_report(__import__("json").dumps(payload))
+        self.assertIsNotNone(safe)
+        self.assertNotIn("untrusted", safe)
+        self.assertIsNone(observer._safe_report("x" * 16_385))
+        payload["outstanding"] = ["credential-value"]
+        self.assertIsNone(observer._safe_report(__import__("json").dumps(payload)))
+
+    def test_reader_requires_all_external_and_row_bindings(self) -> None:
+        digest = "d" * 64
+        process_uuid = "b" * 32
+        nonce_hash = "c" * 64
+        invocation = "invocation_123"
+        expected = {
+            "process_uuid": process_uuid,
+            "nonce_sha256": nonce_hash,
+            "base_candidate_sha256": digest,
+            "overlay_snapshot_sha256": digest,
+            "app_source_sha256": digest,
+            "databricks_wheel_sha256": digest,
+            "loaded_composition_sha256": digest,
+            "observer_sha256": digest,
+            "probe_sha256": digest,
+            "invocation_id": invocation,
+            "deployment_id": "private-deployment-id",
+            "snapshot_deployment_id": "private-deployment-id",
+            "stop_deployment_id": "private-deployment-id",
+            "stop_invocation_id": invocation,
+            "stop_correlation_id": "e" * 32,
+            "platform_stop_observed": True,
+            "observer_mode": "instrumented-qualification-only",
+            "stop_state": "STOPPED",
+            "candidate_modules_byte_identical": True,
+            "active_snapshot_matched": True,
+            "frontend_http_version": "HTTP/2",
+        }
+        row = {
+            "process_uuid": process_uuid,
+            "base_candidate_sha256": digest,
+            "overlay_snapshot_sha256": digest,
+            "app_source_sha256": digest,
+            "databricks_wheel_sha256": digest,
+            "loaded_composition_sha256": digest,
+            "observer_sha256": digest,
+            "probe_sha256": digest,
+            "report": {
+                "complete": False,
+                "outstanding": ["client_host", "postgres_root"],
+                "signal_name": "SIGTERM",
+                "signal_to_report_seconds": 13.2,
+                "configured_shutdown_seconds": 14.0,
+                "asgi_http_versions": ["1.1", "2"],
+                "runtime": {"python": "3.13", "platform": "Linux", "architecture": "x86_64", "distributions": {}},
+            },
+            "report_print_returned": True,
+            "main_returned": True,
+            "signal_to_main_return_seconds": 13.3,
+            "h2c_completed_before_signal": True,
+            "statement_started_at": datetime(2026, 10, 31, tzinfo=timezone.utc),
+            "inserted_at": datetime(2026, 10, 31, 0, 0, 0, 12000, tzinfo=timezone.utc),
+            "transport": {
+                "schema_version": 1,
+                "invocation_id": invocation,
+                "process_uuid": process_uuid,
+                "nonce_sha256": nonce_hash,
+                "loaded_module_sha256": {"carrier_composition": digest, "launcher": digest},
+                "ingress": {
+                    "scope": "public-apps-ingress", "observed": True,
+                    "process_uuid": process_uuid, "nonce_sha256": nonce_hash,
+                    "response_status": 200, "asgi_http_version": "1.1",
+                },
+                "h2c": {
+                    "scope": "deployed-listener", "negotiation": "prior-knowledge",
+                    "response_status": 200, "asgi_http_version": "2", "response_bytes": 500,
+                    "proxy_protocol_claim": False, "process_uuid": process_uuid,
+                    "nonce_sha256": nonce_hash,
+                },
+            },
+        }
+        result = reader._evaluate(row, expected)
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["persistence_latency_seconds"], 0.012)
+        composition_hash = hashlib.sha256(
+            (PRODUCT_ROOT / "packages/databricks/src/tether_databricks/composition.py").read_bytes()
+        ).hexdigest()
+        launcher_hash = hashlib.sha256(
+            (PRODUCT_ROOT / "examples/databricks-app/src/app.py").read_bytes()
+        ).hexdigest()
+        row["loaded_composition_sha256"] = composition_hash
+        expected["loaded_composition_sha256"] = composition_hash
+        row["transport"]["loaded_module_sha256"] = {
+            "carrier_composition": composition_hash,
+            "launcher": launcher_hash,
+        }
+        assembled = reader._evaluate(row, expected)["shutdown_observation"]
+        validated = validator.validate_shutdown_observation(
+            PRODUCT_ROOT, assembled, invocation_id=invocation
+        )
+        self.assertEqual(validated["ingress"]["frontend_http_version"], "HTTP/2")
+        self.assertEqual(
+            result["observer"],
+            {
+                "mode": "instrumented-qualification-only",
+                "observer_sha256": digest,
+                "probe_sha256": digest,
+                "bundle_sha256": digest,
+                "stop_binding_sha256": reader._stop_binding_digest(expected),
+                "stop_state": "STOPPED",
+                "candidate_modules_byte_identical": True,
+                "h2c_completed_before_sigterm": True,
+            },
+        )
+        row["main_returned"] = False
+        self.assertEqual(reader._evaluate(row, expected)["status"], "mismatch")
+        row["main_returned"] = True
+        row["overlay_snapshot_sha256"] = "f" * 64
+        self.assertEqual(reader._evaluate(row, expected)["status"], "mismatch")
+        row["overlay_snapshot_sha256"] = digest
+        row["process_uuid"] = "f" * 32
+        self.assertEqual(reader._evaluate(row, expected)["status"], "mismatch")
+        self.assertEqual(reader._evaluate(None, expected)["status"], "no_row")
+
+    def test_print_observation_occurs_only_after_original_print_returns(self) -> None:
+        printed: list[str] = []
+        observer: Any
+
+        def original(*args: Any, **kwargs: Any) -> None:
+            del kwargs
+            printed.append(str(args[0]))
+            if args[0].startswith(observer_module()._REPORT_PREFIX):
+                self.assertIsNone(observer.report)
+
+        observer = observer_module()._OutputObserver(original)
+        observer(observer_module()._WORKER_MARKER + "invocation_safe")
+        self.assertEqual(observer.worker_invocation_id, "invocation_safe")
+        payload = {
+            "complete": False, "closed": [], "outstanding": ["client_host"],
+            "asgi_http_versions": ["2"], "runtime": {
+                "python": "3.13", "platform": "Linux", "architecture": "x86_64",
+                "distributions": {},
+            }, "signal_name": "SIGTERM", "signal_to_report_seconds": 1.2,
+            "configured_shutdown_seconds": 14,
+        }
+        observer(observer_module()._REPORT_PREFIX + __import__("json").dumps(payload))
+        self.assertEqual(len(printed), 2)
+        self.assertTrue(observer.report_print_returned)
+        self.assertIsNotNone(observer.report)
+
+    def test_signal_clock_is_captured_after_real_handler_and_uses_owner_loop(self) -> None:
+        clock = observer_module()._SignalClock()
+        loop = types.SimpleNamespace(time=lambda: 8.75)
+        events: list[str] = []
+
+        class Owner:
+            _loop = loop
+            _received_at: float | None = None
+
+            @property
+            def received_at(self) -> float | None:
+                events.append("read_timestamp")
+                return self._received_at
+
+
+        def original(received_owner: Any, name: str) -> None:
+            events.append("handler")
+            received_owner._received_at = 5.25
+            self.assertEqual(name, "SIGTERM")
+
+        clock.receive(Owner(), "SIGTERM", original)
+        self.assertEqual(events, ["handler", "read_timestamp"])
+        self.assertEqual(clock.elapsed(), 3.5)
+        self.assertEqual(clock.elapsed(), 3.5)
+
+    async def test_main_return_persists_latest_pre_signal_worker_once_with_remaining_budget(self) -> None:
+        printed: list[str] = []
+        output = observer_module()._OutputObserver(lambda value, **kwargs: printed.append(value))
+        clock = observer_module()._SignalClock()
+        loop = types.SimpleNamespace(time=lambda: 10.0)
+
+        class Owner:
+            received_at: float | None = None
+            _loop = loop
+
+        owner = Owner()
+
+        def receive(received_owner: Any, name: str) -> None:
+            self.assertEqual(name, "SIGTERM")
+            received_owner.received_at = 7.0
+
+        report = {
+            "complete": False, "closed": ["api"], "outstanding": ["client_host"],
+            "asgi_http_versions": ["1.1", "2"],
+            "runtime": {"python": "3.13", "platform": "Linux", "architecture": "x86_64", "distributions": {}},
+            "signal_name": "SIGTERM", "signal_to_report_seconds": 2.5,
+            "configured_shutdown_seconds": 14.0,
+        }
+
+        async def fake_original_main() -> None:
+            output(observer_module()._WORKER_MARKER + "completed_turn")
+            output(observer_module()._WORKER_MARKER + "held_unknown_effect")
+            clock.receive(owner, "SIGTERM", receive)
+            output.freeze_worker()
+            output(observer_module()._WORKER_MARKER + "late_marker_ignored")
+            output(observer_module()._REPORT_PREFIX + __import__("json").dumps(report))
+
+        await fake_original_main()
+        self.assertEqual(output.worker_invocation_id, "held_unknown_effect")
+        self.assertTrue(output.report_print_returned)
+        inserted: list[tuple[Any, str, dict[str, object], float]] = []
+        connection = object()
+
+        async def fake_insert(conn: Any, schema: str, row: dict[str, object], timeout: float) -> None:
+            self.assertIs(conn, connection)
+            self.assertEqual(schema, "fabricated_schema")
+            self.assertTrue(printed[-1].startswith(observer_module()._REPORT_PREFIX))
+            inserted.append((conn, schema, row, timeout))
+
+        process = "b" * 32
+        digest = "d" * 64
+        ingress = {
+            "scope": "public-apps-ingress", "observed": True, "process_uuid": process,
+            "nonce_sha256": "c" * 64, "response_status": 200, "asgi_http_version": "1.1",
+        }
+        app = types.SimpleNamespace(ingress=ingress)
+        row = await observer_module()._persist_observation(
+            output,
+            clock,
+            connection,
+            main_returned=True,
+            schema="fabricated_schema",
+            process_uuid=process,
+            nonce_sha256="c" * 64,
+            base_candidate_sha256=digest,
+            overlay_snapshot_sha256=digest,
+            app_source_sha256=digest,
+            databricks_wheel_sha256=digest,
+            loaded_composition_sha256=digest,
+            observer_sha256=digest,
+            probe_sha256=digest,
+            observed_app=app,
+            h2c_result={
+                "scope": "deployed-listener", "negotiation": "prior-knowledge",
+                "response_status": 200, "asgi_http_version": "2", "response_bytes": 500,
+                "proxy_protocol_claim": False, "process_uuid": process, "nonce_sha256": "c" * 64,
+            },
+            h2c_completed_at=6.5,
+            insert=fake_insert,
+        )
+        self.assertIsNotNone(row)
+        self.assertEqual(len(inserted), 1)
+        self.assertEqual(inserted[0][2]["invocation_id"], "held_unknown_effect")
+        self.assertTrue(inserted[0][2]["main_returned"])
+        self.assertTrue(inserted[0][2]["h2c_completed_before_signal"])
+        self.assertEqual(inserted[0][2]["signal_to_main_return_seconds"], 3.0)
+        self.assertEqual(inserted[0][3], 3.0)
+
+    async def test_insert_sink_executes_one_parameterized_autocommit_statement_with_bound(self) -> None:
+        calls: list[tuple[str, tuple[Any, ...]]] = []
+        bounds: list[float] = []
+
+        class SqlText(str):
+            def format(self, *parts: Any) -> str:
+                return str(self).format(*parts)
+
+        sql = types.SimpleNamespace(SQL=SqlText, Identifier=lambda value: f'"{value}"')
+        psycopg = types.ModuleType("psycopg")
+        psycopg.sql = sql
+        old_psycopg = sys.modules.get("psycopg")
+        sys.modules["psycopg"] = psycopg
+
+        class Bound:
+            def __init__(self, seconds: float) -> None:
+                bounds.append(seconds)
+
+            async def __aenter__(self) -> None:
+                return None
+
+            async def __aexit__(self, *_args: Any) -> None:
+                return None
+
+        missing = object()
+        original_timeout = getattr(asyncio, "timeout", missing)
+        asyncio.timeout = Bound
+
+        class Cursor:
+            async def __aenter__(self) -> "Cursor":
+                return self
+
+            async def __aexit__(self, *_args: Any) -> None:
+                return None
+
+            async def execute(self, statement: str, params: tuple[Any, ...]) -> None:
+                calls.append((statement, params))
+
+        class Connection:
+            def cursor(self) -> Cursor:
+                return Cursor()
+
+        row = {
+            "invocation_id": "held_unknown_effect", "process_uuid": "b" * 32,
+            "base_candidate_sha256": "d" * 64, "app_source_sha256": "d" * 64,
+            "databricks_wheel_sha256": "d" * 64, "loaded_composition_sha256": "d" * 64,
+            "observer_sha256": "d" * 64, "probe_sha256": "d" * 64,
+            "report": {"complete": False}, "report_print_returned": True,
+            "main_returned": True, "signal_to_main_return_seconds": 13.2,
+            "transport": {"schema_version": 1}, "h2c_completed_before_signal": True,
+            "overlay_snapshot_sha256": "d" * 64,
+        }
+        try:
+            await observer._insert_once(Connection(), "fabricated_schema", row, 0.6)
+        finally:
+            if original_timeout is missing:
+                del asyncio.timeout
+            else:
+                asyncio.timeout = original_timeout
+            if old_psycopg is None:
+                sys.modules.pop("psycopg", None)
+            else:
+                sys.modules["psycopg"] = old_psycopg
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(bounds, [0.6])
+        self.assertIn("INSERT INTO", calls[0][0])
+        self.assertIn("%s::jsonb", calls[0][0])
+        self.assertEqual(calls[0][1][0], "held_unknown_effect")
+        self.assertEqual(json.loads(calls[0][1][8]), {"complete": False})
+
+    async def test_real_wrapper_main_persists_only_after_original_main_returns(self) -> None:
+        module = observer_module()
+        captured: list[dict[str, object]] = []
+        old_env = dict(os.environ)
+        old_print = module.builtins.print
+        old_insert = module._insert_once
+        old_probe = module.probe_h2c
+        old_file = module.__file__
+        old_app = sys.modules.get("app")
+        old_composition = sys.modules.get("tether_databricks.composition")
+        old_databricks = sys.modules.get("databricks.sdk")
+        old_psycopg = sys.modules.get("psycopg")
+        old_conninfo = sys.modules.get("psycopg.conninfo")
+        fake_connection = object()
+        call_order: list[str] = []
+        expected_overlay_hash: str | None = None
+
+        class FakeCursor:
+            async def __aenter__(self) -> "FakeCursor":
+                return self
+
+            async def __aexit__(self, *_args: Any) -> None:
+                return None
+
+            async def execute(self, *_args: Any) -> None:
+                return None
+
+        class FakeConnection:
+            def cursor(self) -> FakeCursor:
+                return FakeCursor()
+
+            async def close(self) -> None:
+                call_order.append("connection_closed")
+
+        class FakeAsyncConnection:
+            @staticmethod
+            async def connect(*_args: Any, **_kwargs: Any) -> FakeConnection:
+                return FakeConnection()
+
+        class FakeWorkspace:
+            def __init__(self, **_kwargs: Any) -> None:
+                self.postgres = types.SimpleNamespace(
+                    generate_database_credential=lambda **_values: types.SimpleNamespace(
+                        token="".join(("fabricated", "-credential"))
+                    )
+                )
+
+        with __import__("tempfile").TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "src"
+            wheelhouse = root / "wheelhouse"
+            source.mkdir()
+            wheelhouse.mkdir()
+            (source / "app.py").write_text("# fabricated app source\n")
+            (source / "observer_launcher.py").write_text("# fabricated observer source\n")
+            (source / "observer_metadata.py").write_text("# fabricated metadata source\n")
+            (source / "tether_h2c_probe.py").write_text("# fabricated probe source\n")
+            (source / "read_observer.py").write_text("# fabricated reader source\n")
+            (root / "app.yaml").write_text("command: fabricated\n")
+            (root / "uv.lock").write_text("version = 1\n")
+            module.__file__ = str(source / "observer_launcher.py")
+            wheel = wheelhouse / "novirhiza_tether_databricks-0.2.0.dev0-py3-none-any.whl"
+            with zipfile.ZipFile(wheel, "w") as archive:
+                archive.writestr("tether_databricks/composition.py", "# fabricated composition\n")
+            inventory_paths = sorted((
+                "app.yaml", "uv.lock", "observer_payload_inventory.json",
+                "src/app.py", "src/observer_launcher.py", "src/observer_metadata.py",
+                "src/read_observer.py", "src/tether_h2c_probe.py",
+                "wheelhouse/novirhiza_tether_databricks-0.2.0.dev0-py3-none-any.whl",
+            ))
+            (root / "observer_payload_inventory.json").write_text(
+                json.dumps({"schema_version": 1, "files": inventory_paths}, sort_keys=True) + "\n"
+            )
+            expected_overlay_hash = observer_module()._overlay_inventory_sha256(root)
+
+            class ShutdownSignal:
+                def __init__(self) -> None:
+                    self._loop = asyncio.get_running_loop()
+                    self.received_at: float | None = None
+
+                def _receive(self, name: str) -> None:
+                    call_order.append("signal_received")
+                    self.received_at = self._loop.time()
+
+            async def asgi_app(scope: dict[str, Any], _receive: Any, send: Any) -> None:
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": b"ok"})
+
+            app_module = types.ModuleType("app")
+            app_module.__file__ = str(source / "app.py")
+            app_module._ShutdownSignal = ShutdownSignal
+            async def build_reference_app(*_args: Any, **_kwargs: Any) -> Any:
+                return asgi_app
+            app_module.build_reference_app = build_reference_app
+
+            async def serve(*_args: Any, **_kwargs: Any) -> None:
+                app = await app_module.build_reference_app()
+                nonce = os.environ["TETHER_DIAG_PROBE_NONCE"].encode("ascii")
+                headers = [(b"x-tether-qualification-h2c-probe", nonce)]
+                sent: list[dict[str, Any]] = []
+                async def receive() -> dict[str, str]:
+                    return {"type": "http.request"}
+                async def send(message: dict[str, Any]) -> None:
+                    sent.append(message)
+                await app(
+                    {"type": "http", "path": "/", "http_version": "2", "headers": headers},
+                    receive,
+                    send,
+                )
+                await app(
+                    {"type": "http", "path": "/api/v1/capabilities", "http_version": "1.1", "headers": headers},
+                    receive,
+                    send,
+                )
+                await asyncio.sleep(0.05)
+                signal = ShutdownSignal()
+                signal._receive("SIGTERM")
+                app_module._signal = signal
+                call_order.append("serve_returned")
+            app_module.serve = serve
+
+            async def original_main() -> None:
+                module.builtins.print(module._WORKER_MARKER + "shared_invocation")
+                module.builtins.print(module._WORKER_MARKER + "held_unknown_effect")
+                await app_module.serve()
+                report = {
+                    "complete": False, "closed": ["api"], "outstanding": ["client_host"],
+                    "asgi_http_versions": ["1.1", "2"],
+                    "runtime": {"python": "3.13", "platform": "Linux", "architecture": "x86_64", "distributions": {}},
+                    "signal_name": "SIGTERM", "signal_to_report_seconds": 0.02,
+                    "configured_shutdown_seconds": 14.0,
+                }
+                call_order.append("before_report_print")
+                module.builtins.print(module._REPORT_PREFIX + json.dumps(report))
+                call_order.append("after_report_print")
+            app_module.main = original_main
+
+            databricks_sdk = types.ModuleType("databricks.sdk")
+            databricks_sdk.WorkspaceClient = FakeWorkspace
+            psycopg = types.ModuleType("psycopg")
+            psycopg.AsyncConnection = FakeAsyncConnection
+            conninfo = types.ModuleType("psycopg.conninfo")
+            conninfo.make_conninfo = lambda **_kwargs: "host=fabricated"
+            composition = types.ModuleType("tether_databricks.composition")
+            composition.__file__ = str(root / "composition.py")
+            Path(composition.__file__).write_text("# fabricated loaded composition\n")
+            package = types.ModuleType("tether_databricks")
+            package.__path__ = []
+
+            sys.modules["app"] = app_module
+            sys.modules["databricks.sdk"] = databricks_sdk
+            sys.modules["psycopg"] = psycopg
+            sys.modules["psycopg.conninfo"] = conninfo
+            sys.modules["tether_databricks"] = package
+            sys.modules["tether_databricks.composition"] = composition
+            os.environ.update({
+                "TETHER_DIAG_BASE_CANDIDATE_SHA256": "d" * 64,
+                "TETHER_DIAG_SCHEMA": "fabricated_schema",
+                "DATABRICKS_APP_PORT": "8100",
+                "TETHER_DIAG_PROBE_NONCE": "a" * 32,
+                "TETHER_DIAG_PROTECTED_PATH": "/api/v1/capabilities",
+                "TETHER_PG_ENDPOINT": "fabricated-endpoint",
+                "TETHER_PG_HOST": "localhost",
+                "TETHER_PG_DATABASE": "fabricated-db",
+                "TETHER_PG_INFRA_ROLE": "fabricated-infra",
+                "TETHER_PG_SSLROOTCERT": "/fabricated/ca.pem",
+            })
+            probe_result = {
+                "scope": "deployed-listener", "negotiation": "prior-knowledge",
+                "response_status": 200, "asgi_http_version": "2", "response_bytes": 2,
+                "proxy_protocol_claim": False,
+            }
+            async def fake_probe(port: int, path: str, nonce: str, observed: Any) -> dict[str, object]:
+                self.assertEqual((port, path, nonce), (8100, "/", "a" * 32))
+                await asyncio.sleep(0.001)
+                self.assertEqual(observed(nonce), "2")
+                return probe_result
+            module.probe_h2c = fake_probe
+            async def fake_insert(_connection: Any, _schema: str, row: dict[str, object], _timeout: float) -> None:
+                call_order.append("insert")
+                captured.append(row)
+            module._insert_once = fake_insert
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    await module.main()
+            finally:
+                module.builtins.print = old_print
+                module._insert_once = old_insert
+                module.probe_h2c = old_probe
+                module.__file__ = old_file
+                os.environ.clear()
+                os.environ.update(old_env)
+                for name, previous in (
+                    ("app", old_app), ("tether_databricks.composition", old_composition),
+                    ("databricks.sdk", old_databricks), ("psycopg", old_psycopg),
+                    ("psycopg.conninfo", old_conninfo),
+                ):
+                    if previous is None:
+                        sys.modules.pop(name, None)
+                    else:
+                        sys.modules[name] = previous
+
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0]["invocation_id"], "held_unknown_effect")
+        self.assertTrue(captured[0]["main_returned"])
+        self.assertTrue(captured[0]["report_print_returned"])
+        self.assertTrue(captured[0]["h2c_completed_before_signal"], msg=repr(captured[0]))
+        self.assertEqual(captured[0]["overlay_snapshot_sha256"], expected_overlay_hash)
+        self.assertLess(call_order.index("after_report_print"), call_order.index("insert"))
+        self.assertIn("connection_closed", call_order)
+
+
+def observer_module() -> Any:
+    return observer
+
+
+if __name__ == "__main__":
+    unittest.main()

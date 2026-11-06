@@ -1,0 +1,33 @@
+[project]
+name = "tether-databricks-app-example"
+version = "0.2.0.dev0"
+description = "Reusable Databricks Apps composition for Tether"
+requires-python = ">=3.11"
+dependencies = [
+  "novirhiza-tether[postgres]==0.2.0.dev0",
+  "novirhiza-tether-web-api==0.2.0.dev0",
+  "novirhiza-tether-web-ui==0.2.0.dev0",
+  "novirhiza-tether-databricks==0.2.0.dev0",
+  "databricks-sdk>=0.89.0,<1",
+  "hypercorn==0.18.0",
+]
+
+[tool.uv.sources]
+novirhiza-tether = { path = "../..", editable = true }
+novirhiza-tether-web-api = { path = "../../packages/web-api", editable = true }
+novirhiza-tether-web-ui = { path = "../../packages/web-ui", editable = true }
+novirhiza-tether-databricks = { path = "../../packages/databricks", editable = true }
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+venvPath = "../.."
+venv = ".venv"
+extraPaths = [
+  "src",
+  "../../src",
+  "../../packages/databricks/src",
+  "../../packages/web-api/src",
+  "../../packages/web-ui/src",
+]
+

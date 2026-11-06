@@ -1,0 +1,74 @@
+{
+  "cleanup_errors": [],
+  "elapsed_seconds": 20.195078,
+  "events": [],
+  "instrumented_child_sha256": "23c4f5dbe2c5c741f2da01dde79c26a16726352408174f16f7007c1830d38281",
+  "load_average_after": [
+    117.47314453125,
+    102.4345703125,
+    73.49853515625
+  ],
+  "load_average_before": [
+    142.33984375,
+    105.69580078125,
+    73.9287109375
+  ],
+  "phase": "created_wait",
+  "returncode": -9,
+  "source_hashes_after": {
+    "src/tether/engine/context/sources.py": "e34e2ee45613ea27df2294c8c37c4d5c40d7d4346e42ec98ff9e339e3efcd0c6",
+    "src/tether/engine/context/step.py": "6ae59987e30b5bdd31b2316124499c129b66d2eecb08a8cec5ff0140eee94793",
+    "src/tether/engine/run.py": "ec9fa7b699045a2f41dbb9306aad42aed708ba899e62bc947faf0b93624f6da3",
+    "src/tether/sessions/feed.py": "1be9dc20148a391566163956382d257434c6a3935b108bfda1922a04903c567a",
+    "src/tether/types/_entry_snapshot.py": "4be226b146fa7ab684541fc664516023e3ba5942cf27076c3a82fbc9b9d0b501",
+    "tests/context_summary_process.py": "e75166c3b0565c40fd68743f8d36c0b7e66377babc641d24b1f6e13a639e0c44",
+    "tests/test_agent_summaries.py": "29ff31aa49b2962e124fef8c556530a071c56cabd2dce207a32fe21e16576cbe",
+    "tests/test_agent_summary_restart.py": "1617390f4b05f394edf6bd99c143049d85f428829c8a7b2bc14f2aff93dccf6a",
+    "tests/test_context_summary_process.py": "1442ea8909ce5ff245a9999434437fb69499ec18bfa7f6b399de52c541db644a"
+  },
+  "source_hashes_before": {
+    "src/tether/engine/context/sources.py": "e34e2ee45613ea27df2294c8c37c4d5c40d7d4346e42ec98ff9e339e3efcd0c6",
+    "src/tether/engine/context/step.py": "6ae59987e30b5bdd31b2316124499c129b66d2eecb08a8cec5ff0140eee94793",
+    "src/tether/engine/run.py": "ec9fa7b699045a2f41dbb9306aad42aed708ba899e62bc947faf0b93624f6da3",
+    "src/tether/sessions/feed.py": "1be9dc20148a391566163956382d257434c6a3935b108bfda1922a04903c567a",
+    "src/tether/types/_entry_snapshot.py": "4be226b146fa7ab684541fc664516023e3ba5942cf27076c3a82fbc9b9d0b501",
+    "tests/context_summary_process.py": "e75166c3b0565c40fd68743f8d36c0b7e66377babc641d24b1f6e13a639e0c44",
+    "tests/test_agent_summaries.py": "29ff31aa49b2962e124fef8c556530a071c56cabd2dce207a32fe21e16576cbe",
+    "tests/test_agent_summary_restart.py": "1617390f4b05f394edf6bd99c143049d85f428829c8a7b2bc14f2aff93dccf6a",
+    "tests/test_context_summary_process.py": "1442ea8909ce5ff245a9999434437fb69499ec18bfa7f6b399de52c541db644a"
+  },
+  "source_unchanged": true,
+  "stderr": {
+    "exception_classes": [],
+    "last_frames": [],
+    "phase_markers": [
+      {
+        "monotonic_seconds": 1248579.34531,
+        "phase": "imports_started"
+      },
+      {
+        "monotonic_seconds": 1248595.989881,
+        "phase": "imports_complete"
+      },
+      {
+        "monotonic_seconds": 1248595.990023,
+        "phase": "source_current"
+      },
+      {
+        "monotonic_seconds": 1248595.990469,
+        "phase": "open_state_started"
+      },
+      {
+        "monotonic_seconds": 1248596.623181,
+        "phase": "open_state_complete"
+      },
+      {
+        "monotonic_seconds": 1248596.623217,
+        "phase": "first_turn_started"
+      }
+    ],
+    "stderr_bytes": 262,
+    "stderr_truncated": false
+  },
+  "timed_out": true
+}

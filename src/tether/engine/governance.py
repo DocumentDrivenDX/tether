@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from tether.types import Message, Purpose
+from tether.types._entry_snapshot import current_history_links, matching_sources
 from tether.types.canonical import digest
 from tether.types.execution import (
     Actor,
@@ -30,6 +31,7 @@ from tether.types.usage import UsageLedger
 
 from .observers.facade import Observers
 from .observers.metadata import ACTIONS, Scope, code
+from .persistence import settled
 
 
 def reason_code(value: str, fallback: str = "policy_reason_invalid") -> str:
@@ -114,12 +116,16 @@ class Governance:
         return (await self.commit([entry]))[0]
 
     async def commit(self, entries: Sequence[NewEntry]) -> tuple[Entry, ...]:
+        return await settled(self._commit(entries))
+
+    async def _commit(self, entries: Sequence[NewEntry]) -> tuple[Entry, ...]:
         accepted = await self.log.append(entries)
         if len(accepted) != len(entries):
             raise ExecutionDenied("commit_not_accepted")
+        accepted_prefix = self.log.entries if accepted else ()
         for expected, actual in zip(entries, accepted, strict=True):
             value = NewEntry.model_validate(actual.model_dump(exclude={"index", "at"}))
-            if value != expected or actual not in self.log.entries:
+            if value != expected or actual not in accepted_prefix:
                 raise ExecutionDenied("commit_not_accepted")
         for entry in accepted:
             if entry.turn_id in self.usage_turns:
@@ -226,11 +232,8 @@ class Governance:
         if not isinstance(ref, HistoryRef):
             raise ExecutionDenied("invalid_source")
         await self.authorize("read_session", self.log.session.id)
-        sources = [
-            e
-            for e in self.log.entries
-            if e.history_ref == ref and (source_index is None or e.index == source_index)
-        ]
+        entries = self.log.entries
+        sources = matching_sources(entries, ref, source_index=source_index)
         if len(sources) != 1:
             raise ExecutionDenied("unreachable_source")
         source = sources[0]
@@ -238,12 +241,8 @@ class Governance:
             selected = select_history_ref(
                 ref,
                 source.index,
-                tuple(
-                    e
-                    for e in self.log.entries
-                    if e.kind == "history_linked" and e.facts.get("message_index") == source.index
-                ),
-                through_index=len(self.log.entries) - 1,
+                current_history_links(entries, source.index),
+                through_index=len(entries) - 1,
                 max_hops=self.limits.max_history_link_hops,
             )
         except IntegrityError:

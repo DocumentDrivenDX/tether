@@ -1,0 +1,10 @@
+command:
+  - "uv"
+  - "run"
+  - "--locked"
+  - "python"
+  - "src/app.py"
+env:
+  - name: TETHER_APP_RUNTIME
+    value: "reference_runtime:create"
+

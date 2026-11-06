@@ -1,0 +1,21 @@
+{
+  "files": {
+    "attempt04-lifecycle-sanitized.json": {
+      "bytes": 78635,
+      "sha256": "05530cc8e46267084a6d462b6eb36b299f4b4f634772aae98fba13d1b8a9302a"
+    },
+    "attempt04-safe-error-frames.json": {
+      "bytes": 1101,
+      "sha256": "cc50e2ff950c5a783fc0d8ffa245492437bc6f49f1fb85c4e25ec515bf2a513e"
+    }
+  },
+  "limits": [
+    "Original safe trace is byte-identical; lifecycle is selected safe fields from private original.",
+    "Retained restore succeeded per actual Root observation; exact extra secret revocation verified.",
+    "No partial returned case or managed repeat is selected-case proof.",
+    "Source28 must be frozen and independently qualified; source27 receipts/baselines remain historical."
+  ],
+  "schema_version": 1,
+  "scope": "source27 attempt04 qualifier convergence failure; no complete selected receipt",
+  "status": "failed-attempt-only; source28 correction pending"
+}

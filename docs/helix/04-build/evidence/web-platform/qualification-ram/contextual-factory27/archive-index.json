@@ -1,0 +1,11 @@
+{
+  "archived_files": {
+    "operator.py.txt": "13b36ed8dcf6655553e238c7739ae18c80ff450a66af9b216f6fae04dfb9344a",
+    "policy-and-hashes.json": "833f79e98313467d9c8761724dbe1b87c38d4acaeaeb852f311ee98761106806",
+    "test_controls.py.txt": "6e714f927956567dfc0fef3d0e33fd0f11b201023ffac64108f175c4c0365459"
+  },
+  "original_archive_sha256": "9268d81ae704565c7fb77e2d45f4c8f01901f86cbcf433de7243d29c57bb1937",
+  "source27_inventory_matches_before_archive": true,
+  "source27_map_sha256": "50fb753df6fe88d4c27e6939a5fbcda162c5300eb71f6c87a509c1a1e4e828c2",
+  "status": "source-only-offline-controls-not-live-qualification"
+}

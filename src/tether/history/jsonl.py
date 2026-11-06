@@ -16,6 +16,7 @@ from tether.types.history import (
     StoredHistory,
 )
 from tether.types.history_codec import exchange_source, verify_exchange
+from tether.types.lifetime import settle_completion
 from tether.types.storage import IntegrityError, JournalFiles, StoreError
 
 CODEC = "tether-history-v1"
@@ -94,9 +95,13 @@ class JsonlHistory:
                 return ref
             self._account(ref, commit=False)
             stored = StoredHistory(ref=ref, record=record)
-            offset = await self.files.append_file("history", stored.model_dump(mode="json"))
+            offset, cancelled = await settle_completion(
+                self.files.append_file("history", stored.model_dump(mode="json"))
+            )
             self._account(ref)
             self._index[address] = (ref, offset)
+            if cancelled:
+                raise asyncio.CancelledError
         return ref
 
     async def read(self, refs: Sequence[HistoryRef], *, actor: Actor) -> tuple[HistoryValue, ...]:

@@ -1,0 +1,294 @@
+"""Read one shutdown-observer row after Apps compute has stopped."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import time
+from pathlib import Path
+from typing import Any
+
+
+def _client(profile: str, config_file: str | None) -> Any:
+    for name in tuple(os.environ):
+        if name.startswith("DATABRICKS_"):
+            os.environ.pop(name, None)
+    if config_file is not None:
+        os.environ["DATABRICKS_CONFIG_FILE"] = config_file
+    from databricks.sdk import WorkspaceClient
+
+    return WorkspaceClient(profile=profile)
+
+
+def _connect(config: dict[str, Any]) -> Any:
+    from psycopg import connect
+    from psycopg.conninfo import make_conninfo
+
+    client = _client(config["profile"], config.get("config_file"))
+    credential = client.postgres.generate_database_credential(endpoint=config["endpoint"])
+    token = credential.token
+    if not isinstance(token, str) or not token:
+        raise RuntimeError("reader_credential_empty")
+    conninfo = make_conninfo(
+        host=config["host"],
+        port=config.get("port", 5432),
+        dbname=config["database"],
+        user=config["reader_role"],
+        password=token,
+        sslmode="verify-full",
+        sslrootcert=config["sslrootcert"],
+        connect_timeout=5,
+        options="-c statement_timeout=3000",
+    )
+    return connect(conninfo, autocommit=True)
+
+
+def _fetch(connection: Any, schema: str, invocation_id: str) -> dict[str, object] | None:
+    from psycopg import sql
+
+    statement = sql.SQL(
+        "SELECT process_uuid, base_candidate_sha256, app_source_sha256, databricks_wheel_sha256, "
+        "loaded_composition_sha256, observer_sha256, probe_sha256, report, report_print_returned, "
+        "main_returned, signal_to_main_return_seconds, transport, h2c_completed_before_signal, "
+        "overlay_snapshot_sha256, "
+        "statement_started_at, inserted_at "
+        "FROM {}.{} WHERE invocation_id = %s"
+    ).format(sql.Identifier(schema), sql.Identifier("shutdown_observer"))
+    with connection.cursor() as cursor:
+        cursor.execute(statement, (invocation_id,))
+        row = cursor.fetchone()
+    if row is None:
+        return None
+    names = (
+        "process_uuid", "base_candidate_sha256", "app_source_sha256", "databricks_wheel_sha256",
+        "loaded_composition_sha256", "observer_sha256", "probe_sha256", "report", "report_print_returned",
+        "main_returned", "signal_to_main_return_seconds", "transport", "h2c_completed_before_signal",
+        "overlay_snapshot_sha256",
+        "statement_started_at", "inserted_at",
+    )
+    return dict(zip(names, row, strict=True))
+
+
+def _stop_binding_digest(expected: dict[str, Any]) -> str | None:
+    stop_id = expected.get("stop_correlation_id")
+    deployment_id = expected.get("deployment_id")
+    invocation_id = expected.get("invocation_id")
+    if (
+        not isinstance(stop_id, str)
+        or re.fullmatch(r"[0-9a-f]{32}", stop_id) is None
+        or not isinstance(deployment_id, str)
+        or not deployment_id
+        or not isinstance(invocation_id, str)
+        or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", invocation_id) is None
+        or expected.get("platform_stop_observed") is not True
+        or expected.get("stop_state") != "STOPPED"
+        or expected.get("stop_invocation_id") != invocation_id
+        or expected.get("stop_deployment_id") != deployment_id
+        or expected.get("snapshot_deployment_id") != deployment_id
+        or expected.get("active_snapshot_matched") is not True
+    ):
+        return None
+    bound = {
+        "operation": "local-correlation-for-databricks-app-stop",
+        "stop_correlation_id": stop_id,
+        "deployment_id": deployment_id,
+        "snapshot_deployment_id": expected["snapshot_deployment_id"],
+        "invocation_id": invocation_id,
+        "stop_invocation_id": expected["stop_invocation_id"],
+        "stop_deployment_id": expected["stop_deployment_id"],
+        "platform_stop_observed": True,
+        "active_snapshot_matched": True,
+        "stop_state": "STOPPED",
+    }
+    canonical = json.dumps(bound, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _evaluate(row: dict[str, object] | None, expected: dict[str, Any]) -> dict[str, object]:
+    if row is None:
+        return {"status": "no_row", "row_found": False}
+    transport = row.get("transport")
+    report = row.get("report")
+    if not isinstance(transport, dict) or not isinstance(report, dict):
+        return {"status": "invalid_row", "row_found": True}
+    ingress = transport.get("ingress")
+    h2c = transport.get("h2c")
+    ingress = ingress if isinstance(ingress, dict) else {}
+    h2c = h2c if isinstance(h2c, dict) else {}
+    process = str(row.get("process_uuid", "" )).strip()
+    process_match = process == expected["process_uuid"] == transport.get("process_uuid")
+    nonce_match = (
+        transport.get("nonce_sha256") == expected["nonce_sha256"]
+        and ingress.get("nonce_sha256") == expected["nonce_sha256"]
+        and h2c.get("nonce_sha256") == expected["nonce_sha256"]
+    )
+    hashes = {
+        "base_candidate": row.get("base_candidate_sha256") == expected["base_candidate_sha256"],
+        "overlay_snapshot": isinstance(expected.get("overlay_snapshot_sha256"), str) and re.fullmatch(r"[0-9a-f]{64}", expected["overlay_snapshot_sha256"]) is not None,
+        "overlay_row_matches_snapshot": row.get("overlay_snapshot_sha256") == expected.get("overlay_snapshot_sha256"),
+        "app_source": row.get("app_source_sha256") == expected["app_source_sha256"],
+        "databricks_wheel": row.get("databricks_wheel_sha256") == expected["databricks_wheel_sha256"],
+        "loaded_composition": row.get("loaded_composition_sha256") == expected["loaded_composition_sha256"],
+        "observer": row.get("observer_sha256") == expected["observer_sha256"],
+        "probe": row.get("probe_sha256") == expected["probe_sha256"],
+    }
+    report_elapsed = report.get("signal_to_report_seconds")
+    main_elapsed = row.get("signal_to_main_return_seconds")
+    configured = report.get("configured_shutdown_seconds")
+    protocols = report.get("asgi_http_versions")
+    timing_ok = (
+        report.get("complete") is False
+        and report.get("signal_name") == "SIGTERM"
+        and isinstance(report.get("outstanding"), list)
+        and "client_host" in report["outstanding"]
+        and isinstance(protocols, list)
+        and "2" in protocols
+        and isinstance(report_elapsed, (int, float))
+        and isinstance(main_elapsed, (int, float))
+        and isinstance(configured, (int, float))
+        and 0 <= report_elapsed <= main_elapsed <= configured < 15
+        and ingress.get("asgi_http_version") in protocols
+    )
+    statement_started = row.get("statement_started_at")
+    inserted_at = row.get("inserted_at")
+    persistence_latency_ok = (
+        statement_started is not None
+        and inserted_at is not None
+        and getattr(inserted_at, "tzinfo", None) is not None
+        and getattr(statement_started, "tzinfo", None) is not None
+        and inserted_at >= statement_started
+        and (inserted_at - statement_started).total_seconds() <= 3.0
+    )
+    stop_binding_sha256 = _stop_binding_digest(expected)
+    bindings = {
+        "deployment_id_present": bool(expected.get("deployment_id")),
+        "stop_correlation_id_present": isinstance(expected.get("stop_correlation_id"), str)
+        and re.fullmatch(r"[0-9a-f]{32}", expected["stop_correlation_id"]) is not None,
+        "platform_stop_observed": expected.get("platform_stop_observed") is True,
+        "platform_stop_binds_worker": (
+            expected.get("stop_invocation_id") == expected.get("invocation_id")
+            and expected.get("stop_deployment_id") == expected.get("deployment_id")
+        ),
+        "stop_state_is_stopped": expected.get("stop_state") == "STOPPED",
+        "candidate_modules_byte_identical": expected.get("candidate_modules_byte_identical") is True,
+        "observer_mode_selected": expected.get("observer_mode") == "instrumented-qualification-only",
+        "stop_binding_digest_valid": stop_binding_sha256 is not None,
+        "active_snapshot_matched": (
+            expected.get("active_snapshot_matched") is True
+            and expected.get("snapshot_deployment_id") == expected.get("deployment_id")
+        ),
+        "invocation_matches_worker": transport.get("invocation_id") == expected["invocation_id"],
+        "process_matches": process_match,
+        "nonce_hashes_match": nonce_match,
+        "ingress_observed_200": ingress.get("observed") is True and ingress.get("response_status") == 200,
+        "ingress_process_matches": ingress.get("process_uuid") == process,
+        "ingress_nonce_matches": ingress.get("nonce_sha256") == expected["nonce_sha256"],
+        "ingress_asgi_version_observed": ingress.get("asgi_http_version") in {"1.1", "2"},
+        "h2c_observed_200": (
+            h2c.get("scope") == "deployed-listener"
+            and h2c.get("negotiation") == "prior-knowledge"
+            and h2c.get("response_status") == 200
+            and h2c.get("asgi_http_version") == "2"
+            and type(h2c.get("response_bytes")) is int
+            and 1 <= h2c["response_bytes"] <= 1_048_576
+            and h2c.get("proxy_protocol_claim") is False
+        ),
+        "h2c_process_matches": h2c.get("process_uuid") == process,
+        "h2c_nonce_matches": h2c.get("nonce_sha256") == expected["nonce_sha256"],
+        "report_print_returned": row.get("report_print_returned") is True,
+        "main_returned": row.get("main_returned") is True,
+        "h2c_completed_before_signal": row.get("h2c_completed_before_signal") is True,
+        "timing_consistent": timing_ok,
+        "persistence_latency_recorded": persistence_latency_ok,
+        "hashes_match": all(hashes.values()),
+        "frontend_http_version_observed": expected.get("frontend_http_version") in {"HTTP/2", "HTTP/1.1"},
+    }
+    result: dict[str, object] = {
+        "status": "passed" if all(bindings.values()) else "mismatch",
+        "row_found": True,
+        **bindings,
+        "hashes": hashes,
+        "persistence_latency_seconds": (
+            (inserted_at - statement_started).total_seconds() if persistence_latency_ok else None
+        ),
+    }
+    if result["status"] == "passed":
+        validated_transport = {
+            "schema_version": 1,
+            "invocation_id": transport["invocation_id"],
+            "process_uuid": transport["process_uuid"],
+            "nonce_sha256": transport["nonce_sha256"],
+            "loaded_module_sha256": transport["loaded_module_sha256"],
+            "ingress": {
+                "scope": "public-apps-ingress",
+                "response_status": ingress["response_status"],
+                "frontend_http_version": expected["frontend_http_version"],
+                "asgi_http_version": ingress["asgi_http_version"],
+                "process_uuid": ingress["process_uuid"],
+                "nonce_sha256": ingress["nonce_sha256"],
+            },
+            "h2c": h2c,
+        }
+        observer = {
+            "mode": "instrumented-qualification-only",
+            "observer_sha256": row["observer_sha256"],
+            "probe_sha256": row["probe_sha256"],
+            "bundle_sha256": expected["overlay_snapshot_sha256"],
+            "stop_binding_sha256": stop_binding_sha256,
+            "stop_state": "STOPPED",
+            "candidate_modules_byte_identical": True,
+            "h2c_completed_before_sigterm": row["h2c_completed_before_signal"] is True,
+        }
+        result["observer"] = observer
+        result["shutdown_observation"] = {
+            "complete": report["complete"],
+            "outstanding": report["outstanding"],
+            "signal_name": report["signal_name"],
+            "signal_to_report_seconds": report["signal_to_report_seconds"],
+            "configured_shutdown_seconds": report["configured_shutdown_seconds"],
+            "asgi_http_versions": report["asgi_http_versions"],
+            "runtime": report["runtime"],
+            "main_returned": True,
+            "signal_to_main_return_seconds": row["signal_to_main_return_seconds"],
+            "worker_invocation_id": transport["invocation_id"],
+            "transport": validated_transport,
+            "observer": observer,
+        }
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=Path, required=True)
+    args = parser.parse_args()
+    config = json.loads(args.config.read_text())
+    wait_seconds = config.get("wait_seconds", 20)
+    if type(wait_seconds) is not int or not 0 <= wait_seconds <= 30:
+        raise SystemExit("invalid_wait_bound")
+    connection = None
+    try:
+        connection = _connect(config)
+        deadline = time.monotonic() + wait_seconds
+        row = None
+        while True:
+            row = _fetch(connection, config["schema"], config["invocation_id"])
+            if row is not None or time.monotonic() >= deadline:
+                break
+            time.sleep(0.5)
+        result = _evaluate(row, config)
+    except Exception:
+        result = {"status": "read_failed", "row_found": False}
+    finally:
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                result = {"status": "close_failed", "row_found": False}
+    print(json.dumps(result, sort_keys=True))
+    return 0 if result.get("status") == "passed" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,69 @@
+{
+  "cli_resolved": true,
+  "derivation": {
+    "kind": "privacy-sanitized-summary",
+    "limits": [
+      "Warmup/readiness precondition only; no selected-case or privacy acceptance observation.",
+      "Actual raw logs and warmup invocation/session metadata remain private."
+    ],
+    "original_private_summary_sha256": "f962edd3052d7c9ff8301541735529b2711985ca66bcf2afd15c75a55e6f08ff",
+    "redactions": [
+      "profile_name",
+      "selected profile argument in follow_command_shape"
+    ]
+  },
+  "follow_command_shape": [
+    "apps",
+    "logs",
+    "<app>",
+    "--tail-lines",
+    "1",
+    "--follow",
+    "--timeout",
+    "180s",
+    "--profile",
+    "<selected-profile>",
+    "--output",
+    "json",
+    "APP adds --source APP; unfiltered has no --source"
+  ],
+  "follower_timeout_seconds": 180,
+  "followers": [
+    {
+      "kind": "APP",
+      "reader_error": null,
+      "returncode_after_stop": -15,
+      "stderr_bytes": 0,
+      "stderr_first_byte": false,
+      "stderr_first_byte_elapsed_seconds": null,
+      "stdout_bytes": 153,
+      "stdout_first_byte": true,
+      "stdout_first_byte_elapsed_seconds": 2.847749707987532
+    },
+    {
+      "kind": "UNFILTERED",
+      "reader_error": null,
+      "returncode_after_stop": -15,
+      "stderr_bytes": 0,
+      "stderr_first_byte": false,
+      "stderr_first_byte_elapsed_seconds": null,
+      "stdout_bytes": 247,
+      "stdout_first_byte": true,
+      "stdout_first_byte_elapsed_seconds": 2.5736443330533803
+    }
+  ],
+  "phase": "wait_first_stdout_bytes",
+  "profile_name": "<selected-profile>",
+  "raw_logs_retained_private": true,
+  "readiness": "both_first_stdout_bytes",
+  "readiness_deadline_seconds": 15,
+  "schema_version": 1,
+  "source_inventory_after_sha256": "4eb2d3e8f38e08604eb617ec6de70b50c48838be00aafc1c7aba1238e923c986",
+  "source_inventory_before_sha256": "4eb2d3e8f38e08604eb617ec6de70b50c48838be00aafc1c7aba1238e923c986",
+  "source_inventory_unchanged": true,
+  "status": "diagnostic_only",
+  "warmup_elapsed_seconds": 47.41414074995555,
+  "warmup_error_class": null,
+  "warmup_marker_found_in_logs": false,
+  "warmup_succeeded": true
+}

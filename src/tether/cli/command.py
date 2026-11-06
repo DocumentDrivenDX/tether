@@ -8,10 +8,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from tether.client import Client
-from tether.models.testing import ReplayModel
-from tether.types.client import ReplyReset, ReplyText
-from tether.types.execution import Answer, TurnResult
+from tether.client import Answer, ClientProtocol, ReplyReset, ReplyText, TurnResult
 
 from .demo import open_demo
 from .local import options, resolve_profile
@@ -26,6 +23,14 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument(
         "--volatile", action="store_true", help="Use a temporary in-memory UI demo"
     )
+    command.add_argument("--endpoint", help="Explicit remote Tether HTTPS origin")
+    command.add_argument("--remote-profile", help="Explicit Databricks CLI OAuth profile")
+    command.add_argument(
+        "--remote-service-caller",
+        action="store_true",
+        help="Opt into the carrier's verified service-caller credential projection",
+    )
+    command.add_argument("--api-prefix", default="/api/v1", help="Remote API mount prefix")
     local_arguments(command)
     actions = command.add_subparsers(dest="action")
     actions.add_parser("list")
@@ -79,7 +84,7 @@ def display_result(result: TurnResult) -> None:
         print(f"approval: {pending.tool} {pending.invocation_id}")
 
 
-async def list_sessions(client: Client) -> None:
+async def list_sessions(client: ClientProtocol) -> None:
     cursor = None
     while True:
         page = await client.list(cursor=cursor)
@@ -90,7 +95,7 @@ async def list_sessions(client: Client) -> None:
         cursor = page.next
 
 
-async def show_session(client: Client, session_id: str) -> None:
+async def show_session(client: ClientProtocol, session_id: str) -> None:
     view = await client.get(session_id)
     print(view.model_dump_json(indent=2))
     start = 0
@@ -103,7 +108,7 @@ async def show_session(client: Client, session_id: str) -> None:
         start = page.next_start
 
 
-async def follow_session(client: Client, session_id: str, since: int | None) -> None:
+async def follow_session(client: ClientProtocol, session_id: str, since: int | None) -> None:
     async for change in client.follow(session_id=session_id, since=since):
         if isinstance(change, ReplyText):
             print(change.text, end="", flush=True)
@@ -117,40 +122,59 @@ async def execute(args: argparse.Namespace) -> None:
     if args.volatile:
         raise ValueError("volatile_ui_only")
     profile = await resolve_profile(args.model_config, options(args))
-    async with open_demo(args.root, continuation=args.action == "confirm", profile=profile) as (
+    cassette = (
+        await asyncio.to_thread(args.cassette.read_text, encoding="utf-8")
+        if args.action == "replay"
+        else None
+    )
+    async with open_demo(
+        args.root, continuation=args.action == "confirm", profile=profile, replay_cassette=cassette
+    ) as (
         app,
         actor,
         _tool,
     ):
         client = app.client(actor)
-        if args.action == "list":
-            await list_sessions(client)
-        elif args.action == "show":
-            await show_session(client, args.session_id)
-        elif args.action == "follow":
-            await follow_session(client, args.session_id, args.since)
-        elif args.action == "send":
-            display_result(await (await client.send(args.session_id, args.text)).result())
-        elif args.action == "confirm":
-            handle = await client.confirm(
-                args.session_id, args.invocation_id, Answer(approved=args.answer == "yes")
-            )
-            if handle is None:
-                print("approval already settled")
-            else:
-                display_result(await handle.result())
-        elif args.action == "resume":
-            display_result(await (await client.resume(args.session_id)).result())
-        elif args.action == "replay":
-            cassette = await asyncio.to_thread(args.cassette.read_text, encoding="utf-8")
-            app.engine.model = ReplayModel(cassette)
-            display_result(await (await client.send(args.session_id, args.text)).result())
+        await dispatch(client, args)
+
+
+async def dispatch(client: ClientProtocol, args: argparse.Namespace) -> None:
+    if args.action == "list":
+        await list_sessions(client)
+    elif args.action == "show":
+        await show_session(client, args.session_id)
+    elif args.action == "follow":
+        await follow_session(client, args.session_id, args.since)
+    elif args.action == "send":
+        display_result(await (await client.send(args.session_id, args.text)).result())
+    elif args.action == "confirm":
+        handle = await client.confirm(
+            args.session_id, args.invocation_id, Answer(approved=args.answer == "yes")
+        )
+        if handle is None:
+            print("approval already settled")
+        else:
+            display_result(await handle.result())
+    elif args.action == "resume":
+        display_result(await (await client.resume(args.session_id)).result())
+    elif args.action == "replay":
+        display_result(await (await client.send(args.session_id, args.text)).result())
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        if args.action is None:
+        if (
+            args.endpoint is not None
+            or args.remote_profile is not None
+            or args.remote_service_caller
+        ):
+            from .remote import run_remote
+
+            if options(args) is not None:
+                raise ValueError("remote_mode_refuses_local_model_options")
+            asyncio.run(run_remote(args, dispatch))
+        elif args.action is None:
             try:
                 from tether.tui import run
             except ImportError:

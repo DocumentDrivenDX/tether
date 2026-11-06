@@ -13,18 +13,32 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, JsonValue
 
-from tether import Tether
-from tether.context.testing import fabricated_context
-from tether.engine import Engine
-from tether.history.jsonl import JsonlHistory
-from tether.history.messages import MessageHistoryAdapter
-from tether.models.testing import ScriptedModel
-from tether.stores.jsonl import JsonlRoot, JsonlSessionStore
-from tether.stores.memory import MemoryFiles
-from tether.types import ModelExecutionLimits, ModelResponse, TextDelta, ToolCall
-from tether.types.client import ClientLimits
-from tether.types.context import ContextConfig, TokenEstimator
-from tether.types.execution import Actor, AgentSpec, Effect, Replay, Tool, ToolContext
+from tether.client import (
+    Actor,
+    AgentSpec,
+    ClientHost,
+    ClientLimits,
+    ClientSettings,
+    ContextConfig,
+    Effect,
+    LocalJsonlSettings,
+    ModelExecutionLimits,
+    ModelPort,
+    ModelResponse,
+    Replay,
+    TextDelta,
+    TokenEstimator,
+    Tool,
+    ToolCall,
+    ToolContext,
+    VolatileSettings,
+)
+from tether.client.testing import (
+    demo_policy,
+    fabricated_model_context,
+    replay_model,
+    scripted_model,
+)
 
 from .common_tools import common_tools
 from .configured import configured_model
@@ -34,7 +48,7 @@ from .profile import ReferenceModelProfile as ReferenceModelProfile
 from .profile import load_profile as load_profile
 
 if TYPE_CHECKING:
-    from tether.adapters.openai_compat import OpenAICompatModel
+    from tether.client.compatible import CompatibleModel
 
 
 class DemoArguments(BaseModel):
@@ -77,7 +91,7 @@ DEMO_SPEC = AgentSpec(
 )
 
 
-def demo_model(*, continuation: bool = False) -> ScriptedModel:
+def demo_model(*, continuation: bool = False) -> ModelPort:
     answer = (
         TextDelta(text="The fabricated "),
         TextDelta(text="record is complete."),
@@ -88,7 +102,7 @@ def demo_model(*, continuation: bool = False) -> ScriptedModel:
         finish_reason="tool_calls",
     )
     cycle = (proposal, *answer)
-    return ScriptedModel(((*answer, *cycle) if continuation else cycle) * 32)
+    return scripted_model(((*answer, *cycle) if continuation else cycle) * 32)
 
 
 def client_limits() -> ClientLimits:
@@ -114,15 +128,10 @@ async def open_demo(
     continuation: bool = False,
     volatile: bool = False,
     profile: ReferenceModelProfile | None = None,
-) -> AsyncGenerator[tuple[Tether, Actor, DemoTool]]:
-    root = None if volatile else await JsonlRoot.open(path)
-    files = MemoryFiles() if volatile else root
-    if files is None:
-        raise RuntimeError("demo_store_unavailable")
-    adapter: OpenAICompatModel | None = None
+    replay_cassette: str | None = None,
+) -> AsyncGenerator[tuple[ClientHost, Actor, DemoTool]]:
+    adapter: CompatibleModel | None = None
     try:
-        store = await JsonlSessionStore.open(files)
-        history = await JsonlHistory.open(files)
         tool = DemoTool()
         tools: tuple[Tool, ...] = (tool,)
         if profile is not None and profile.workspace is not None:
@@ -140,37 +149,33 @@ async def open_demo(
         )
         actor = Actor(id="demo")
         spec = DEMO_SPEC
-        offline_context = fabricated_context()
+        offline_context = fabricated_model_context()
         context_config: ContextConfig = offline_context["context_config"]
         estimator: TokenEstimator = offline_context["estimator"]
-        model: ScriptedModel | OpenAICompatModel = demo_model(continuation=continuation)
+        model: ModelPort = demo_model(continuation=continuation)
         if profile is not None:
             adapter, context_config, estimator, actor, spec = await configured_model(
                 profile, model_limits, tuple(item.name for item in tools)
             )
             model = adapter
-        engine = Engine(
+        if replay_cassette is not None:
+            model = replay_model(replay_cassette)
+        settings = ClientSettings(
             context_config=context_config,
             estimator=estimator,
             model=model,
-            history=MessageHistoryAdapter(history),
-            history_provider=history,
+            storage=VolatileSettings() if volatile else LocalJsonlSettings(path),
+            policy=demo_policy(),
+            client_limits=client_limits(),
             model_limits=model_limits,
             identity_mode=profile.identity_mode if profile is not None else "caller",
             tools=tools,
             specs=(spec,),
-        )
-        async with Tether(
-            engine=engine,
-            store=store,
-            history=history,
-            limits=client_limits(),
             resume="off" if volatile else "report",
             default_spec=spec.id,
-        ) as app:
+        )
+        async with await ClientHost.open(settings) as app:
             yield app, actor, tool
     finally:
         if adapter is not None:
             await adapter.aclose()
-        if root is not None:
-            await root.aclose()

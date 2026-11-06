@@ -1,0 +1,11 @@
+{
+  "files": {
+    "run_reference_performance.py.txt": {
+      "bytes": 6870,
+      "sha256": "c510f73c65c1b89c5423f0368941d9477af336916b3fe21629339219481bd847"
+    }
+  },
+  "schema_version": 1,
+  "scope": "Generic sequential six-profile reference measurement operator; private inputs excluded",
+  "status": "source-only; no reference measurement observation"
+}

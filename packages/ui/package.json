@@ -1,0 +1,30 @@
+{
+  "name": "@tether/ui",
+  "version": "0.2.0-dev.0",
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "dist",
+    "styles",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "NOTICE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./styles/tokens.css"
+  },
+  "dependencies": {
+    "@tether/client": "0.2.0-dev.0",
+    "@tether/react": "0.2.0-dev.0"
+  },
+  "peerDependencies": {
+    "react": "19.3.1"
+  }
+}

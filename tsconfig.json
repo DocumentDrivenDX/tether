@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/client-ts"
+    },
+    {
+      "path": "packages/react"
+    },
+    {
+      "path": "packages/ui"
+    },
+    {
+      "path": "apps/reference-web"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import ast
 import tomllib
 from pathlib import Path
 
+from .debt import load_debt
 from .imports import dynamic_imports, extract, public_sdk_references
 from .policy import Violation, allowed, owner, within
 
@@ -38,7 +39,7 @@ def module_name(path: Path, root: Path) -> str:
 
 
 def inspect_module(
-    path: Path, root: Path, extras: frozenset[str]
+    path: Path, root: Path, extras: frozenset[str], debt: frozenset[str] = frozenset()
 ) -> tuple[list[Violation], list[str]]:
     module = module_name(path, root)
     problems: list[Violation] = []
@@ -51,7 +52,7 @@ def inspect_module(
     except (SyntaxError, ImportError) as error:
         return [Violation(str(path), 1, f"cannot analyze source: {error}")], []
     for line, target in imports:
-        if target.endswith(".*") or not allowed(module, target, extras):
+        if target not in debt and (target.endswith(".*") or not allowed(module, target, extras)):
             problems.append(Violation(str(path), line, f"{module} cannot import {target}"))
     if not any(
         within(module, p) for p in ("tether.runtime.pydantic_ai", "tether.adapters.pydantic_ai")
@@ -63,20 +64,61 @@ def inspect_module(
     return problems, [target for _, target in imports]
 
 
+def source_modules(project: Path) -> tuple[dict[str, tuple[Path, Path]], list[Violation]]:
+    roots = [project / "src", *sorted(project.glob("packages/*/src"))]
+    modules: dict[str, tuple[Path, Path]] = {}
+    problems = []
+    for root in roots:
+        for path in sorted(root.rglob("*.py")):
+            module = module_name(path, root)
+            if module in modules:
+                problems.append(Violation(str(path), 1, f"duplicate namespace owner: {module}"))
+            modules[module] = (path, root)
+    return modules, problems
+
+
+def private_consumer_target(module: str, target: str, modules: set[str]) -> bool:
+    consumers = {"tether.cli", "tether.tui", "tether_web_api", "tether_databricks"}
+    if not any(within(module, consumer) for consumer in consumers):
+        return False
+    roots = {
+        "tether.client",
+        "tether.client.remote",
+        "tether.client.postgres",
+        "tether.client.compatible",
+        "tether.client.databricks",
+        "tether.client.testing",
+        "tether_web_api",
+        "tether_web_ui",
+    }
+    public = max((root for root in roots if within(target, root)), key=len, default=None)
+    if public is None or within(module, public):
+        return False
+    dependency = max((name for name in modules if within(target, name)), key=len, default=public)
+    return dependency != public or any(part.startswith("_") for part in target.split("."))
+
+
 def check_tree(project: Path) -> list[Violation]:
     root = project / "src"
-    files = sorted((root / "tether").rglob("*.py"))
-    if not files:
+    modules, problems = source_modules(project)
+    if not any(within(module, "tether") for module in modules):
         return [Violation(str(root), 1, "no Tether Python source found")]
     data = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))
     extras = frozenset(data.get("project", {}).get("optional-dependencies", {}))
-    modules = {module_name(p, root): p for p in files}
+    try:
+        debt = load_debt(project)
+    except (OSError, ValueError, TypeError, AttributeError) as error:
+        return [Violation(str(root), 1, f"invalid interface debt inventory: {error}")]
     graph: dict[str, set[str]] = {module: set() for module in modules}
-    problems: list[Violation] = []
-    for module, path in modules.items():
-        errors, targets = inspect_module(path, root, extras)
+    for module, (path, source_root) in modules.items():
+        permitted = debt.get(path.relative_to(project).as_posix(), frozenset())
+        errors, targets = inspect_module(path, source_root, extras, permitted)
         problems.extend(errors)
         for target in targets:
+            if target not in permitted and private_consumer_target(module, target, set(modules)):
+                problems.append(
+                    Violation(str(path), 1, f"consumer imports private module: {target}")
+                )
             candidates = [m for m in modules if within(target, m)]
             if candidates:
                 graph[module].add(max(candidates, key=len))

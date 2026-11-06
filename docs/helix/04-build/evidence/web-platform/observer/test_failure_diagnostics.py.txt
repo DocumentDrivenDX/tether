@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import json
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from test_contract import runner
+
+
+class FailureDiagnosticTests(unittest.TestCase):
+    def test_wrapped_unknown_effect_failure_keeps_only_allowlisted_phase_and_code(self) -> None:
+        cases = (
+            (
+                "verify_recovery_barrier",
+                "live_unknown_effect_recovery_not_visible",
+            ),
+            ("reopen_remote_client", "qualification_restart_readiness_timeout"),
+            ("browser_recovery", "live_browser_recovery_terminal_status_invalid"),
+        )
+        for phase, code in cases:
+            with self.subTest(phase=phase, code=code):
+                error = RuntimeError(f"live_unknown_effect_{phase}_{code}")
+                result = runner._safe_failure(error)
+                self.assertEqual(result["failure_inner_phase"], phase)
+                self.assertEqual(result["failure_code"], code)
+                self.assertNotIn(error.args[0], json.dumps(result, sort_keys=True))
+
+    def test_unrecognized_wrapped_failure_details_are_discarded(self) -> None:
+        credential = " ".join(("Bearer", "fabricated-secret"))
+        cases = (
+            f"live_unknown_effect_other_live_unknown_effect_recovery_not_visible",
+            f"live_unknown_effect_verify_recovery_barrier_unknown-runtime-detail-{credential}",
+            f"live_unknown_effect_browser_recovery_live_browser_case_failed?url=https://fabricated.invalid",
+            f"live_unknown_effect_reopen_remote_client_qualification_restart_readiness_timeout-{credential}",
+        )
+        for message in cases:
+            with self.subTest(message_index=cases.index(message)):
+                result = runner._safe_failure(RuntimeError(message))
+                encoded = json.dumps(result, sort_keys=True)
+                self.assertEqual(result["failure_code"], "other")
+                self.assertNotIn("failure_inner_phase", result)
+                self.assertNotIn(message, encoded)
+                self.assertNotIn(credential, encoded)
+                self.assertNotIn("fabricated.invalid", encoded)
+
+    def test_failed_runner_summary_persists_only_safe_phase_and_state(self) -> None:
+        marker = "".join(("fabricated", "-credential-shaped-detail"))
+        runner._FAILURE_STATE.clear()
+        runner._FAILURE_STATE.update({
+            "phase": "observer_evaluate", "stop_attempted": True,
+            "stop_state_observed": True, "row_query_attempted": True,
+            "row_found": True, "reader_status": "mismatch",
+            "protected_probe_observed": True, "worker_started_observed": True,
+        })
+        try:
+            try:
+                raise RuntimeError('durable_shutdown_row_not_qualified')
+            except RuntimeError as error:
+                result = runner._failure_result(error)
+            encoded = json.dumps(result, sort_keys=True)
+            self.assertEqual(result["phase"], "observer_evaluate")
+            self.assertTrue(result["stop_attempted"])
+            self.assertTrue(result["stop_state_observed"])
+            self.assertTrue(result["row_found"])
+            self.assertEqual(result["reader_status"], "mismatch")
+            self.assertEqual(result["failure_category"], "runtime")
+            self.assertEqual(result["failure_exception"], "RuntimeError")
+            self.assertEqual(result["failure_code"], "durable_shutdown_row_not_qualified")
+            self.assertNotIn(marker, encoded)
+            self.assertNotIn("fabricated-credential-shaped-detail", encoded)
+            unsafe = runner._failure_result(RuntimeError(marker))
+            self.assertEqual(unsafe["failure_code"], "other")
+            self.assertNotIn(marker, json.dumps(unsafe, sort_keys=True))
+        finally:
+            runner._FAILURE_STATE.clear()
+
+    def test_stop_binding_ids_stay_in_private_record_only(self) -> None:
+        correlation = 'a' * 32
+        deployment = 'fabricated-deployment-ref'
+        invocation = 'fabricated-worker-ref'
+        runner._FAILURE_STATE.clear()
+        runner._FAILURE_STATE.update({
+            'stop_attempted': True, 'stop_correlation_id': correlation,
+            'deployment_id': deployment, 'worker_invocation_id': invocation,
+            'stop_state_observed': True, 'stop_state': 'STOPPED',
+            'snapshot_deployment_id': deployment,
+            'active_snapshot_matched': True,
+        })
+        try:
+            with TemporaryDirectory() as temporary:
+                private_path = Path(temporary) / 'binding.json'
+                runner._write_private_stop_binding(private_path)
+                binding = json.loads(private_path.read_text())
+                self.assertEqual(binding['stop_correlation_id'], correlation)
+                self.assertEqual(binding['deployment_id'], deployment)
+                self.assertEqual(binding['worker_invocation_id'], invocation)
+                public = json.dumps(runner._failure_result(RuntimeError('safe-failure')))
+                self.assertNotIn(correlation, public)
+                self.assertNotIn(deployment, public)
+                self.assertNotIn(invocation, public)
+        finally:
+            runner._FAILURE_STATE.clear()

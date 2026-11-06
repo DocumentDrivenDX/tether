@@ -1,0 +1,46 @@
+{
+  "observation": {
+    "buffer_values_before_next_stream_event": [
+      {
+        "first_char": "z",
+        "last_char": "z",
+        "offset": 1,
+        "text_length": 32767,
+        "type": "ReplyText"
+      }
+    ],
+    "first_consumer_event": {
+      "first_char": "q",
+      "last_char": "q",
+      "offset": 0,
+      "text_length": 1,
+      "type": "ReplyText"
+    },
+    "next_stream_events": [
+      {
+        "last_in_commit": false,
+        "seq": 10,
+        "summary_status": "running",
+        "type": "SessionUpdated"
+      },
+      {
+        "entry_kinds": [
+          "authorization"
+        ],
+        "last_in_commit": true,
+        "seq": 10,
+        "type": "EntriesAppended"
+      },
+      {
+        "first_char": "z",
+        "last_char": "z",
+        "offset": 1,
+        "text_length": 32767,
+        "type": "ReplyText"
+      }
+    ]
+  },
+  "profile": "coalesced-buffer-order-diagnostic",
+  "schema_version": 1,
+  "status": "observed"
+}

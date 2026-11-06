@@ -1,0 +1,99 @@
+{
+  "all_store_committed_metrics": {
+    "results.append_four.p99_ms": {
+      "actual": 27.756875,
+      "baseline_observed": 11.677292,
+      "committed_maximum": 14.0127504,
+      "passed": false
+    },
+    "results.entries_100_beginning.p99_ms": {
+      "actual": 0.786041,
+      "baseline_observed": 0.699375,
+      "committed_maximum": 0.8392499999999999,
+      "passed": true
+    },
+    "results.entries_100_end.p99_ms": {
+      "actual": 0.642209,
+      "baseline_observed": 0.655042,
+      "committed_maximum": 0.7860504,
+      "passed": true
+    },
+    "results.entries_100_middle.p99_ms": {
+      "actual": 0.788209,
+      "baseline_observed": 0.622042,
+      "committed_maximum": 0.7464504,
+      "passed": false
+    },
+    "results.entries_100_spread.p99_ms": {
+      "actual": 0.650042,
+      "baseline_observed": 0.718666,
+      "committed_maximum": 0.8623992,
+      "passed": true
+    },
+    "results.list_50.p99_ms": {
+      "actual": 11.081958,
+      "baseline_observed": 9.010375,
+      "committed_maximum": 10.81245,
+      "passed": false
+    },
+    "results.view.p99_ms": {
+      "actual": 0.018208,
+      "baseline_observed": 0.017208,
+      "committed_maximum": 0.0206496,
+      "passed": true
+    }
+  },
+  "failed_committed_metrics": {
+    "results.append_four.p99_ms": {
+      "actual": 27.756875,
+      "baseline_observed": 11.677292,
+      "committed_maximum": 14.0127504
+    },
+    "results.entries_100_middle.p99_ms": {
+      "actual": 0.788209,
+      "baseline_observed": 0.622042,
+      "committed_maximum": 0.7464504
+    },
+    "results.list_50.p99_ms": {
+      "actual": 11.081958,
+      "baseline_observed": 9.010375,
+      "committed_maximum": 10.81245
+    }
+  },
+  "files": {
+    "apps-ratchet.json": {
+      "bytes": 78452,
+      "sha256": "6bec7fff4a0357f37204195311c6a955abf1fee9dd2d9978c9455024617895ea"
+    },
+    "execution-failed.json": {
+      "bytes": 156663,
+      "sha256": "9c5b751218c5a54fe07b2b6b76a3d21759ecd32a00d634b1f3d5eeb4d86a41e5"
+    },
+    "input-hash-review.json": {
+      "bytes": 1856,
+      "sha256": "5427a081fef1599d47b52dd3d383e643ebb02d331c485442ab39b8e5af9523e7"
+    },
+    "postfailure-conditions.json": {
+      "bytes": 750,
+      "sha256": "53589c64b0f4e2107eaede47c9eb4f7b8864804ea44aae392d9d29b3b22733d4"
+    },
+    "store-measurement.json": {
+      "bytes": 82491,
+      "sha256": "f2a5f2c314c54e8e2afd8154302e72fb0c30ee69d25c29e44aa5e0ecac8c29c7"
+    }
+  },
+  "limits": [
+    "Attempt01 and attempt02 failures are both retained; no third blind rerun, rebaseline, cap change or all-seven promotion.",
+    "The same frozen independent Apps observation was supplied to both CLI attempts; this is not a second external measurement.",
+    "The postfailure conditions snapshot was taken about eleven minutes after attempt02 ended; it is not measurement-time telemetry or causal proof.",
+    "No raw per-operation samples or GC events were retained; differing tails, medians and elapsed durations do not establish product, import, power, paging or host-contention causality.",
+    "Baseline/reference measurement entry context preimported tether.client; actual shipped CLI launches benchmark children directly. Causal effect remains unknown.",
+    "Source hashes are metadata, not retrospective runtime-import provenance proof."
+  ],
+  "operator_sha256": "075d86884c8c56dbf068cf3b5795514893599ef6fa6c7059262350121d93b579",
+  "raw_failed_cli_log_retained_private_sha256": "175280ef1fafaa25a98ec7e95168b2efa2d1d92bcf7201dfc097606114197d7c",
+  "schema_version": 1,
+  "scope": "Single predeclared unchanged-CLI repeat; Apps comparison passed, full durable-store observation failed three caps; remaining five local profiles did not run.",
+  "source_inventory_canonical_sha256": "db934b15a071e4fb43fe401d7c6589b91989a04ae1819a39f4289cad612d91bf",
+  "status": "failed-independent-regression-authorized-repeat"
+}

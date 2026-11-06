@@ -38,7 +38,14 @@ from .context.attempts import CheckedRecorder
 from .context.services import ContextServices
 from .context.step import ContextStep
 from .governance import Governance
+from .persistence import settled
 from .tools import ToolExecutor
+
+
+class _LiveDisclosureScope:
+    def __init__(self) -> None:
+        self.sealed = False
+        self.attempts: dict[str, AttemptIdentity] = {}
 
 
 class Run:
@@ -69,7 +76,7 @@ class Run:
         self.context = context
         self.live_text = live_text
         self.live_done = live_done
-        self.live_attempts: dict[str, AttemptIdentity] = {}
+        self._live_scope: _LiveDisclosureScope | None = None
         self.context_services = ContextServices(model, limits, history_provider, attempt_factory)
         self.preparation: ContextStep | None = None
         self.recorder: AttemptRecorder | None = None
@@ -128,6 +135,21 @@ class Run:
             )
             request = await step.prepare(request)
             await self.gov.authorize("call_model", "model:" + request.model)
+            live_text = None
+            if self.live_text is not None:
+                scope = self._live_scope
+                if scope is None:
+                    raise RuntimeError("live_scope_missing")
+
+                async def disclose(
+                    owner: str,
+                    identity: AttemptIdentity,
+                    offset: int,
+                    text: str,
+                ) -> None:
+                    await self._live_delta(scope, owner, identity, offset, text)
+
+                live_text = disclose
             self.recorder = (
                 CheckedRecorder(self.attempt_factory(tags), step, self.gov, tags)
                 if self.attempt_factory is not None
@@ -138,7 +160,7 @@ class Run:
                     self.history_provider,
                     step.recheck,
                     admit=step.check,
-                    live_text=self._live_delta if self.live_text is not None else None,
+                    live_text=live_text,
                 )
             )
             return request.model_copy(
@@ -206,6 +228,23 @@ class Run:
         }
 
     async def finish(
+        self, continuing: bool = False, *, recovered_final: bool = False
+    ) -> TurnResult:
+        scope = _LiveDisclosureScope()
+        self._live_scope = scope
+        try:
+            return await self._finish_phase(continuing, recovered_final=recovered_final)
+        except BaseException as primary:
+            terminal = "cancelled" if isinstance(primary, asyncio.CancelledError) else "outage"
+            try:
+                await settled(self._finish_live_scope(scope, terminal), cancel_after=False)
+            except BaseException:
+                primary.add_note("live_provisional_cleanup_failed")
+            raise
+        finally:
+            scope.sealed = True
+
+    async def _finish_phase(
         self, continuing: bool = False, *, recovered_final: bool = False
     ) -> TurnResult:
         visible: tuple[Message, ...] = ()
@@ -281,12 +320,15 @@ class Run:
                     )
                 ]
             )
-        except asyncio.CancelledError:
-            await asyncio.shield(self.finish_live("cancelled"))
-            await asyncio.shield(self.gov.fact("turn_ended", stop_reason="cancelled"))
+        except asyncio.CancelledError as primary:
+            try:
+                await settled(self.finish_live("cancelled"), cancel_after=False)
+            except BaseException:
+                primary.add_note("live_provisional_cleanup_failed")
+            await settled(self.gov.fact("turn_ended", stop_reason="cancelled"), cancel_after=False)
             raise
         reset = "outage" if stop == "model_unavailable" else None
-        await self.finish_live(reset)
+        await settled(self.finish_live(reset), cancel_after=True)
         await self.gov.fact("turn_ended", stop_reason=stop, reason=reason)
         return TurnResult(
             turn_id=self.gov.turn_id,
@@ -297,18 +339,44 @@ class Run:
         )
 
     async def _live_delta(
-        self, owner: str, identity: AttemptIdentity, offset: int, text: str
+        self,
+        scope: _LiveDisclosureScope,
+        owner: str,
+        identity: AttemptIdentity,
+        offset: int,
+        text: str,
     ) -> None:
-        self.live_attempts[identity.attempt_id] = identity.model_copy(deep=True)
+        if scope.sealed:
+            return
+        scope.attempts[identity.attempt_id] = identity.model_copy(deep=True)
         if self.live_text is not None:
             await self.live_text(owner, identity, offset, text)
 
     async def finish_live(self, reason: Literal["outage", "cancelled", "reconnect"] | None) -> None:
+        scope = self._live_scope
+        if scope is None:
+            return
+        await self._finish_live_scope(scope, reason)
+
+    async def _finish_live_scope(
+        self,
+        scope: _LiveDisclosureScope,
+        reason: Literal["outage", "cancelled", "reconnect"] | None,
+    ) -> None:
+        scope.sealed = True
+        attempts = tuple(scope.attempts.values())
+        scope.attempts.clear()
         if self.live_done is None:
             return
-        for identity in tuple(self.live_attempts.values()):
-            await self.live_done(self.gov.log.session.owner, identity, reason)
-        self.live_attempts.clear()
+        failure: BaseException | None = None
+        for identity in attempts:
+            try:
+                await self.live_done(self.gov.log.session.owner, identity, reason)
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+        if failure is not None:
+            raise failure
 
     async def outcome(self, continuing: bool) -> tuple[bool, str | None]:
         try:

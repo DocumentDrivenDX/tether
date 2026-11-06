@@ -1,0 +1,124 @@
+"""Qualify only the selected managed process tasks from the frozen public source."""
+from __future__ import annotations
+import argparse
+import ast
+import asyncio
+import configparser
+from datetime import UTC, datetime
+import importlib.metadata
+import json
+from pathlib import Path
+import platform
+import sys
+import time
+
+ROOT = Path.cwd().resolve()
+sys.path.insert(0, str(ROOT / 'scripts'))
+sys.path.insert(0, str(ROOT / 'examples/databricks-app/src'))
+from selected_profiles_process import exec_with_profile_environment
+
+
+def arguments():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--internal-profile-environment-clean', action='store_true')
+    p.add_argument('--profile', required=True)
+    p.add_argument('--service-profile', required=True)
+    for flag in ('service-config-file', 'service-secret-reference', 'settings-file', 'source-inventory', 'output'):
+        p.add_argument('--'+flag, type=Path, required=True)
+    return p.parse_args()
+
+
+async def qualify(args, *, credential_factory=None):
+    from selected_profiles_identity_credentials import refresh_workspace_credential, workspace_from_credential
+    from qualify_live_apps_config import safe_origin
+    from qualify_live_apps_evidence import profile_binding_sha256
+    from qualify_web_platform import profile_from_environment
+    from selected_profiles_managed_process import qualify_managed_processes
+    from web_artifacts import inventory, write_receipt
+    from psycopg import pq
+    if args.output.exists():
+        raise RuntimeError('fresh_managed_receipt_required')
+    before = inventory(ROOT)
+    expected = json.loads(args.source_inventory.read_text())
+    if before != expected:
+        raise RuntimeError('frozen_managed_source_required')
+    values = json.loads(args.settings_file.read_text())
+    if not isinstance(values, dict) or any(not isinstance(k,str) or not isinstance(v,str) for k,v in values.items()):
+        raise RuntimeError('managed_settings_invalid')
+    settings = profile_from_environment(values)
+    configuration = configparser.ConfigParser()
+    configuration.read(args.service_config_file)
+    trusted_host = configuration.get(args.service_profile, 'host')
+    credential = await (
+        refresh_workspace_credential(
+            args.service_profile, str(args.service_config_file), str(args.service_secret_reference), trusted_host
+        ) if credential_factory is None else credential_factory()
+    )
+    if credential.host != trusted_host:
+        raise RuntimeError('managed_workspace_host_mismatch')
+    workspace = await asyncio.to_thread(workspace_from_credential, credential)
+    import tether
+    if Path(tether.__file__).resolve() != ROOT/'src/tether/__init__.py':
+        raise RuntimeError('current_public_source_import_required')
+    started = datetime.now(UTC).isoformat()
+    clock = time.monotonic()
+    observed = await qualify_managed_processes(workspace, values)
+    duration = time.monotonic() - clock
+    after = inventory(ROOT)
+    if before != after:
+        raise RuntimeError('managed_process_source_changed')
+    receipt = {
+        'schema_version': 1,
+        'status': 'passed',
+        'profile': 'selected-databricks-apps',
+        'scope': 'public-source-managed-postgresql-process-tasks-only',
+        'profile_binding_sha256': profile_binding_sha256(args.profile, safe_origin(settings.url)),
+        'command': '<frozen-source-python> selected managed process qualification using explicit private profile/settings references',
+        'started_at': started,
+        'recorded_at': datetime.now(UTC).isoformat(),
+        'duration_seconds': duration,
+        'source_sha256': before,
+        'source_sha256_after': after,
+        'credential_source': 'keychain-child-sdk' if credential_factory is None else 'injected-factory',
+        'versions': {
+            'python': platform.python_version(),
+            'platform': platform.system(),
+            'architecture': platform.machine(),
+            'databricks_sdk': importlib.metadata.version('databricks-sdk'),
+            'psycopg': importlib.metadata.version('psycopg'),
+            'libpq_version_num': pq.version(),
+        },
+        'test_results': [{'node_id': 'scripts/selected_profiles_managed_process.py::'+name, 'outcome': 'passed'} for name in ('natural_expiry_fencing','killed_worker_recovery')],
+        'observations': observed,
+        'limits': [
+            'Only the selected managed PostgreSQL 18 endpoint and existing explicitly provisioned schema.',
+            'Caller-bound public source composition; no installed-wheel or deployed-app execution claim.',
+            'Client worker/process failover only; no managed database HA, power-loss or region-failover qualification.',
+            'Fabricated fresh session references; no DDL or forced SQL lease expiry.',
+            'Final acceptance still requires an aggregate with the identical source map and all other required evidence.',
+        ],
+    }
+    write_receipt(args.output, receipt)
+    args.output.chmod(0o600)
+    print(json.dumps({'status':'passed','scope':receipt['scope'],'task_cases':2,'duration_seconds':duration}), flush=True)
+
+
+def safe_failure(error):
+    allowed = {'fresh_managed_receipt_required','frozen_managed_source_required','managed_settings_invalid','managed_process_source_changed','current_public_source_import_required'}
+    for name in ('selected_profiles_managed_process.py','selected_profiles_managed_process_peer.py'):
+        for node in ast.walk(ast.parse((ROOT/'scripts'/name).read_text())):
+            if isinstance(node,ast.Call) and isinstance(node.func,ast.Name) and node.func.id=='RuntimeError' and node.args and isinstance(node.args[0],ast.Constant) and isinstance(node.args[0].value,str):
+                allowed.add(node.args[0].value)
+    name=type(error).__name__
+    code=str(error) if type(error) is RuntimeError else ''
+    return {'status':'failed','exception':name if name.isidentifier() and len(name)<65 else 'other','code':code if code in allowed else 'other'}
+
+
+if __name__=='__main__':
+    exec_with_profile_environment(Path(__file__), sys.argv, ROOT/'examples/databricks-app/src')
+    args=arguments()
+    try:
+        asyncio.run(qualify(args))
+    except Exception as error:
+        print(json.dumps(safe_failure(error)),flush=True)
+        raise SystemExit(1) from None

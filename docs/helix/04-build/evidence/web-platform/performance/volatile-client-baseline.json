@@ -1,0 +1,83 @@
+{
+  "identity": {
+    "child_environment_profile": "explicit-local-path/current-source/fixed-locale",
+    "cursor_reconnect.feed_retention": 8,
+    "cursor_reconnect.results.retained_cursor.exact_ordered_last_in_commit_count": 300,
+    "cursor_reconnect.results.retained_cursor.missed_commits_per_sample": 3,
+    "cursor_reconnect.results.retained_cursor.sample_count": 100,
+    "cursor_reconnect.results.retained_cursor.total_missed_commits": 300,
+    "cursor_reconnect.results.retention_floor.boundary_since_replayed": true,
+    "cursor_reconnect.results.retention_floor.observed_too_old_resync_count": 100,
+    "cursor_reconnect.results.retention_floor.one_before_boundary_resynced": true,
+    "cursor_reconnect.results.retention_floor.sample_count": 100,
+    "cursor_reconnect.results.retention_floor.snapshot_at_latest_watermark_count": 100,
+    "followers.commits": 100,
+    "followers.followers": 1000,
+    "followers.queue_size": 32,
+    "samples": 100,
+    "storage.configuration": "VolatileSettings",
+    "storage.durability": "none",
+    "storage.resume": "off",
+    "streaming_followers.consumers_verified": 1000,
+    "streaming_followers.exact_ordered_reply_consumers": 1000,
+    "streaming_followers.followers": 1000,
+    "streaming_followers.missed_events": 0,
+    "streaming_followers.queue_size": 32,
+    "streaming_followers.stream_chunks": 200,
+    "streaming_followers.terminal_boundaries": 1000,
+    "versions": {
+      "architecture": "arm64",
+      "platform": "Darwin",
+      "python": "3.11.17"
+    }
+  },
+  "metrics": {
+    "cursor_reconnect.results.retained_cursor.reconnect_to_replay_complete.p99_ms": {
+      "maximum": 1.6781507999999998,
+      "observed": 1.398459
+    },
+    "cursor_reconnect.results.retention_floor.reconnect_to_resync_snapshot.p99_ms": {
+      "maximum": 0.5138495999999999,
+      "observed": 0.428208
+    },
+    "engine_step_total_time_upper_bound.p99_ms": {
+      "maximum": 24861.072499025613,
+      "observed": 20717.560415854678
+    },
+    "followers.command_to_follower.p99_ms": {
+      "maximum": 165.53829945623875,
+      "observed": 137.94858288019896
+    },
+    "followers.event_loop_lag.p99_ms": {
+      "maximum": 104.67745057493448,
+      "observed": 87.2312088124454
+    },
+    "host_open.p99_ms": {
+      "maximum": 0.1624499447643757,
+      "observed": 0.13537495397031307
+    },
+    "reconnect.command_to_follower.p99_ms": {
+      "maximum": 174.51845034956932,
+      "observed": 145.43204195797443
+    },
+    "reconnect.event_loop_lag.p99_ms": {
+      "maximum": 109.09854966402054,
+      "observed": 90.91545805335045
+    },
+    "scripted_turn_total.p99_ms": {
+      "maximum": 24861.072499025613,
+      "observed": 20717.560415854678
+    },
+    "streaming_followers.event_loop_lag.p99_ms": {
+      "maximum": 470.46045000851154,
+      "observed": 392.05037500709295
+    },
+    "total_process_peak_rss_including_host_bytes": {
+      "maximum": 654429388.8,
+      "observed": 545357824.0
+    }
+  },
+  "profile": "volatile-public-client",
+  "receipt_sha256": "651a71deeae1f23896390a8c749111793bf07f740b15fb8fab3afb70df7292e7",
+  "tolerance": 1.2
+}

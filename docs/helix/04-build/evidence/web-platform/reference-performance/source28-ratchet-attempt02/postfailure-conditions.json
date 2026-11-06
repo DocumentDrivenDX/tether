@@ -1,0 +1,28 @@
+{
+  "baseline_power_state": "not_recorded",
+  "command_status": {
+    "battery": 0,
+    "power_config": 0,
+    "swap": 0,
+    "thermal": 0
+  },
+  "configured_low_power_modes": {},
+  "current_low_power_mode": null,
+  "load_average": [
+    31.3388671875,
+    30.751953125,
+    27.9833984375
+  ],
+  "observed_at": "2026-11-02T17:08:55.089452+00:00",
+  "power_source": "AC Power",
+  "raw_identifiers_retained": false,
+  "scope": "single passive post-run conditions snapshot; not measurement-time proof or causal explanation",
+  "settings_changed": false,
+  "swap_used_mb": 5731.88,
+  "temporary_filesystem_free_bytes": 130875437056,
+  "thermal_fields": {
+    "CPU_Available_CPUs": null,
+    "CPU_Scheduler_Limit": null,
+    "CPU_Speed_Limit": null
+  }
+}

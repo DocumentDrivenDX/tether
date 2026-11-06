@@ -24,10 +24,21 @@ from textual.widgets import (
 )
 
 from tether.cli.demo import LocalModelOptions, ReferenceModelProfile, open_demo, resolve_profile
-from tether.client import Client
-from tether.types.client import Lagged, ReplyReset, ReplyText, ResyncRequired, SessionUpdated
-from tether.types.execution import Actor, Answer, TurnResult
-from tether.types.storage import SessionSummary
+from tether.client import (
+    Actor,
+    Answer,
+    ClientProtocol,
+    ReplyReset,
+    ReplyText,
+    SessionSnapshot,
+    SessionSummary,
+)
+from tether.client import (
+    SessionUpdated as SessionUpdated,
+)
+
+from .feed import FeedPresentation, follow_client
+from .terminal import terminal_notice
 
 
 class DemoApp(App[None]):
@@ -48,8 +59,10 @@ class DemoApp(App[None]):
 
     def __init__(
         self,
-        root: Path,
+        root: Path | None = None,
         *,
+        client: ClientProtocol | None = None,
+        session_id: str | None = None,
         volatile: bool = False,
         model_config: Path | None = None,
         local_options: LocalModelOptions | None = None,
@@ -60,17 +73,22 @@ class DemoApp(App[None]):
         self.model_config = model_config
         self.local_options = local_options
         self._demo_context: Any = None
-        self.client: Client | None = None
+        self._injected_client = client
+        self._initial_session_id = session_id
+        self.client: ClientProtocol | None = None
         self.actor: Actor | None = None
         self.session_id: str | None = None
         self.sessions: tuple[SessionSummary, ...] = ()
         self._follower: asyncio.Task[None] | None = None
+        self._follower_stopping: asyncio.Event | None = None
         self._reply_turn: str | None = None
         self._reply_attempt: str | None = None
         self._reply_text = ""
+        self._render_generation = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield Static("Live updates enabled", id="connection", markup=False)
         with Horizontal(id="body"):
             with Vertical(id="session-panel"):
                 yield Button("New Session", id="new-session")
@@ -87,6 +105,13 @@ class DemoApp(App[None]):
         yield Footer()
 
     async def on_mount(self) -> None:
+        if self._injected_client is not None:
+            self.title = "Tether · client"
+            self.client = self._injected_client
+            await self._connect_client(self._initial_session_id)
+            return
+        if self.root is None:
+            raise ValueError("demo_root_required")
         profile = await resolve_profile(self.model_config, self.local_options)
         if profile is not None and profile.available_models:
             from .model_picker import ModelPicker
@@ -104,6 +129,8 @@ class DemoApp(App[None]):
         await self._connect(profile)
 
     async def _connect(self, profile: ReferenceModelProfile | None) -> None:
+        if self.root is None:
+            raise ValueError("demo_root_required")
         if profile is not None:
             self.title = "Tether · " + profile.id
             if self.local_options is not None:
@@ -122,6 +149,29 @@ class DemoApp(App[None]):
                 settings={"approval": "manual"},
             )
         self.session_id = demo.id
+        await self._connected(profile)
+
+    async def _connect_client(self, session_id: str | None) -> None:
+        client = self.client
+        if client is None:
+            raise RuntimeError("client_not_connected")
+        if session_id is not None:
+            await client.get(session_id)
+            self.session_id = session_id
+        else:
+            page = await client.list()
+            self.session_id = page.items[0].id if page.items else None
+            if self.session_id is None:
+                created = await client.create(title="Session")
+                self.session_id = created.id
+        await self._connected(None)
+
+    async def _connected(self, profile: ReferenceModelProfile | None) -> None:
+        snapshot = (
+            await self.client.snapshot(self.session_id)
+            if self.client is not None and self.session_id is not None
+            else None
+        )
         await self._refresh_sessions()
         await self._show_session()
         if self.local_options is not None:
@@ -131,8 +181,13 @@ class DemoApp(App[None]):
                 f"({profile.context_source if profile else 'starter'}); approximate byte estimate. "
                 "Tools use the selected workspace and require approval."
             )
-        self._follower = asyncio.create_task(self._follow())
+        self._start_follower(snapshot.seq if snapshot is not None else None)
         self.query_one("#message", Input).focus()
+
+    def _start_follower(self, initial_cursor: int | None) -> None:
+        stopping = asyncio.Event()
+        self._follower_stopping = stopping
+        self._follower = asyncio.create_task(self._follow(initial_cursor, stopping))
 
     async def action_new_session(self) -> None:
         if self.client is None:
@@ -148,11 +203,14 @@ class DemoApp(App[None]):
         field.focus()
 
     async def _stop_follower(self) -> None:
+        if self._follower_stopping is not None:
+            self._follower_stopping.set()
         if self._follower is not None:
             self._follower.cancel()
             with suppress(asyncio.CancelledError):
                 await self._follower
             self._follower = None
+        self._follower_stopping = None
 
     async def action_quit(self) -> None:
         await self._stop_follower()
@@ -164,46 +222,112 @@ class DemoApp(App[None]):
             await self._demo_context.__aexit__(None, None, None)
 
     async def _refresh_sessions(self) -> None:
-        if self.client is None:
+        if self.client is None or not self.is_running:
             return
         page = await self.client.list()
+        if not self.is_running:
+            return
         self.sessions = page.items
         listing = self.query_one("#sessions", ListView)
         await listing.clear()
         for item in page.items:
+            if not self.is_running:
+                return
             await listing.append(ListItem(Label(f"{item.title or item.id} · {item.status}")))
+        if not self.is_running:
+            return
         listing.index = next(
             (index for index, item in enumerate(self.sessions) if item.id == self.session_id), None
         )
 
     async def _show_session(self) -> None:
-        if self.client is None or self.session_id is None:
+        client, selected = self.client, self.session_id
+        if client is None or selected is None or not self.is_running:
             return
+        self._render_generation += 1
+        generation = self._render_generation
         self._reply_turn = None
         self._reset_reply()
         log = self.query_one("#transcript", RichLog)
         log.clear()
+        snapshot = await client.snapshot(selected)
+        if not self._view_is_current(selected, generation):
+            return
+        await self._render_history(client, selected, snapshot.through_index, generation)
+        if not self._view_is_current(selected, generation):
+            return
+        await self._update_approval(selected, generation)
+        if not self._view_is_current(selected, generation):
+            return
+        await self._render_terminal_notice(client, selected, snapshot, generation)
+
+    def _view_is_current(self, session_id: str, generation: int) -> bool:
+        return (
+            self.is_running
+            and (self._follower_stopping is None or not self._follower_stopping.is_set())
+            and self.session_id == session_id
+            and self._render_generation == generation
+        )
+
+    async def _render_history(
+        self, client: ClientProtocol, session_id: str, through_index: int, generation: int
+    ) -> None:
         start = 0
         while True:
-            page = await self.client.history(self.session_id, start=start)
+            page = await client.history(session_id, start=start)
+            if not self._view_is_current(session_id, generation):
+                return
             for slot in page.items:
+                if slot.entry_index > through_index:
+                    continue
                 record = slot.value
                 if record.status == "ready" and record.record is not None:
                     message = record.record.message
                     if message is not None and message.content:
-                        log.write(f"{message.role}: {message.content}")
+                        self.query_one("#transcript", RichLog).write(
+                            f"{message.role}: {message.content}"
+                        )
                 elif record.status != "ready":
-                    log.write(f"[history {record.status} at {slot.entry_index}]")
+                    self.query_one("#transcript", RichLog).write(
+                        f"[history {record.status} at {slot.entry_index}]"
+                    )
             if page.next_start is None:
-                break
+                return
             start = page.next_start
-        await self._update_approval()
 
-    async def _update_approval(self) -> None:
-        if self.client is None or self.session_id is None:
+    async def _render_terminal_notice(
+        self,
+        client: ClientProtocol,
+        session_id: str,
+        snapshot: SessionSnapshot,
+        generation: int,
+    ) -> None:
+        notice = await terminal_notice(
+            client,
+            session_id,
+            snapshot,
+            current=lambda: self._view_is_current(session_id, generation),
+        )
+        if not self._view_is_current(session_id, generation):
             return
-        pending = await self.client.pending(self.session_id)
-        view = await self.client.get(self.session_id)
+        latest = await client.snapshot(session_id)
+        if (
+            self._view_is_current(session_id, generation)
+            and latest.through_index == snapshot.through_index
+            and notice is not None
+        ):
+            self.query_one("#transcript", RichLog).write(notice)
+
+    async def _update_approval(self, session_id: str, generation: int) -> None:
+        client = self.client
+        if client is None:
+            return
+        pending = await client.pending(session_id)
+        if not self._view_is_current(session_id, generation):
+            return
+        view = await client.get(session_id)
+        if not self._view_is_current(session_id, generation):
+            return
         self.query_one("#approve", Button).disabled = pending is None or pending.arguments is None
         self.query_one("#deny", Button).disabled = pending is None
         self.query_one("#resume", Button).disabled = not view.summary.resumable
@@ -220,6 +344,8 @@ class DemoApp(App[None]):
     def _reset_reply(self) -> None:
         self._reply_attempt = None
         self._reply_text = ""
+        if not self.is_running:
+            return
         reply = self.query_one("#reply", Static)
         reply.update("")
         reply.display = False
@@ -242,23 +368,46 @@ class DemoApp(App[None]):
         reply.display = True
         reply.call_after_refresh(reply.scroll_end, animate=False)
 
-    async def _follow(self) -> None:
+    async def _follow(
+        self,
+        initial_cursor: int | None = None,
+        stopping: asyncio.Event | None = None,
+    ) -> None:
         if self.client is None:
             return
-        async for change in self.client.follow():
-            if isinstance(change, ReplyText):
-                self._update_reply(change)
-            elif isinstance(change, ReplyReset):
-                if (
-                    change.session_id == self.session_id
-                    and change.turn_id == self._reply_turn
-                    and change.attempt_id == self._reply_attempt
-                ):
-                    self._reset_reply()
-            elif isinstance(change, (Lagged, ResyncRequired)):
+        if stopping is None:
+            stopping = asyncio.Event()
+            self._follower_stopping = stopping
+
+        def reset_attempt(change: ReplyReset) -> None:
+            if (
+                change.session_id == self.session_id
+                and change.turn_id == self._reply_turn
+                and change.attempt_id == self._reply_attempt
+            ):
                 self._reset_reply()
-            elif isinstance(change, SessionUpdated):
-                await self._refresh_sessions()
+
+        def failed() -> None:
+            if self.is_running:
+                self.query_one("#connection", Static).update(
+                    "Live updates unavailable. Reopen the client to reconnect."
+                )
+
+        await follow_client(
+            self.client,
+            FeedPresentation(
+                selected=lambda: self.session_id,
+                refresh=self._refresh_sessions,
+                show=self._show_session,
+                reset=self._reset_reply,
+                reply=self._update_reply,
+                reset_attempt=reset_attempt,
+                failed=failed,
+                busy=lambda: self._reply_turn is not None,
+                stopping=stopping.is_set,
+            ),
+            initial_cursor=initial_cursor,
+        )
 
     async def _send(self) -> None:
         if self.client is None or self.session_id is None:
@@ -275,14 +424,13 @@ class DemoApp(App[None]):
         selected = self.session_id
         self._reply_turn = handle.turn_id
         try:
-            result: TurnResult = await handle.result()
+            await handle.result()
         finally:
             self._reply_turn = None
             self._reset_reply()
         await self._refresh_sessions()
-        if self.session_id == selected:
+        if self.is_running and self.session_id == selected:
             await self._show_session()
-            self.query_one("#transcript", RichLog).write(f"[{result.stop_reason}]")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "message":
@@ -323,3 +471,10 @@ def run(
     local_options: LocalModelOptions | None = None,
 ) -> None:
     DemoApp(root, volatile=volatile, model_config=model_config, local_options=local_options).run()
+
+
+class ClientApp(DemoApp):
+    """Textual client UI that borrows an embedded or remote client."""
+
+    def __init__(self, client: ClientProtocol, *, session_id: str | None = None) -> None:
+        super().__init__(client=client, session_id=session_id)

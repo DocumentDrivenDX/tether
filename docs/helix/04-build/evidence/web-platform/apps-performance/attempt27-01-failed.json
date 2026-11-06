@@ -1,0 +1,16 @@
+{
+  "attempt_reference": "31978",
+  "child_returncode": 0,
+  "evidence_basis": "operator-run result reported to the task coordinator",
+  "exception_class": "JSONDecodeError",
+  "failure_phase": "parent_output_json_decode",
+  "followup": "Preserve this failure record; corrected bounded EOF reader is a new operator copy and any later run is a separate attempt.",
+  "measurement_receipt_created": false,
+  "operator_sha256": "3d50bd31c3af63e774727d71328478a9b7e7683aa12c97feef3159bfd0d14efc",
+  "original_private_record_sha256": "a9a7fa068c3cbea1d646046ff7a2d0b2fa90ee5b008cf20dce52dee7636de51d",
+  "owned_process_group_absent_after_child_exit": true,
+  "safe_failure_category": "unterminated_json_at_output_chunk_boundary",
+  "schema_version": 1,
+  "scope": "failed original one-read operator attempt; no measurement artifact; reported physical process cleanup",
+  "status": "failed_no_measurement"
+}

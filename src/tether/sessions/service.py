@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from contextvars import Context
 from typing import Literal, Self
 
@@ -32,6 +33,8 @@ class SessionService:
         default_spec: str | None = None,
         archive: ArchiveSource | None = None,
         archive_sink: ArchiveSink | None = None,
+        close_store: bool = True,
+        _storage_drain: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         if resume != "off" and (
             store.capabilities.durability == "none" or not store.capabilities.fencing
@@ -51,6 +54,8 @@ class SessionService:
         if resume == "auto":
             raise Unsupported("auto_resume_unqualified")
         self.engine, self.store, self.history, self.limits = engine, store, history, limits
+        self.close_store = close_store
+        self._storage_drain = _storage_drain
         self.access = SessionAccess(
             store, history, engine.policy, limits, observers=engine.observers
         )
@@ -88,6 +93,7 @@ class SessionService:
         self.closed = False
         self.drained = False
         self._cleanup: asyncio.Task[None] | None = None
+        self._close_settled = asyncio.Event()
 
     async def archive_session(self, actor: Actor, session_id: str) -> None:
         await self.archives.write(copy_actor(actor), session_id)
@@ -110,7 +116,9 @@ class SessionService:
         await self.turns.wait_closed()
         await self.followers.close()
         await self.engine.wait_closed()
-        physical = await self.store.aclose()
+        physical = await self.store.aclose() if self.close_store else True
+        if not physical and self._storage_drain is not None:
+            physical = await self._storage_drain()
         await self.engine.aclose_observers()
         await self.engine.wait_observers_closed()
         self.drained = physical
@@ -125,6 +133,16 @@ class SessionService:
     def _observe_cleanup(task: asyncio.Task[None]) -> None:
         if not task.cancelled():
             task.exception()
+
+    async def wait_closed(self) -> bool:
+        """Await an initiated physical drain without transferring its ownership."""
+        self.access.check_loop()
+        if not self.closed:
+            raise RuntimeError("tether_not_closing")
+        await self._close_settled.wait()
+        if self._cleanup is not None:
+            await asyncio.shield(self._cleanup)
+        return self.drained
 
     async def aclose(self) -> bool:
         self.access.check_loop()
@@ -141,7 +159,7 @@ class SessionService:
                 await self.turns.wait_closed()
                 await self.followers.close()
                 await self.engine.wait_closed()
-                physical = await self.store.aclose()
+                physical = await self.store.aclose() if self.close_store else True
                 observed = await self.engine.aclose_observers(deadline=deadline)
                 self.drained = physical and observed
         except TimeoutError:
@@ -150,4 +168,5 @@ class SessionService:
             if not self.drained:
                 self._cleanup = asyncio.create_task(self._finish_close(), context=Context())
                 self._cleanup.add_done_callback(self._observe_cleanup)
+            self._close_settled.set()
         return self.drained

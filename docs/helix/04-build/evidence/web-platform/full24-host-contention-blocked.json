@@ -1,0 +1,44 @@
+{
+  "actual_full_gate": {
+    "failed_before_intended_crash_phase": true,
+    "failed_python_cases": 1,
+    "passed_python_cases": 1082,
+    "status": "failed"
+  },
+  "actual_unchanged_target_retry": {
+    "exit_code": 1,
+    "failed": 1,
+    "passed": 2,
+    "result_sha256": "b7521dd80aa49115dda831165606da1d5680740504de3302197474168d6b6a4d",
+    "source_stable": true
+  },
+  "all_owned_workloads_settled": true,
+  "completion_claim": false,
+  "consecutive_goal_turns": 3,
+  "diagnostic": {
+    "cause": "severe host contention observed; original uninstrumented timeout causation remains unproven",
+    "first_event_deadline_seconds": 20,
+    "helper_import_seconds": 16.6446
+  },
+  "latest_load_average": [
+    83.1259765625,
+    98.29736328125,
+    92.57958984375
+  ],
+  "recorded_at": "2026-11-01T04:27:44.584762+00:00",
+  "reference_machine_cpu_count": 18,
+  "remaining_required_work": [
+    "successful current-source full gate and installed cohort",
+    "final installed terminal and visual evidence",
+    "six local and one Apps formal performance profiles and budget adoption",
+    "final candidate deployment and live selected-profile acceptance",
+    "manual and semantic acceptance closure and release gates",
+    "exact-owned temporary resource cleanup and postchecks"
+  ],
+  "restart": "After unrelated heavy workloads settle, resume the goal and revalidate current source, test readiness and credential lifetime.",
+  "schema_version": 1,
+  "source_files": 697,
+  "source_unchanged": true,
+  "status": "blocked_pending_quieter_host",
+  "unchanged_guards": true
+}

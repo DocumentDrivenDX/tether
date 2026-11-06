@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from tether.ports.bound import ActorStore
 from tether.stores.projections import SessionIndex, create_index, patch_entries
+from tether.types._entry_snapshot import EntrySnapshot
 from tether.types.canonical import canonical
 from tether.types.execution import (
     Actor,
@@ -66,7 +67,7 @@ class JsonlSessionStore(SessionReads):
 
     async def aclose(self) -> bool:
         self._check_loop()
-        self._failed = True
+        self._mark_failed()
         return await self.files.aclose()
 
     @classmethod
@@ -85,15 +86,15 @@ class JsonlSessionStore(SessionReads):
         try:
             await self.files.append_file("journal", event.model_dump(mode="json"), guard=guard)
         except (asyncio.CancelledError, CommitUnknown):
-            self._failed = True
+            self._mark_failed()
             raise
         except OSError:
-            self._failed = True
+            self._mark_failed()
             raise CommitUnknown("journal_commit_unknown") from None
         try:
             self._publish(event)
         except Exception:
-            self._failed = True
+            self._mark_failed()
             raise CommitUnknown("projection_publish_unknown") from None
 
     def _check_capacity(self, event: JournalEvent) -> int:
@@ -138,6 +139,7 @@ class JsonlSessionStore(SessionReads):
         changes = self.feed.setdefault(event.owner, [])
         changes.append(change)
         del changes[: -self.files.limits.feed_retention]
+        self._wake_change_readers()
 
     def _lease_event(self, event: JournalEvent) -> None:
         self.owned(event.session_id, event.owner)
@@ -289,7 +291,7 @@ class JsonlSessionStore(SessionReads):
         except CommitUnknown:
             # History and journal may share one poisoned writer. Preserve uncertainty;
             # lease cleanup cannot publish another fact or prove the old cache current.
-            self._failed = True
+            self._mark_failed()
             raise
         finally:
             await asyncio.shield(self.release(session_id, owner, lease.generation))
@@ -404,10 +406,8 @@ class TurnHandle:
         return self.store.owned(self.session_id, self.owner).state.model_copy(deep=True)
 
     @property
-    def entries(self) -> tuple[Entry, ...]:
-        return tuple(
-            e.model_copy(deep=True) for e in self.store.owned(self.session_id, self.owner).entries
-        )
+    def entries(self) -> EntrySnapshot:
+        return EntrySnapshot(self.store.owned(self.session_id, self.owner).entries)
 
     async def append(self, entries: Sequence[NewEntry]) -> tuple[Entry, ...]:
         return await self.store.append(self.session_id, self.owner, self.generation, entries)

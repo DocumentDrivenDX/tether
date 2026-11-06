@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-25
+  updated: 2026-10-29
   authoring:
     home: repo
   links:
@@ -59,13 +59,19 @@ ddx:
       kind: informed_by
     - id: SPIKE-004
       kind: informed_by
+    - id: ADR-022
+      kind: informed_by
+    - id: SD-002
+      kind: informs
+    - id: SD-003
+      kind: informs
 ---
 
 # Architecture
 
 ## Scope
 
-Tether is an embedded asynchronous Python library built on Pydantic AI Agent (ADR-003). Agent supplies iteration and typed execution; Tether supplies the invariant facade, application policy, journal/history integration, recovery, session service and owner-scoped Client API. The CLI/TUI are reference clients. The application owns its server/browser transport and business state. No second general-purpose loop or AgentKit supervisor is planned.
+Tether is an embedded asynchronous Python library built on Pydantic AI Agent (ADR-003). Agent supplies iteration and typed execution; Tether supplies the invariant facade, application policy, journal/history integration, recovery, session service and owner-scoped Client API. The CLI/TUI and optional HTTP API/browser UI are replaceable consumers of the public client boundary (FR-65/NFR-9). The application owns transport hosting, identity and business state. No second general-purpose loop or AgentKit supervisor is planned.
 
 The PRD and CONTRACT-001 through CONTRACT-005 define required behavior. SPIKE-003/004 provide bounded integration evidence, not blanket production support. SD-001 sequences delivery and qualification; TP-001 assigns proving layers.
 
@@ -94,7 +100,7 @@ graph TB
 
 ## Level 2: Container Diagram
 
-These components run in one consumer process and one Python distribution. External stores/servers remain replaceable; Agent is an internal runtime dependency.
+Core runs in the embedding Python process. Optional API, static UI hosting and Databricks integration are separate distributions in the same repository (ADR-022). A reference carrier composes them in one ASGI host; browser assets need no Node runtime. External stores/servers remain replaceable; Agent is an internal runtime dependency.
 
 | Container | Technology | Responsibilities | Communication |
 |---|---|---|---|
@@ -125,7 +131,7 @@ graph TD
 
 ## Module Boundaries
 
-**Source Applicability**: source project in design; the planned boundary checker must enforce this table before runtime implementation is accepted. SPIKE-004 source is a bounded fixture, not the production module layout.
+**Source Applicability**: source; handwritten Python and TypeScript require enforced public dependency boundaries. The current checker covers existing core ownership; IP-002 extends it with interface/package negative controls before dependent acceptance.
 
 | Module | Responsibility / Owned Types | Public API | Allowed Dependencies | Forbidden Dependencies |
 |---|---|---|---|---|
@@ -136,7 +142,7 @@ graph TD
 | tether.runtime.pydantic_ai | Owns Agent, generic Model bridge, SDK tool/message/Conversation codecs and fixed capability composition | Internal integration only | types, ports, internal Tether callback contracts, pydantic-ai-slim, AnyIO | Engine/session implementations, native provider SDKs, stores, environment, SDK types in public Tether APIs, private graph imports |
 | tether.context | Source-addressed strategy/estimator helpers and deterministic dummies | CONTRACT-004 strategies/estimators | types, ports, standard library, AnyIO | Independent model/store clients or another transcript authority |
 | tether.sessions | Tether task ownership, lease/recovery orchestration, change bus and summary projections | Tether | types, ports, engine, AnyIO | Native provider SDKs, UI clients, environment |
-| tether.client | Owner-authorized list/page/snapshot/follow/commands | Client | types, sessions | SDK state, adapter/store internals |
+| tether.client | Public client protocol/types, configuration, construction/lifetime and authorized operations | CONTRACT-006 host/client facade; CONTRACT-003 semantics | types, sessions and private composition helpers | Interface packages and framework/provider types in public exports |
 | tether.history | Source refs, history mediation, JSONL content, readiness/correlation helpers | HistoryProvider types and JsonlHistory | types, ports, standard library, AnyIO | Agent execution, provider SDKs, environment |
 | tether.adapters.pydantic_ai | Native/compatible model implementations; provider settings, wire/errors/receipts and attempt mediation | ModelPort implementations with Tether-facing payloads | types, ports, canonical model helpers, shared runtime codecs, Pydantic AI model/provider APIs; explicitly selected optional provider SDK closure and local tiktoken vocabulary counting | Engine/session implementations, SDK types in public core payloads, implicit SDK retries or identity fallback |
 | tether.adapters.openai_compat | Compatible-server configuration/profile over the selected model integration | OpenAICompatModel/profile as specified by the adapter design | types, ports, adapters.pydantic_ai | A second default HTTPX/SSE protocol implementation, hosted-only behavior |
@@ -147,13 +153,104 @@ graph TD
 | tether.adapters.otel | Tracer/audit adapter; owns OTel imports | OtelTracer/OtelAuditSink | types, ports, selected extra | Content capture by default, engine implementation |
 | tether.scope / tether.guards | Optional scope kinds, bound-context and heuristic guards | Declared guards/kinds | types, ports | Agent internals or a dispatch bypass |
 | tether.testing | Public-port doubles/suites/cassettes and qualified runtime test helpers | Contract test kit | Core modules including context helpers and the named runtime integration; test dependencies | Required native provider extras/network credentials |
-| tether.cli / tether.tui | Reference clients and their composition roots | Console scripts | Client, Tether, selected adapters/stores, settings, Textual for TUI | Engine/Agent/store internals |
+| tether.cli / tether.tui | Reference terminal consumers and standalone launcher | Client-injected factory and console scripts | tether.client, own presentation/configuration, optional Textual | Engine/Agent/session/store/adapter internals and web packages |
 
 **Integration Owners**: the internal runtime module owns Agent/capability/SDK message and Conversation conversion. Model adapters own provider-specific clients, wire parsing, settings and errors, using those shared codecs; do not build two conversion authorities. The compatible profile configures that adapter rather than reimplementing the protocol. Databricks owns platform authentication/history reads; stores own persistence drivers; OTel and Textual remain in their named integrations.
 
 **Construction Policy**: the application/reference client is the composition root. Explicit settings select model tier/profile, identity mode, stores, limits, capabilities and optional adapters. Engine binds the internal Agent integration to Tether-owned callbacks; external systems enter through ports. SDK configuration and provider clients are constructed at the integration boundary; core code performs no environment discovery. Raw application SDK capabilities cannot be injected to bypass Tether gates.
 
 **Boundary Check**: create scripts/check_layers.py in SD-001 slice 0. Allow production Pydantic AI imports only in the named runtime/model integration owners; integration tests may use public SDK APIs to prove those boundaries, while private graph imports remain forbidden; allow foundation-model SDKs only in installed optional model adapter closures. Reject vendor types in public core APIs, private graph imports, cycles and alternate-loop/default owned-client modules. Each rule needs a planted negative control. Clean base installation includes pydantic-ai-slim but excludes foundation-model SDKs; the offline scripted/custom model and core suites must work. Each installed extra receives its own closure/version tests. SDK use is not treated as hosted lock-in.
+
+### Encapsulated interface components
+
+The public embedding boundary is `tether.client`. It must expose the supported
+client protocol, request/result/event/error types and construction/lifecycle
+facade. Embedders and interface consumers must not need runtime or storage
+implementation imports for ordinary construction, operation or shutdown.
+Advanced integrations implement published ports exposed through this boundary.
+Exact exports and signatures belong in CONTRACT-003; names are not fixed here.
+
+The following module map details optional interface ownership under ADR-022.
+It does not claim that the existing TUI or construction API already conforms.
+
+| Module | Responsibility / Owned Types | Public API | Allowed Dependencies | Forbidden Dependencies |
+|---|---|---|---|---|
+| tether.client | Stable consumer protocol, exported domain types and host lifecycle facade | Typed client and construction/lifecycle contracts in CONTRACT-003 | Internal session service and private composition helpers; exported core ports/types | TUI, web modules, framework types in public client APIs |
+| tether.tui / tether.cli | Terminal presentation and command composition | Entrypoints and client-injected application factory | tether.client, own presentation helpers, optional Textual | Engine, sessions, stores, model adapters; web modules |
+| tether_web_api | HTTP translation, versioned wire types and streaming | Client-provider-injected application/router factory | tether.client, own transport helpers and selected optional server framework | Runtime/storage internals, TUI and browser UI modules |
+| tether_web_ui | UI hosting/configuration and bundled browser assets | Mountable UI factory and typed presentation configuration | Own assets, selected optional hosting framework; public API wire contract for browser requests | Engine, sessions, stores; Python API implementation internals |
+| tether_databricks | Platform identity/settings/resources and host composition | CONTRACT-007 typed carrier factory | tether.client, public tether_web_api/tether_web_ui factories, optional SDK and ASGI runner | Private runtime/storage imports, business tools and UI implementation imports |
+| @tether/client | Browser protocol and feed client | CONTRACT-006 TS client exports | Generated versioned schemas and browser primitives | React, UI packages, Python runtime internals |
+| @tether/react | Injected provider, hooks and query-cache reconciliation | Typed hooks/provider | Public @tether/client, React, TanStack Query | UI components and deep private client imports |
+| @tether/ui | Session components, renderers and opt-in style tokens | Typed components and replacement slots | Public hooks/client types, React | Carrier, reference-app routing, direct network/auth setup |
+| apps/reference-web | Default routing/layout and composition | Built SPA | Public browser packages and selected router/build tooling | Python/private npm imports and another session authority |
+
+**Construction and lifetime**: the embedder owns the client host and passes a
+client or typed client provider to each interface factory. HTTP authentication
+resolves a fresh actor-bound client per request or authorized stream lifetime;
+identity must remain current under the client contract. Interface factories do
+not create hidden runtimes, stores or global client singletons. Closing a
+borrowed client consumer does not close the embedder's host. Standalone launchers
+explicitly own and close their host through the public client facade.
+
+**Extension contract**: prefer composition and small typed protocols. Inject
+client providers, authentication integration, transport configuration and UI
+presentation components through explicit factories. Publish only seams with a
+concrete extension use case; avoid a general plugin registry. Subclassing private
+controllers, monkey-patching and mutable runtime access are unsupported.
+Extensions customize presentation and transport, while the client retains all
+policy, approval, dispatch, recovery and disclosure authority.
+
+**Types and compatibility**: core values and errors remain transport-neutral.
+The HTTP adapter owns validated wire schemas, versioning and explicit conversion;
+framework requests/responses do not leak into the client protocol. Browser code
+consumes that wire contract. Defaults, configuration precedence, cancellation,
+errors and dependency ownership must be documented for each public factory.
+Local and future remote clients must satisfy the same consumer-facing semantics;
+remote execution support needs separate qualification.
+
+**Shared sessions**: terminal and browser consumers of the same service and
+authorized owner namespace see the same committed sessions. A second interface
+does not become another state authority. Prefer one host for simultaneous local
+web/TUI operation; independent processes must use a qualified shared-store
+profile. Separate local stores do not synchronize automatically. Disconnecting a
+consumer does not cancel accepted execution. Approval races, gaps, provisional
+text resets and unavailable history preserve CONTRACT-003 behavior.
+
+**Verification**: extend `uv run python scripts/check_layers.py` and its real
+negative controls to enforce this map before dependent interface implementation.
+Run each Python consumer against a conforming dummy client, type-check embedder
+and replacement examples, and prove core imports/installation without UI/server
+extras. Exercise replacement API/UI factories and a browser/TUI shared-session
+journey under current authorization, reconnect and competing approvals.
+These are acceptance obligations; this design change supplies no new runtime
+qualification. ADR-022 selects the reference stack and package split. CONTRACT-006/007 own
+factory/wire details; SD-002/003 apply them. TP-002/STP-001 and IP-002 bind
+qualification and ordered tasks. Exact dependency pins, registry names and
+platform behavior remain bounded qualification tasks before dependent acceptance.
+
+### Repository and deployment composition
+
+One repository owns src/tether, packages/web-api, packages/web-ui,
+packages/databricks, packages/client-ts, packages/react, packages/ui,
+apps/reference-web and examples/databricks-app. Real embedders keep business
+code and deployment bindings in their own repositories. Installed-artifact
+fixtures outside the checkout prove the same public boundaries.
+
+The optional API uses FastAPI and explicit Pydantic wire models. The reference
+UI is a personalized client-rendered React/TypeScript/Vite application with
+no SEO/server-rendering requirement. npm workspaces and a root package-lock
+produce assets packaged in the UI wheel. React hooks own one query cache;
+provisional reply overlays are transient. The carrier mounts API and assets
+under one origin, with a configurable prefix and JSON API errors that never
+fall through to the SPA. ASGI lifespan forwarding must be explicitly proved.
+
+The Databricks carrier alone reads platform environment/settings, maps trusted
+current identity and resource bindings, owns its host, and configures a candidate
+H2C-compatible ASGI runner. Apps proxy behavior, remote TUI OAuth access,
+credential refresh, 15-second shutdown and external Lakebase durability are
+separate live-profile gates. Neither local mocks nor PostgreSQL 18 evidence
+qualifies a deployed Apps/Lakebase profile.
 
 ## Deployment
 

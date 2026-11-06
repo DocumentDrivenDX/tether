@@ -5,7 +5,7 @@ ddx:
   activity: frame
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-29
+  updated: 2026-11-02
   authoring:
     home: repo
   links:
@@ -74,7 +74,7 @@ A Python application needs one coherent boundary for agent execution, policy, li
 
 ### Success Metrics
 
-The numeric targets below were proposed on 2026-10-22 at the owner's request, as starting points. They are targets, not measurements. The first benchmark baseline validates or replaces each one, after which it becomes a committed budget that CI protects against regression.
+The numeric targets below were proposed on 2026-10-22 at the owner's request. They are performance targets, not functional-test deadlines. Source27 establishes historical reference measurements and ratchets; future performance comparisons run only as a separate, opt-in controlled qualification after the host passes the admission policy in NFR-7.
 
 | Metric | Target | Measurement Method |
 |--------|--------|--------------------|
@@ -84,16 +84,16 @@ The numeric targets below were proposed on 2026-10-22 at the owner's request, as
 | Blocking synchronous I/O entry points in the public API | 0 | A review check and an API listing test |
 | Message or tool content found in spans and audit entries | 0 | A telemetry content test in CI |
 | Foundation-model provider SDKs in the default install's dependency tree | 0 | A dependency-tree test and the boundary check in CI |
-| Clone to a running terminal UI on the demo model, dependency install on a warm package cache | At most 10 s | The quickstart test in CI, timed |
-| The same on a cold package cache | At most 60 s (network bound) | The quickstart test, run on demand |
-| Time from the first keystroke of a message to the first reply text in the demo | At most 1 s | The quickstart test |
-| The client API and engine budgets in NFR-7 | Met at the reference workload | The benchmark suite in CI |
+| Clone to a running terminal UI on the demo model, dependency install on a warm package cache | At most 10 s | Optional performance qualification on an admitted, controlled host; functional quickstart checks assert visible state only |
+| The same on a cold package cache | At most 60 s (network bound) | Optional on-demand performance observation; not a functional gate |
+| Time from the first keystroke of a message to the first reply text in the demo | At most 1 s | Optional performance qualification; functional quickstart checks assert the reply appears |
+| The client API and engine budgets in NFR-7 | Source27 reference budgets remain historical authority; current performance status requires a newly admitted qualification | Separate opt-in performance job; not the normal functional check |
 
 ### Non-Goals
 
 The vision's [non-goals](../00-discover/product-vision.md#non-goals) apply. Each excludes something a reasonable reader might assume is in scope:
 
-- No user interface beyond the reference clients, and no HTTP, WebSocket, or server-sent-events surface in the library.
+- No required server or UI in the core library. Optional reference HTTP API and browser UI components are independently replaceable consumers of the client boundary.
 - No multi-agent orchestration graph or handoff model.
 - No AgentKit wrapper or second harness runtime. The consuming application retains its existing Databricks Apps server; the runtime replacement criterion is recorded in ADR-003.
 - No bundled coding agent; optional native SDKs stay behind selected adapter boundaries.
@@ -150,7 +150,7 @@ Each requirement traces to the vision's value propositions. Exact signatures, en
 
 The immediately next slice after 0.1 publication is the consumer contract and compatibility work in FR-54 to FR-64. It precedes consumer integration and the other P1 enhancements below. The proposed contract paragraphs require owner acceptance before dependent implementation; this sequencing does not reopen 0.1 P0 qualification.
 
-1. Measured performance budgets for the client API, protected in CI (FR-21).
+1. Measured performance budgets for the client API, protected by a separate opt-in controlled performance qualification after host admission (FR-21).
 2. The OpenTelemetry adapter (FR-24).
 3. Opt-in automatic resume for applications that supply an identity (FR-37).
 4. The Databricks AI Gateway profile, with an authoritative model-exchange history provider and writable supplement (FR-39, FR-43, FR-51).
@@ -162,7 +162,8 @@ The immediately next slice after 0.1 publication is the consumer contract and co
 2. An MCP (Model Context Protocol) client adapter for tools.
 3. Parallel execution of independent tool calls in one reply.
 4. Subagents as sessions owned by a tool call.
-5. A SQLite live store, other store adapters, and server adapters (HTTP, WebSocket) over the client API.
+5. A SQLite live store and other store adapters.
+6. Optional extensible HTTP API and browser UI components over the client API (FR-65). Their delivery requires NFR-9 and FR-66–70; this does not change the existing release sequence.
 
 Pydantic AI Agent/model reuse is the selected implementation under ADR-002/003, not a P2 product feature.
 
@@ -174,7 +175,7 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 |----------|---------------------------|
 | P0 | FR-1 to FR-14; FR-16 to FR-20; FR-22 to FR-23; FR-25 to FR-36; FR-38; FR-40 to FR-42; FR-44 to FR-50; FR-52 to FR-53 |
 | P1 | FR-21; FR-24; FR-37; FR-39; FR-43; FR-51; FR-54 to FR-64 (immediately next consumer slice); target-specific reconciliation portion of FR-44 |
-| P2 | FR-15; the separately listed P2 extensions |
+| P2 | FR-15; FR-65 to FR-70; the separately listed P2 extensions |
 
 ## Functional Requirements
 
@@ -226,7 +227,9 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 - **FR-18** — A client reads one session's view and pages through its entries in either direction.
 - **FR-19** — A client follows changes (session updates, appended entries, reply text, pending confirmations) from a position it can resume, receives a resync signal when its position is too old, and cannot slow the loop.
 - **FR-20** — A client creates a session, sends a message, answers a confirmation, resumes an interrupted turn, cancels a turn, closes a session, and changes its settings, through the same API.
-- **FR-21** — The API's latency and memory stay within budgets that benchmarks measure and protect against regression.
+- **FR-21** — The API's latency and memory stay within budgets that a separate controlled performance qualification measures and protects against regression.
+
+- **FR-66** — P2: a Python embedder can construct, configure, operate and close a client host through one public boundary, including supported advanced adapter ports. Terminal clients accept injected embedded or remote clients with equivalent session semantics and explicit lifetime ownership.
 
 ### Subsystem: Telemetry
 
@@ -254,6 +257,19 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 - **FR-29** — A command-line client lists sessions, shows a session, sends a message, follows a session, answers a confirmation, resumes an interrupted turn, and replays a cassette.
 - **FR-30** — A terminal UI shows the session list and a live transcript and handles approvals, new conversations and resume. An explicitly selected local compatible endpoint starts without a hand-authored model profile, tokenizer file or fabricated credential; model selection, workspace, context-budget provenance and approval requirements remain visible. A selected Databricks CLI profile alone must derive its gateway URL and authenticate, discover the declared chat-model subset, and offer model selection; an explicit gateway URL must not mean a Databricks profile name.
 - **FR-33** — After cloning the repository, one command starts the terminal UI against a built-in scripted demo model and a local store, with no configuration, no network access, and no credential, and the demo exercises streaming, a tool call, and an approval.
+
+### Subsystem: HTTP and Remote Clients
+
+- **FR-65** — P2: embedders can adopt, extend or replace the supplied HTTP API and browser UI independently through the public client boundary. Authorized users can view sessions created through either terminal or browser interfaces when both connect to the same service and owner namespace. These components preserve the client's approval, recovery and disclosure semantics.
+- **FR-67** — P2: an optional typed HTTP adapter exposes the supported client reads, commands and live feed without changing authorization, durable acceptance, cancellation, approval or recovery meaning. A remote Python client preserves the same consumer contract. Lost acknowledgments, reconnect gaps, unavailable history and unsupported capabilities remain explicit.
+
+### Subsystem: Composable Browser Interfaces
+
+- **FR-68** — P2: embedders can independently adopt a framework-neutral browser client, React state/hooks, reusable session components or the complete reference application. Each layer has a typed public extension surface, isolated per-user state and observable loading, empty, pending, error and success behavior. Users can complete the supported session, approval and recovery journeys with keyboard access.
+
+### Subsystem: Databricks Apps Carrier
+
+- **FR-69** — P2: an optional carrier composes the public client, HTTP API and browser UI on Databricks Apps using injected identity, platform resources and external durable storage. It separates session ownership, model identity and app infrastructure identity; qualifies deployed authentication, streaming, shutdown/restart and storage behavior before claiming support.
 
 ### Subsystem: Databricks Profile
 
@@ -288,11 +304,17 @@ This index fixes release scope for every stable functional requirement. FR-44's 
 - **FR-32** — The library is dual licensed MIT OR Apache-2.0, copyright FocusedDiversity LLC, with both license texts in the package and a history that starts in this repository.
 - **FR-36** — The repository states how to contribute: contributions are welcome directly with no contributor license agreement, are accepted as prompts that the maintainers implement, and are licensed as the project is.
 
+### Subsystem: Interface Distribution and Compatibility
+
+- **FR-70** — P2: one source repository produces independently consumable Python and browser packages with explicit compatibility and release contracts. A separately located embedder application can use released artifacts, extend or replace interface layers, and deploy a carrier without checkout-relative imports, private source access or mandatory web dependencies in core.
+
 ### Feature Map
 
 The next consumer requirements map FR-54 to Client API, FR-55/57/59 to Agent/Governance, FR-56/58/60 to Tools/Governance, FR-61 to Sessions/Authoritative History, FR-62/63 to Reference Clients/Packaging and FR-64 to Telemetry. CONTRACT-002/003/005 contain the proposed interface obligations; the implementation plan sequences acceptance before source changes.
 
 Authoritative history and correlation (FR-50 to FR-53) belong to the Sessions and Context Management features and the Databricks adapter where selected; CONTRACT-005 fixes their boundary. Local/Gateway readiness, identity modes and replay-safe effectful writers receive distinct acceptance coverage in TP-001.
+
+FR-66 maps to FEAT-013 Public Client Embedding; FR-65/67 to FEAT-014 HTTP and Remote Clients; FR-68 to FEAT-015 Composable React Interfaces; FR-69 to FEAT-016 Databricks Apps Carrier; FR-70 to FEAT-017 Interface Distribution. These capabilities have independent ship/cut outcomes. They extend the existing Client API and Reference Clients without changing FR-54–64 priority. US-065 through US-069 own their acceptance criteria. SD-002/003, CONTRACT-006/007 and TP-002 govern their design and proving layers; IP-002 owns ordered work and continuation evidence.
 
 Each subsystem becomes one feature specification: FEAT-001 Agent Loop and Model Port, FEAT-002 Tools, FEAT-003 Sessions, FEAT-004 Crash Recovery and Resume, FEAT-005 Client API, FEAT-006 Telemetry, FEAT-007 Governance, FEAT-008 Test Kit, FEAT-009 Reference Clients, FEAT-010 Context Management, FEAT-011 Packaging and Licensing, FEAT-012 Databricks Profile. Stories are in `docs/helix/01-frame/user-stories/`.
 
@@ -304,8 +326,9 @@ Each subsystem becomes one feature specification: FEAT-001 Agent Loop and Model 
 - **NFR-4** — Operational telemetry and audit entries contain no message/tool content; authoritative history and authorized fabricated cassettes intentionally do, and no credential ever appears in a log, a cassette, a span, or a stored entry (ADR-011).
 - **NFR-5** — The package is typed, passes `pyright` and `ruff`, and targets Python 3.11 as its compatibility floor and later explicitly qualified versions; releases name the interpreter matrix actually tested.
 - **NFR-6** — The client API holds bounded memory per subscriber and never blocks the loop on a slow consumer.
+- **NFR-9** — Interface components depend only on the public client boundary for Tether behavior. Embedders can inject typed client implementations, authentication integration and presentation replacements without private imports or mandatory interface dependencies. Substitution tests and import/dependency checks must prove these boundaries before optional web components are accepted.
 - **NFR-8** — Base packaging and public core types are provider-SDK-free (ADR-012). Selected optional adapters may import SDKs directly/transitively; boundary/dependency checks verify isolation and disclosed closures. Pydantic AI Agent/model reuse is selected; optional SDK wrapping alone does not imply hosted-provider lock-in.
-- **NFR-7** — Performance targets (proposed, validated by the first baseline). The reference workload is one owner with 10,000 sessions of about 200 entries each, one session of 100,000 entries, entries of about 1 KiB, one process with one event loop, on a laptop-class machine with a local solid-state disk. All latencies are 99th percentile.
+- **NFR-7** — Qualified performance budgets. The original proposals below are preserved as the pre-baseline history; the source27 first-baseline disposition following the table defines the accepted operational boundaries and committed reference ratchets. The reference workload is one owner with 10,000 sessions of about 200 entries each, one session of 100,000 entries, entries of about 1 KiB, one process with one event loop, on a laptop-class machine with a local solid-state disk. All latencies are 99th percentile.
 
 | Operation | In-memory store | Durable store (qualified local profile) |
 |-----------|-----------------|--------------|
@@ -321,6 +344,101 @@ Each subsystem becomes one feature specification: FEAT-001 Agent Loop and Model 
 | `import tether` (core) | at most 300 ms | |
 | `tether` command line, start to first output | at most 600 ms | |
 | Terminal UI, start to first paint | at most 1.5 s | |
+
+### NFR-7 first-baseline disposition — source27, 2026-11-02
+
+The owner-authorized first-baseline validate-or-replace decision is now applied
+to seven actual source27 profiles. The complete measurements, original target
+comparison and engineering rationale are in the
+[accepted first-baseline review](../04-build/evidence/web-platform/performance-budget-review27-draft.md).
+The [establishment receipt](../04-build/evidence/web-platform/performance/source27-first-establishment/first-baseline-establishment.json)
+records seven exact establishment nodes, not historical regression passes.
+The [seven measured baseline files](../04-build/evidence/web-platform/performance/README.md)
+are the numeric authority: every selected metric maximum is its observed value
+multiplied by the same predeclared 1.2 future-variance factor. This deliberately
+replaces the original numeric caps for these qualified operational definitions,
+even where the observation met the earlier proposal. It does not assert that a
+ratchet with a higher maximum enforces a stricter original cap. The policy is a
+reference regression guard, not a production SLA or arbitrary per-miss threshold.
+
+| Original requirement | Accepted measured operational definition and explicit disposition |
+|---|---|
+| List/view/page/append | Separate POSIX OS-durable JSONL and MemoryFiles non-durable JSONL profiles; 10,000 sessions × 200 entries plus one 100,000-entry session, about 1 KiB entries, explicit 4 GiB reference index capacity and 100 samples. Pages cover beginning/middle/end and 100 deterministic spread positions with exact indices; this replaces an exhaustive measured every-window claim. Memory list p99 10.140583 ms misses the original 3 ms, while durable 9.010375 ms meets 10 ms. View/page/append proposals are met in the measured subsets. MemoryFiles reference capacity is not the shipped VolatileSettings default. |
+| Commit → in-process follower | Replace the isolated segment with public metadata-command start → final-commit delivery to 1,000 registered followers, queue 32, 100 samples: volatile 137.948583 / POSIX 147.925000 ms p99. These upper boundaries do not establish either pass or failure of an isolated 5/10 ms commit segment. |
+| Commit → another process | Protect the POSIX public request → delivery upper boundary for one separate follower and 100 commits, p99 19.822083 ms including transport/storage. It is below the 300 ms proposal for this subset, not Apps evidence. |
+| Engine overhead | Replace unmeasured isolated CPU/1 ms with actual fresh-step Engine.run_turn exclusive-wall upper boundary, p99 20.537122 ms, one model/no tools/full context. Exclude model bodies minus nested attempt callbacks, then union all real storage/history body intervals. Untimed getters/bookkeeping remain included; setup/close/deferred observer drain are outside. No pure-engine CPU claim or isolated 1 ms pass/failure follows. |
+| Memory per follower/default queue | Replace the unvalidated broad 1 MiB isolated/native-total claim with 100 causal queue/live-capacity-32 trials: empty traced state and whole-trial net Python growth for full persisted/live/coalesced states, plus a separate actual 1,000-follower process envelope. Full-live net p99 is 1,401,006 bytes; fixture/model/producer allocations and unrelated frees prevent treating it as isolated per-follower memory or a mathematical upper bound. Queue size is explicit, not a library default. Structural lifecycle and overflow controls independently support bounded retention. No process total is divided by follower count. |
+| Streaming loop lag | Preserve distinct 1,000-follower/200-chunk profiles with exact text and terminal delivery to all consumers and zero misses: POSIX p99 7.550167 ms meets 20 ms; VolatileSettings p99 392.050375 ms misses 20 ms. The committed volatile wall-lag ratchet explicitly accepts the measured fractional-second limitation; it does not retain a universal 20 ms promise or prove a GC cause. |
+| Core import | Protect cold-process spawn/import/exit p99 466.760125 ms. The 300 ms number is exceeded at that conservative boundary; isolated in-process import remains unmeasured and is not silently passed. |
+| CLI first output / TUI first paint | Protect actual nonempty-list first-byte p99 370.450375 ms (600 ms proposal met) and actual PTY first-paint p99 1516.746 ms (1500 ms proposal missed). Help/exit and the one-sample installed functional startup remain separate evidence. |
+| Apps latency | Add a separately bound selected-deployment read profile: 100 real public-client opens and 100 list calls, stable 50-item pages, persistent sequential HTTP/2 and one preacquired RAM credential. Handshake p99 364.316125 ms; list p99 716.556208 ms. Managed server hardware is unknown; this is not the 10,000-session dataset, server CPU, cold-start or a general network/Apps SLA. |
+
+The qualified client machine/runtime, source, dataset, limits and Apps deployment
+bindings are retained with the observations. New measurements on changed hardware,
+versions, workload/cardinality or profile need deliberate qualification; local
+measurements never substitute for Apps. Later comparison must use independent
+observations, refuse missing or mismatched identities, and protect all selected
+metrics. Initial establishment need not remeasure and compare itself.
+
+Concrete costs were investigated and finite fixes preserved authorization,
+source freshness, immutable snapshot isolation, queue limits, terminal retirement,
+ordered disclosure and cancellation. Repeated journal copying/index allocation,
+fanout fairness, list allocations and the demonstrated 100 ms notification floor
+were addressed before this baseline. Remaining volatile wall-lag and startup
+limits are disclosed rather than starting an open-ended optimization project or
+subtracting unproven causes. General CPU/native memory, every payload/window/
+configuration and managed-server capacity remain outside the replaced definitions.
+This first-baseline decision does not close live identity/managed recovery,
+manual support-claim review, resource cleanup or IP-002 acceptance.
+
+### NFR-7 test and measurement policy — owner decision, 2026-11-02
+
+Functional correctness is established from observable outputs, state transitions,
+events and controlled barriers. Functional checks do not fail because startup,
+response or readiness took longer than an incidental elapsed-time threshold. A
+time measurement is a correctness assertion only when elapsed time is itself a
+product contract, such as expiry, a caller deadline or a bounded stop-and-report
+policy. Physical-worker ownership remains until actual exit. Use deterministic
+clock control for deadline and expiry assertions where possible.
+
+An emergency watchdog may stop an operationally exhausted check. Its expiry
+reports the result as incomplete and does not establish behavior failure or
+success. Cleanup still retains, cancels where supported, and reaps physical
+work before releasing its ownership.
+
+Performance measurement is separate and opt-in. Run it as a serialized workload
+on recorded, known hardware with evidence that the host is admitted and not
+confounded by other processing. Hardware metadata, a global GitHub concurrency
+group, or a load threshold alone does not establish that external work is
+isolated. The normal functional check does not execute actual benchmark
+workloads.
+
+The source27 numeric baselines, operational definitions and predeclared 1.2
+variance factor remain unchanged as historical authority. They do not establish
+admission under this policy. Preserve source28 failures and deferred
+measurements as recorded; do not convert them to passes or tune thresholds to
+fit them. A fresh isolated qualification under this admission policy is required
+before claiming a current performance pass.
+
+### NFR-7 controlled gate and Apps observations — owner decision, 2026-11-02
+
+Keep Databricks Apps network latency observational, outside performance
+pass/fail. The current controlled gate has six local profiles and 54 metrics:
+POSIX store 7, MemoryFiles store 7, POSIX public client 17, volatile public
+client 11, engine 2 and follower memory 10. These require the known-hardware
+reservation and independent isolation evidence above. The two Apps handshake
+and list latency values are optional observations, not qualified metric nodes
+or threshold gates; the default controlled command does not require a
+precollected Apps measurement.
+
+Apps observations retain exact driver/source/operator/deployment provenance
+and disclose network/service boundaries, unknown managed hardware and unknown
+physical co-tenancy. They do not manufacture an exclusive remote profile or
+admission from local driver control. The historical seven-profile, 56-metric
+baselines and receipts remain unchanged; this decision does not turn source28
+failures into passes or fit any numeric cap. All 41 interface acceptance
+criteria and all 45 IP-002 tasks remain required. Functional Apps identity,
+storage, recovery, privacy and compatibility qualification are unchanged.
 
 ## Acceptance Test Sketches
 
@@ -340,7 +458,7 @@ Each subsystem becomes one feature specification: FEAT-001 Agent Loop and Model 
 | FR-22, FR-23, NFR-4 | A turn with a recognizable prompt and credential | A fabricated prompt containing a marker string and a credential containing a second marker | The prompt marker is absent from operational logs/spans/audit but intentionally retained in authorized history and fabricated cassettes. The credential marker is excluded from every stored history/journal/cassette/diagnostic field |
 | FR-28 | Replay | A recorded cassette | The loop reproduces the saved audit record; an altered request fails naming the differing field |
 | FR-29 | Command-line client | `list`, `send`, `follow`, `resume` against a store with a scripted model | The commands show the session, stream the reply, resume an interrupted turn, and exit cleanly |
-| FR-30, FR-33 | Clone and try | A fresh clone on a machine with a warm package cache, then `uv run tether` | The terminal UI paints with a demo session within 10 s of the command; a message streams a reply, runs a tool, and asks for approval |
+| FR-30, FR-33 | Clone and try | A fresh clone on a machine with a warm package cache, then `uv run tether` | The terminal UI displays the demo session; a message streams a reply, runs a tool, and asks for approval |
 | FR-4 | Explicit identity modes | Caller, configured application and anonymous profiles; expired caller credential in require-user mode | Each selected mode is enforced; require-user refuses fallback and concurrent credentials remain isolated |
 | FR-41 | Send deduplication | Same request id with equal text, attachments and requested spec; then change each field separately | Equal semantic input returns the accepted turn; every changed input is an idempotency conflict |
 | FR-50 | Local history restart | JSONL content committed before journal refs; kill between writes and restart | Only journal-accepted content appears, original digests/order survive, and unaccepted orphans are not messages |
@@ -377,6 +495,13 @@ These are required future acceptance cases, not executed 0.1 results.
 | FR-63 dependency compatibility | Resolve consumer constraints and run the selected contract/codec/typing/installed boundary suites at each proposed dependency range boundary before metadata widens. |
 | FR-64 telemetry naming | Select a span prefix and attribute namespace, inspect nested spans across awaits/workers/failures, and verify canonical metadata/content exclusions and fixed journal semantics. |
 
+### Optional web component acceptance (FR-65 / NFR-9)
+
+- Embed a client without installing terminal or web dependencies; construct, configure and close it through the public client boundary.
+- Run the terminal and HTTP consumers against a conforming dummy client; replace the API or UI independently without changing runtime code.
+- Use fabricated sessions through both interfaces: create, follow, approve, disconnect and reconnect. Verify shared committed state, current authorization, one-winner decisions and explicit history/reset failures.
+- Prove allowed imports pass and planted interface-to-private-core dependencies fail the actual boundary checker. Type-check consumer examples and replacement implementations.
+
 ## Technical Context
 
 This section records decisions; the rationale is in the ADRs.
@@ -403,7 +528,7 @@ The 0.1 tested compatibility set is Python 3.11.17 with Pydantic 2.14.1, Pydanti
 ### Assumptions
 
 - The OpenAI-compatible protocol stays the common ground of the local and self-hosted servers users run; the adapter's conformance matrix finds each server's quirks (SPIKE-002).
-- The proposed performance targets are achievable on the reference workload; the first baseline will show where they are not.
+- Current performance status is not inferred from proposed targets or historical measurements; it requires a fresh qualification admitted under NFR-7.
 
 ### Dependencies
 
@@ -414,16 +539,16 @@ The 0.1 tested compatibility set is Python 3.11.17 with Pydantic 2.14.1, Pydanti
 
 | Risk | Probability | Impact | Mitigation |
 |------|-------------|--------|------------|
-| The proposed performance targets are wrong | Medium | Medium | The first benchmark baseline replaces each with a measured budget; CI protects the budget afterward |
-| Per-step commits cost too much latency on the durable store | Medium | Medium | Batch a step's entries into one commit; measure in the benchmarks before 0.1; document the store's durability settings |
-| Local durable startup exceeds the clone-and-try budget | Medium | Medium | Measure the selected JSONL reference profile; optimize startup without silently substituting volatile persistence (ADR-020) |
+| The proposed performance targets are wrong | Medium | Medium | Preserve source27 as historical authority; compare only in a separately admitted, controlled performance qualification |
+| Per-step commits cost too much latency on the durable store | Medium | Medium | Batch a step's entries into one commit; measure in the separate performance qualification; document the store's durability settings |
+| Local durable startup exceeds the clone-and-try budget | Medium | Medium | Measure startup only in the separate performance qualification; optimize without silently substituting volatile persistence (ADR-020) |
 | A derived archive hides a gap by returning less than the platform holds | Medium | High | It reports pending, denied, or unavailable and never an empty result; capability flags say partial (ADR-019) |
 | The ports or the provider surface prove too narrow or too wide | Medium | High | Qualify public consumer-shaped scenarios and refine contracts from integration evidence |
 | Resume re-executes a side effect | Medium | High | Tools default to unsafe and are recorded as interrupted, never rerun, unless declared safe; every gate applies again; resume is explicit by default (ADR-010) |
 | Server quirks in the OpenAI-compatible protocol break the default adapter | High | Medium | A conformance matrix from cassettes of local and self-hosted servers on fabricated prompts, live on demand; a quirk table in the adapter; server-specific parameters pass through; qualify the selected Pydantic AI integration and use a custom Model only for a demonstrated adapter gap under ADR-002 |
 | Asynchronous code is blocked by a plain function | Medium | High | Offload plain functions to worker threads; lint rules for blocking calls in `async def` |
 | The unverified competitor cells hide a product that already does this | Medium | High | Validate the remaining cells in `frame` before building past the client API |
-| The demo does not feel instant, defeating the first-impression goal | Medium | Medium | The quickstart test is timed in CI; the demo is a P0 requirement with its own budget |
+| The demo does not feel responsive, defeating the first-impression goal | Medium | Medium | Keep functional quickstart checks state-based; observe speed in the separate performance qualification |
 | Prompt-only contributions slow acceptance | Medium | Low | The contribution page sets expectations; maintainers answer prompts in the issue |
 
 ## Open Questions

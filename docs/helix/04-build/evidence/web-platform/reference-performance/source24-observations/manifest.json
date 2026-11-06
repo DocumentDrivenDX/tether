@@ -1,0 +1,53 @@
+{
+  "aggregate_receipt_sha256": "25dd1607a5e9ef35779831f7d59c2c98a348a40586fe8621a67ac3fa95e14734",
+  "kind": "completed-workload-observations-only",
+  "limits": [
+    "Exact copies of six completed source24 workload observations; no new benchmark execution by archival.",
+    "Completion of workloads is not numeric target acceptance, baseline establishment, regression comparison or WP-36 closure.",
+    "All original measurement boundary qualifiers and missed proposals remain applicable."
+  ],
+  "operator_sha256": "c510f73c65c1b89c5423f0368941d9477af336916b3fe21629339219481bd847",
+  "pending_external_profile": "apps-public-client-read",
+  "private_execution_ledger_sha256": "541899a1b6c82caa972605b8ad8bd3bc1e4f81b1c1e3394600458c038b8f41eb",
+  "profiles": {
+    "client": {
+      "bytes": 82130,
+      "file": "client-measurement.json",
+      "profile": "local-posix-jsonl-public-client",
+      "sha256": "811b08668ad6c01158e3a6a981ee9bc9fbe60c164ed81a2afe42947bed130dff"
+    },
+    "engine": {
+      "bytes": 219280,
+      "file": "engine-measurement.json",
+      "profile": "public-engine-exclusive-wall",
+      "sha256": "34f26c7681ae893460103eb7a071df8f789afe5abeb13e982a9adc76c1d1be95"
+    },
+    "follower-memory": {
+      "bytes": 221836,
+      "file": "follower-memory-measurement.json",
+      "profile": "public-follower-retained-python",
+      "sha256": "0047659ad0d474e79fc5ffe4b1f351f6ad4fc688066a22ea637a9ef85673136e"
+    },
+    "memory-store": {
+      "bytes": 82019,
+      "file": "memory-store-measurement.json",
+      "profile": "memoryfiles-jsonl-reference-capacity",
+      "sha256": "a41f2bab6652b24aaf2d44a3652d77c45d16c9dbc70406b8820900619d60f4ba"
+    },
+    "store": {
+      "bytes": 82017,
+      "file": "store-measurement.json",
+      "profile": "local-posix-jsonl",
+      "sha256": "97c0bf6071d9d79132192caab2610420d4e12f65ed3dddaf643d39cd86e970a2"
+    },
+    "volatile-client": {
+      "bytes": 80657,
+      "file": "volatile-client-measurement.json",
+      "profile": "volatile-public-client",
+      "sha256": "3a6f0ed4bd673e33e99183e49c7737dd668f43e71a818e557a18672710d7a4ed"
+    }
+  },
+  "schema_version": 1,
+  "source_inventory_canonical_sha256": "d89c61ab673ac9506ae26ee1dc4d31ba09bfd6442a9bc97d1be6d777cc3309b3",
+  "source_inventory_file_sha256": "c80c3fa01b4a5b1b11ebe3c0ad7f2641aeddb833cf7a4409f504fa103f5a8921"
+}

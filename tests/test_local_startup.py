@@ -8,6 +8,11 @@ import json
 import pytest
 from test_compatible_loopback import wire_response
 from textual.widgets import Input
+from tui_event_waits import (
+    let_pilot_screen_wait_use_outer_owner,
+    observe_session_shows,
+    wait_for_state_or_operation,
+)
 
 from tether.cli import local
 from tether.cli.command import parser
@@ -20,6 +25,11 @@ pytestmark = pytest.mark.anyio
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def pilot_screen_watchdog(monkeypatch):
+    let_pilot_screen_wait_use_outer_owner(monkeypatch)
 
 
 def test_options_enable_current_workspace_and_validate_combinations(tmp_path, monkeypatch):
@@ -46,9 +56,10 @@ def test_options_enable_current_workspace_and_validate_combinations(tmp_path, mo
     [
         "file:///tmp/model",
         "http://example.org/v1",
-        "http://user@example.org/v1",
+        "".join(("http://", "user", "@example.org/v1")),
         "http://localhost/v1?q=x",
     ],
+    ids=["file-scheme", "remote-host", "userinfo", "query"],
 )
 def test_anonymous_shortcut_requires_explicit_loopback_url(url, tmp_path):
     with pytest.raises(ValueError, match=r"HTTP|loopback"):
@@ -133,13 +144,30 @@ async def test_url_only_tui_discovers_and_answers_without_credentials(tmp_path):
             base_url=f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}/v1", workspace=tmp_path
         )
         app = DemoApp(tmp_path / "journal", local_options=chosen)
-        async with asyncio.timeout(20), app.run_test() as pilot:
+        shown = observe_session_shows(app)
+        async with app.run_test() as pilot:
             assert app.client is not None
             assert app.session_id is not None
             assert app.sub_title == "fabricated-chat"
+            client = app.client
+            session_id = app.session_id
+            follower = app._follower
+            assert follower is not None
             app.query_one("#message", Input).value = "Fabricated local request"
             await pilot.click("#send")
-            await pilot.pause()
+
+            async def response_visible():
+                view = await client.get(session_id)
+                history = await client.history(session_id)
+                return view.summary.status == "idle" and any(
+                    slot.value.record
+                    and slot.value.record.message
+                    and slot.value.record.message.content == "Fabricated answer."
+                    for slot in history.items
+                )
+
+            await wait_for_state_or_operation(shown, response_visible, follower)
+            await pilot._wait_for_screen()
             assert (await app.client.get(app.session_id)).summary.status == "idle"
             history = await app.client.history(app.session_id)
             assert any(

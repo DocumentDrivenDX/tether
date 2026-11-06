@@ -1,0 +1,46 @@
+name: Reference performance
+on:
+  workflow_dispatch:
+    inputs:
+      reservation_file:
+        description: Path to the owner-controlled exclusive reservation for this exact measurement window
+        required: true
+        type: string
+      machine_profile:
+        description: Path to the pinned known reference machine profile on this runner
+        required: true
+        type: string
+      apps_measurement:
+        description: Optional Apps latency observation JSON; excluded from performance pass/fail
+        required: false
+        default: ""
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: reference-performance
+  cancel-in-progress: false
+jobs:
+  reference:
+    # This label selects the reference runner; it does not prove exclusive
+    # admission or absence of other host activity by itself.
+    runs-on: [self-hosted, tether-performance]
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.3"
+          python-version: "3.11"
+      - run: uv sync --locked
+      - run: make web-performance-check PERF_OUTPUT="$RUNNER_TEMP/tether-performance"
+        env:
+          PERF_RESERVATION: ${{ inputs.reservation_file }}
+          PERF_MACHINE_PROFILE: ${{ inputs.machine_profile }}
+          PERF_APPS_MEASUREMENT: ${{ inputs.apps_measurement }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reference-performance
+          path: ${{ runner.temp }}/tether-performance/
+          include-hidden-files: true

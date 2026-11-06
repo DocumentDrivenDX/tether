@@ -1,13 +1,19 @@
 """Exercise gate failures with real files, Git baselines and bounded subprocesses."""
 
 import asyncio
+import contextlib
+import os
 import shutil
+import signal
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
+import process as process_module
 import pytest
 from check_ceilings import check, compare, disables_shape, suppressed, values
-from check_file_size import check_sizes
+from check_file_size import SKIP_DIRS, check_sizes, python_files
 from process import run_command
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +42,24 @@ def test_global_line_caps_include_spikes_and_skip_environments(tmp_path: Path) -
     problems = check_sizes(tmp_path)
     assert len(problems) == 3
     assert any("docs/spike" in p for p in problems)
+
+
+def test_size_and_shape_scan_prunes_dependency_trees_before_reading_them(tmp_path, monkeypatch):
+    for name in SKIP_DIRS:
+        directory = tmp_path / "packages" / name
+        directory.mkdir(parents=True)
+        (directory / "ignored.py").write_text("pass\n")
+    source = tmp_path / "packages" / "owned" / "module.py"
+    source.parent.mkdir()
+    source.write_text("pass\n")
+    original = os.scandir
+
+    def scanned(path):
+        assert Path(path).name not in SKIP_DIRS
+        return original(path)
+
+    monkeypatch.setattr(os, "scandir", scanned)
+    assert list(python_files(tmp_path)) == [source]
 
 
 def test_git_baseline_and_suppression_failures(tmp_path: Path) -> None:
@@ -77,7 +101,7 @@ def test_git_baseline_and_suppression_failures(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
-def test_process_capture_exit_timeout_and_validation() -> None:
+def test_process_capture_exit_and_validation() -> None:
     async def scenario() -> None:
         result = await run_command([sys.executable, "-c", "print('ok'); raise SystemExit(3)"])
         assert result.returncode == 3
@@ -86,11 +110,115 @@ def test_process_capture_exit_timeout_and_validation() -> None:
         assert (await run_command([sys.executable, "-c", "pass"], capture=False)).returncode == 0
         with pytest.raises(ValueError, match="absolute"):
             await run_command(["python"])
-        with pytest.raises(TimeoutError):
-            await run_command(
-                [sys.executable, "-c", "import asyncio; asyncio.run(asyncio.sleep(20))"],
-                deadline_seconds=0.02,
+        for deadline in (0, float("inf"), float("nan")):
+            with pytest.raises(ValueError, match="finite and positive"):
+                await run_command([sys.executable, "-c", "pass"], deadline_seconds=deadline)
+
+    asyncio.run(scenario())
+
+
+def test_owned_watchdog_waits_for_barrier_then_reaps_descendant_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        wait_started = asyncio.Event()
+        descendant_started = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler(signal.SIGUSR1, descendant_started.set)
+        spawned: list[int] = []
+        original_spawn = process_module._spawn_command
+
+        async def recording_spawn(*args, **kwargs):
+            child = await original_spawn(*args, **kwargs)
+            spawned.append(child.pid)
+            return child
+
+        async def held_watchdog(streams, deadline):
+            wait_started.set()
+            await descendant_started.wait()
+            return set()
+
+        monkeypatch.setattr(process_module, "_wait_for_streams", held_watchdog)
+        monkeypatch.setattr(process_module, "_spawn_command", recording_spawn)
+        descendant = (
+            "import asyncio, os, signal, sys; "
+            "os.kill(int(sys.argv[1]), signal.SIGUSR1); "
+            "asyncio.run(asyncio.Event().wait())"
+        )
+        child = (
+            "import asyncio, os, subprocess, sys; "
+            f"subprocess.Popen([sys.executable, '-c', {descendant!r}, str(os.getppid())]); "
+            "asyncio.run(asyncio.Event().wait())"
+        )
+        task: asyncio.Task[process_module.Result] | None = None
+        try:
+            task = asyncio.create_task(
+                run_command(
+                    [sys.executable, "-c", child],
+                    deadline_seconds=1800,
+                    own_process_group=True,
+                )
             )
+            await wait_started.wait()
+            with pytest.raises(process_module.CommandIncompleteError) as error:
+                await task
+        finally:
+            if task is not None and not task.done():
+                task.cancel()
+                while not task.done():
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await asyncio.shield(task)
+                if not task.cancelled():
+                    task.result()
+            loop.remove_signal_handler(signal.SIGUSR1)
+        assert (error.value.reason, error.value.phase) == ("watchdog_exhausted", "execution")
+        assert len(spawned) == 1
+        with pytest.raises(ProcessLookupError):
+            os.killpg(spawned[0], 0)
+
+    asyncio.run(scenario())
+
+
+def test_stream_capture_failure_still_reaps_owned_child_and_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        wait_started = asyncio.Event()
+        release_wait = asyncio.Event()
+        group_exists = True
+        signals: list[int] = []
+
+        def fake_killpg(pgid: int, sig: int) -> None:
+            assert pgid == 432109
+            signals.append(sig)
+            if sig == 0 and not group_exists:
+                raise ProcessLookupError
+
+        async def child_wait() -> int:
+            nonlocal group_exists
+            wait_started.set()
+            await release_wait.wait()
+            group_exists = False
+            return 0
+
+        async def failed_streams() -> tuple[bytes | None, bytes | None]:
+            raise OSError("fabricated stream failure")
+
+        child = cast(
+            asyncio.subprocess.Process,
+            SimpleNamespace(pid=432109, returncode=0, wait=child_wait),
+        )
+        streams = asyncio.create_task(failed_streams())
+        monkeypatch.setattr(process_module.os, "killpg", fake_killpg)
+        cleanup = asyncio.create_task(process_module._cleanup(child, streams, True))
+        await wait_started.wait()
+        assert not cleanup.done()
+        release_wait.set()
+        with pytest.raises(process_module.CommandIncompleteError) as error:
+            await cleanup
+        assert (error.value.reason, error.value.phase) == ("cleanup_unconfirmed", "cleanup")
+        assert signals[0] == signal.SIGKILL
+        assert 0 in signals
 
     asyncio.run(scenario())
 

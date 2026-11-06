@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tether-public-embed-example"
+version = "0.2.0.dev0"
+description = "Fabricated consumer example using Tether's public client and HTTP API"
+requires-python = ">=3.11"
+dependencies = [
+  "novirhiza-tether==0.2.0.dev0",
+  "novirhiza-tether-web-api==0.2.0.dev0",
+  "novirhiza-tether-web-ui==0.2.0.dev0",
+]
+
+[project.optional-dependencies]
+test = ["httpx>=0.28,<0.29", "pytest>=8,<10", "anyio>=4.15,<5"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+extraPaths = ["src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tether_embed_example"]

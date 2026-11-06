@@ -1,0 +1,17 @@
+{
+  "command": "qualified-python -m pytest -q --no-cov <private-copy-of-contextual_policy_controls27.py>",
+  "control_source_sha256": "6e714f927956567dfc0fef3d0e33fd0f11b201023ffac64108f175c4c0365459",
+  "duration_seconds": 2.9,
+  "exit_code": 0,
+  "limits": [
+    "Offline fabricated delegates/MockTransport only; no cloud qualification.",
+    "Controls test unchanged restoration classifier using injected transport, and shorten clocks only in the timeout unit control.",
+    "Actual SDK production child remains unchanged; default Keychain error classification is not broadened."
+  ],
+  "observed_by": "/root/sol_coordinator",
+  "operator_sha256": "13b36ed8dcf6655553e238c7739ae18c80ff450a66af9b216f6fae04dfb9344a",
+  "schema_version": 1,
+  "source_inventory_canonical_sha256": "4eb2d3e8f38e08604eb617ec6de70b50c48838be00aafc1c7aba1238e923c986",
+  "status": "passed-offline-controls-only",
+  "tests_passed": 13
+}

@@ -1,0 +1,302 @@
+"""Private, bounded execution of the separately authorized Apps read profile."""
+import argparse
+import asyncio
+import hashlib
+import json
+import os
+import signal
+import sys
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT: Path
+MAX_OUTPUT = 2 * 1024 * 1024
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+async def cli_json(profile, *arguments):
+    # CLI descendants remain in the supervisor-owned group. No new group here.
+    child = await asyncio.create_subprocess_exec(
+        'databricks', *arguments, '--profile', profile, '-o', 'json',
+        stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        async with asyncio.timeout(25):
+            out, err = await asyncio.gather(
+                child.stdout.read(65537), child.stderr.read(65537),
+            )
+            if len(out) > 65536 or len(err) > 65536:
+                raise RuntimeError('cli_output_limit')
+            await child.wait()
+            if child.returncode:
+                raise RuntimeError('cli_request_failed')
+            value = json.loads(out)
+            if not isinstance(value, dict):
+                raise RuntimeError('cli_shape_invalid')
+            return value
+    finally:
+        if child.returncode is None:
+            child.kill()
+        await child.wait()
+
+
+async def run_child(args):
+    phase = 'source'
+    try:
+        from benchmark_apps import measure_remote_reads
+        from benchmark_measurements import runtime_versions
+        from databricks.sdk import WorkspaceClient
+        from databricks.sdk.core import Config
+        import httpx
+        from qualify_live_apps_config import safe_origin, settings_from_environment
+        from selected_profiles_bundle import deployed_bundle_matches_lock
+        from tether.client.remote import RemoteClientSettings
+        from web_artifacts import inventory
+        from web_performance import validate_measurement
+        import configparser
+        import tether.client
+
+        if Path(tether.client.__file__).resolve() != ROOT / 'src/tether/client/__init__.py':
+            raise RuntimeError('client_import_root_mismatch')
+
+        source = json.loads(args.source_map.read_text())
+        operator_hash = digest(Path(__file__).resolve())
+        if inventory(ROOT) != source:
+            raise RuntimeError('source_changed')
+        machine_hash = digest(args.machine_profile)
+        reference_hash = digest(args.deployment_reference)
+        bundle_files = {
+            str(path.relative_to(args.bundle)): digest(path)
+            for path in sorted(args.bundle.rglob('*')) if path.is_file()
+        }
+        bundle_hash = hashlib.sha256(json.dumps(
+            bundle_files, sort_keys=True, separators=(',', ':'),
+        ).encode()).hexdigest()
+        settings = settings_from_environment(json.loads(args.settings_file.read_text()))
+        config = configparser.RawConfigParser(interpolation=None)
+        config.read(args.workspace_config)
+        workspace_origin = safe_origin(config.get(args.profile, 'host', raw=True))
+        phase = 'human_sdk'
+        workspace = WorkspaceClient(config=Config(
+            profile=args.profile, http_timeout_seconds=8, retry_timeout_seconds=2,
+        ))
+        if safe_origin(workspace.config.host) != workspace_origin:
+            raise RuntimeError('workspace_mismatch')
+        reference = json.loads(args.deployment_reference.read_text())
+
+        async def deployment_exact():
+            app = await asyncio.to_thread(workspace.apps.get, settings.app_name)
+            active = app.active_deployment
+            if (active is None or active.deployment_id != reference['deployment_id']
+                    or active.source_code_path != reference['source_code_path']
+                    or app.app_status.state.value != 'RUNNING'
+                    or app.compute_status.state.value != 'ACTIVE'):
+                raise RuntimeError('deployment_not_ready')
+            await deployed_bundle_matches_lock(
+                workspace, app, settings.app_name, args.bundle, args.deployment_reference,
+            )
+
+        phase = 'deployment_before'
+        await deployment_exact()
+        phase = 'human_credential'
+        description = await cli_json(args.profile, 'auth', 'describe')
+        if safe_origin(description.get('details', {}).get('host')) != workspace_origin:
+            raise RuntimeError('credential_origin_mismatch')
+        token = (await cli_json(args.profile, 'auth', 'token', '--timeout', '15s')).get('access_token')
+        if (not isinstance(token, str) or not token or not token.isascii()
+                or any(ord(char) <= 32 or ord(char) == 127 for char in token)):
+            raise RuntimeError('credential_invalid')
+
+        class Credential:
+            async def authorization(self):
+                return 'Bearer ' + token
+
+        credential = Credential()
+
+        async def provider():
+            return credential
+
+        statuses = []
+        versions = set()
+
+        async def response_seen(response):
+            statuses.append(response.status_code)
+            if response.http_version not in {'HTTP/1.1', 'HTTP/2'}:
+                raise RuntimeError('unexpected_http_version')
+            versions.add(response.http_version)
+
+        phase = 'measurements'
+        async with httpx.AsyncClient(
+            base_url=settings.url, timeout=30, http2=True, follow_redirects=False,
+            event_hooks={'response': [response_seen]},
+        ) as http:
+            measured = await measure_remote_reads(RemoteClientSettings(
+                base_url=settings.url, api_prefix=settings.mount_path + settings.api_prefix,
+                credential_provider=provider, request_timeout_seconds=30,
+            ), http_client=http, samples=100)
+        if statuses != [200] * 200:
+            raise RuntimeError('accepted_request_count_mismatch')
+        phase = 'deployment_after'
+        await deployment_exact()
+        if (inventory(ROOT) != source or digest(args.machine_profile) != machine_hash
+                or digest(args.deployment_reference) != reference_hash
+                or digest(Path(__file__).resolve()) != operator_hash):
+            raise RuntimeError('binding_changed')
+        after_bundle = {
+            str(path.relative_to(args.bundle)): digest(path)
+            for path in sorted(args.bundle.rglob('*')) if path.is_file()
+        }
+        if after_bundle != bundle_files:
+            raise RuntimeError('bundle_changed')
+        result = {
+            'profile': 'apps-public-client-read', 'source_sha256': source,
+            'versions': runtime_versions(), 'hardware_client_sha256': machine_hash,
+            'immutable_bundle_sha256': bundle_hash,
+            'deployment_binding_sha256': reference_hash,
+            'operator_sha256': operator_hash,
+            'workload': {'samples': 100, 'list_limit': 50, 'capability_requests': 100,
+                         'list_requests': 100, 'persistent_httpx': True,
+                         'credential_mode': 'preacquired-ram',
+                         'list_items_per_page': measured['list_items_per_page']},
+            'checks': {'deployment_current_and_exact': True,
+                       'credential_accepted_on_all_requests': True,
+                       'same_preacquired_credential': True},
+            'measurements': {'capability_handshake': measured['capability_handshake'],
+                             'list_page': measured['list_page']},
+            'limits': {'server_hardware': 'unknown-managed',
+                       'client_timing': 'credential-provider+network+typed-decode',
+                       'transport': 'persistent-httpx-sequential'},
+            'http_versions': sorted(versions),
+            'transport_context': {
+                'tls_verification_enabled': True,
+                'trust': 'HTTPX default trust; optional explicit SSL_CERT_FILE',
+                'explicit_ca_file_present': 'SSL_CERT_FILE' in os.environ,
+                'http2_configured': True,
+                'request_timeout_seconds': 30,
+                'persistent_keepalive': True,
+            },
+            'recorded_at': datetime.now(UTC).isoformat(),
+            'scope': 'Client-observed protected read latency on exact instrumented deployment; '
+                     'no server CPU, large-catalog, cold-start or SLA qualification.',
+        }
+        validate_measurement('apps', result)
+        return {'status': 'passed', 'measurement': result}
+    except Exception:
+        return {'status': 'failed', 'phase': phase, 'failure_category': 'operation_refused'}
+
+
+async def cleanup(child):
+    try:
+        os.killpg(child.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    await child.wait()
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            os.killpg(child.pid, 0)
+        except ProcessLookupError:
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError('owned_group_cleanup_failed')
+        await asyncio.sleep(0.025)
+
+
+async def settle(task):
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            continue
+    task.result()
+
+
+async def run_parent(args):
+    if args.output.exists():
+        raise RuntimeError('fresh_output_required')
+    operator_hash = digest(Path(__file__).resolve())
+    environment = {key: value for key, value in os.environ.items()
+                   if key in {'HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'SSL_CERT_FILE'}}
+    spawning = asyncio.create_task(asyncio.create_subprocess_exec(
+        sys.executable, str(Path(__file__).resolve()), '--child', *sys.argv[1:],
+        cwd=ROOT, env=environment, stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        start_new_session=True,
+    ))
+    cancelled = False
+    while not spawning.done():
+        try:
+            await asyncio.shield(spawning)
+        except asyncio.CancelledError:
+            cancelled = True
+    child = spawning.result()
+    if cancelled:
+        await settle(asyncio.create_task(cleanup(child)))
+        raise asyncio.CancelledError
+    needs_cleanup = True
+    try:
+        async with asyncio.timeout(900):
+            output = await child.stdout.read(MAX_OUTPUT + 1)
+            if len(output) > MAX_OUTPUT:
+                raise RuntimeError('child_output_limit')
+            await child.wait()
+        if child.returncode:
+            raise RuntimeError('child_failed')
+        try:
+            os.killpg(child.pid, 0)
+        except ProcessLookupError:
+            needs_cleanup = False
+        else:
+            raise RuntimeError('owned_descendant_outlived_child')
+    finally:
+        if needs_cleanup:
+            await settle(asyncio.create_task(cleanup(child)))
+    result = json.loads(output)
+    if result.get('status') != 'passed':
+        print(json.dumps(result))
+        return 1
+    from web_performance import validate_measurement
+    from web_artifacts import inventory
+    measurement = result['measurement']
+    validate_measurement('apps', measurement)
+    if (measurement.get('operator_sha256') != operator_hash
+            or digest(Path(__file__).resolve()) != operator_hash):
+        raise RuntimeError('operator_changed')
+    if inventory(ROOT) != measurement['source_sha256']:
+        raise RuntimeError('source_changed_after_child')
+    descriptor = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, 'w') as stream:
+        json.dump(measurement, stream, sort_keys=True, indent=2)
+        stream.write('\n')
+    print(json.dumps({'status': 'passed', 'profile': measurement['profile'],
+                      'receipt_sha256': digest(args.output), 'child_group_settled': True}))
+    return 0
+
+
+def main():
+    global ROOT
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--child', action='store_true')
+    parser.add_argument('--project-root', required=True, type=Path)
+    for name in ('profile', 'workspace-config', 'settings-file', 'bundle',
+                 'deployment-reference', 'source-map', 'machine-profile', 'output'):
+        parser.add_argument('--' + name, required=True,
+                            type=str if name == 'profile' else Path)
+    args = parser.parse_args()
+    ROOT = args.project_root.resolve()
+    if not (ROOT / 'src/tether/client/__init__.py').is_file():
+        raise RuntimeError('project_root_invalid')
+    sys.path[:0] = [str(ROOT / 'src'), str(ROOT / 'scripts')]
+    if args.child:
+        print(json.dumps(asyncio.run(run_child(args))))
+        return 0
+    return asyncio.run(run_parent(args))
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

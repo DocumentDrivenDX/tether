@@ -1,0 +1,2 @@
+/* Generated counter names; arbitrary user JSON is opaque. */
+export const COUNTER_NAMES = ["cache_read_tokens","cache_write_tokens","entry_count","entry_index","index","input_tokens","intent_index","last_seq","message_count","message_index","missed","next_start","offset","output_tokens","position","reasoning_tokens","seq","size_bytes","through_index","turn_count","unresolved_effect_count"] as const;

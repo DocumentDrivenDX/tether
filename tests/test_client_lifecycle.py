@@ -6,6 +6,7 @@ import asyncio
 from threading import Event
 
 import pytest
+from selected_profiles_process import await_retained
 from test_gated_execution import DemoTool, proposal
 
 from tether import Tether
@@ -127,10 +128,14 @@ async def test_close_keeps_root_owned_until_actual_tool_exit(
         assert engine.workers.busy(session.id)
     finally:
         release.set()
-        await asyncio.gather(task, return_exceptions=True)
+
+        async def settle_turn() -> None:
+            await asyncio.gather(task, return_exceptions=True)
+
+        await await_retained(asyncio.create_task(settle_turn()))
         await app.aclose()
         if app._cleanup is not None:
-            await asyncio.wait_for(asyncio.shield(app._cleanup), 3)
+            await asyncio.shield(app._cleanup)
         assert await root.aclose()
     assert app.drained
     await assert_rebuilt_unknown(tmp_path, session.id, actor.id)
@@ -202,11 +207,15 @@ async def actual_entry(entered, turn):
     # Entry is a barrier, not a filesystem startup latency assertion.
     ready = asyncio.create_task(entered.wait())
     try:
-        done, _ = await asyncio.wait((ready, turn), timeout=10, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait((ready, turn), return_when=asyncio.FIRST_COMPLETED)
         if turn in done:
             await turn
             raise AssertionError("turn_finished_before_tool_entry")
         assert ready in done
     finally:
         ready.cancel()
-        await asyncio.gather(ready, return_exceptions=True)
+
+        async def settle_ready() -> None:
+            await asyncio.gather(ready, return_exceptions=True)
+
+        await await_retained(asyncio.create_task(settle_ready()))

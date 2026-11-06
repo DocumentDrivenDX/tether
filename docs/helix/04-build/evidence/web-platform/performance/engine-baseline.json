@@ -1,0 +1,36 @@
+{
+  "identity": {
+    "measurements.exclusive_wall_upper_bound.sample_count": 100,
+    "measurements.total_step_wall.sample_count": 100,
+    "observed_boundary_calls.attempt_callbacks": 300,
+    "observed_boundary_calls.attempt_observe": 100,
+    "observed_boundary_calls.attempt_reserve": 100,
+    "observed_boundary_calls.attempt_start": 100,
+    "observed_boundary_calls.model_stream": 100,
+    "versions": {
+      "architecture": "arm64",
+      "platform": "Darwin",
+      "python": "3.11.17"
+    },
+    "workload": {
+      "context_policy": "full",
+      "history": "fresh",
+      "model_calls_per_step": 1,
+      "samples": 100,
+      "tools": 0
+    }
+  },
+  "metrics": {
+    "measurements.exclusive_wall_upper_bound.p99_ms": {
+      "maximum": 24.6445464,
+      "observed": 20.537122
+    },
+    "measurements.total_step_wall.p99_ms": {
+      "maximum": 29.366549999999997,
+      "observed": 24.472125
+    }
+  },
+  "profile": "public-engine-exclusive-wall",
+  "receipt_sha256": "2bacd0b87e87932a5095696a0ee87ca8c9ac4ce79dae7db4835e26a9657d3edc",
+  "tolerance": 1.2
+}

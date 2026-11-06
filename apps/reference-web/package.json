@@ -1,0 +1,16 @@
+{
+  "name": "@tether/reference-web",
+  "version": "0.2.0-dev.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@tether/client": "0.2.0-dev.0",
+    "@tether/react": "0.2.0-dev.0",
+    "@tether/ui": "0.2.0-dev.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router-dom": "7.18.5",
+    "react-hook-form": "7.91.0",
+    "zod": "4.6.7"
+  }
+}

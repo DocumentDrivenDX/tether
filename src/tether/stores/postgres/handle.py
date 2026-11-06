@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import TypeVar
 
 from tether.stores.projections import SessionIndex
+from tether.types._entry_snapshot import EntrySnapshot
 from tether.types.execution import CommitUnknown, Entry, NewEntry, SessionState
 from tether.types.lifetime import WorkerLifetime
 from tether.types.storage import IntegrityError, LeaseLost
@@ -37,9 +38,9 @@ class TurnHandle:
         return self._index.state.model_copy(deep=True)
 
     @property
-    def entries(self) -> tuple[Entry, ...]:
+    def entries(self) -> EntrySnapshot:
         self._store.root.check_loop()
-        return tuple(entry.model_copy(deep=True) for entry in self._index.entries)
+        return EntrySnapshot(self._index.entries)
 
     def _ready(self) -> None:
         self._store.root.check_loop()

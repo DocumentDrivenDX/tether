@@ -1,0 +1,66 @@
+"""Qualification-only prior-knowledge H2C exchange against deployed listener."""
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable
+
+from h2.config import H2Configuration
+from h2.connection import H2Connection
+from h2.events import ConnectionTerminated, DataReceived, ResponseReceived, StreamEnded, StreamReset
+
+
+async def probe_h2c(
+    port: int,
+    path: str,
+    nonce: str,
+    observed_version: Callable[[str], str | None],
+) -> dict[str, object]:
+    async with asyncio.timeout(20):
+        while True:
+            try:
+                reader, writer = await asyncio.open_connection('127.0.0.1', port)
+                break
+            except ConnectionRefusedError:
+                await asyncio.sleep(0.1)
+        try:
+            connection = H2Connection(config=H2Configuration(client_side=True, header_encoding='utf-8'))
+            connection.initiate_connection()
+            connection.send_headers(1, [
+                (':method', 'GET'), (':scheme', 'http'),
+                (':authority', 'localhost'), (':path', path),
+                ('x-tether-qualification-h2c-probe', nonce),
+            ], end_stream=True)
+            writer.write(connection.data_to_send())
+            await writer.drain()
+            status = None
+            response_bytes = 0
+            while True:
+                data = await reader.read(65536)
+                if not data:
+                    raise RuntimeError('h2c_probe_connection_closed')
+                for event in connection.receive_data(data):
+                    if isinstance(event, (ConnectionTerminated, StreamReset)):
+                        raise RuntimeError('h2c_probe_stream_refused')
+                    if isinstance(event, ResponseReceived) and event.stream_id == 1:
+                        status = dict(event.headers).get(':status')
+                    if isinstance(event, DataReceived) and event.stream_id == 1:
+                        response_bytes += len(event.data)
+                        if response_bytes > 1024 * 1024:
+                            raise RuntimeError('h2c_probe_response_exceeds_bound')
+                        connection.acknowledge_received_data(event.flow_controlled_length, 1)
+                    if isinstance(event, StreamEnded) and event.stream_id == 1:
+                        if status != '200' or observed_version(nonce) != '2':
+                            raise RuntimeError('h2c_probe_protocol_or_status_mismatch')
+                        return {
+                            'scope': 'deployed-listener',
+                            'negotiation': 'prior-knowledge',
+                            'response_status': 200,
+                            'asgi_http_version': '2',
+                            'response_bytes': response_bytes,
+                            'proxy_protocol_claim': False,
+                        }
+                writer.write(connection.data_to_send())
+                await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()

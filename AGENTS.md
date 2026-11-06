@@ -73,10 +73,13 @@ recipe. `make hooks` installs the repository-local hook path when you want it en
 Keep `uv.lock` current. `make check` runs lint/format, strict source typing, shape ceilings,
 architectural import checks, the reachable base dependency audit and negative-control tests.
 The suite is collected through pytest's public API and every node runs in bounded groups
-(maximum 32 cases/64 KiB of ids per child). The existing 180-second child deadline stays in
-place; branch coverage accumulates across collection/groups and the unchanged 85% global
-floor is enforced once at the end. Empty/duplicate inventories and any failed stage refuse
-success. Do not filter cases or lower coverage to fit one whole-suite process deadline.
+(maximum 32 cases/64 KiB of ids per child). Each child has an explicit configurable 1,800-second
+emergency watchdog (or an explicitly externally supervised mode); this contains hangs and is not
+a functional speed requirement. Watchdog exhaustion, interrupted execution, or unresolved cleanup
+is incomplete evidence and a nonzero result. Branch coverage accumulates across collection/groups
+and the unchanged 85% global floor is enforced once at the end. The inventory remains exhaustive:
+empty/duplicate inventories, skipped required cases, and any failed stage refuse success. Do not
+filter cases or lower coverage to fit one whole-suite process deadline.
 Slices 2–3 add the gated `tether.engine.Engine` facade, pinned tool registry, normalized
 argument/approval bindings, source verification, intent/result commits and fixed serial Agent
 tools, followed by local JSONL journal/history, atomic projections, ownership/fencing and

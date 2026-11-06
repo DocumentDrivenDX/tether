@@ -6,9 +6,11 @@ import asyncio
 from contextvars import ContextVar
 from datetime import date
 from threading import Event
+from typing import Any
 
 import pytest
 from pydantic import BaseModel, field_validator
+from selected_profiles_process import await_retained
 from test_gated_execution import DemoProvider, DemoTool, Harness, MutablePolicy, final, proposal
 
 from tether.engine.workers import Workers
@@ -21,6 +23,32 @@ pytestmark = pytest.mark.anyio
 
 def replace_hook(provider, name, function):
     setattr(provider, name, function)
+
+
+async def _await_state_or_terminal(state: asyncio.Event, *owners: asyncio.Future[Any]) -> None:
+    waiting = asyncio.create_task(state.wait())
+    try:
+        done, _ = await asyncio.wait({waiting, *owners}, return_when=asyncio.FIRST_COMPLETED)
+        if waiting not in done:
+            for owner in owners:
+                if owner in done:
+                    await owner
+            raise AssertionError("operation_finished_before_worker_state")
+    finally:
+        if not waiting.done():
+            waiting.cancel()
+
+        async def drain() -> None:
+            await asyncio.gather(waiting, return_exceptions=True)
+
+        await await_retained(asyncio.create_task(drain()))
+
+
+async def _settle_tasks(*tasks: asyncio.Future[Any]) -> None:
+    async def drain() -> None:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    await await_retained(asyncio.create_task(drain()))
 
 
 @pytest.fixture
@@ -141,14 +169,19 @@ async def test_cancelled_effect_is_closed_and_barrier_survives_next_turn(limits)
 
     h.tool.run = run
     task = asyncio.create_task(h.run())
-    await asyncio.wait_for(entered.wait(), 2)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert h.facts("turn_ended")[-1].facts["stop_reason"] == "cancelled"
-    assert (await h.run()).stop_reason == "final"
-    assert h.facts("tool_call")[-1].facts["reason"] == "effect_unresolved"
-    assert any(e.facts.get("reason") == "outcome_unknown" for e in h.facts("tool_call"))
+    try:
+        await _await_state_or_terminal(entered, task)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert h.facts("turn_ended")[-1].facts["stop_reason"] == "cancelled"
+        assert (await h.run()).stop_reason == "final"
+        assert h.facts("tool_call")[-1].facts["reason"] == "effect_unresolved"
+        assert any(e.facts.get("reason") == "outcome_unknown" for e in h.facts("tool_call"))
+    finally:
+        if not task.done():
+            task.cancel()
+        await _settle_tasks(task)
 
 
 async def test_unknown_effect_allows_separate_read_only_safe_tool(limits):
@@ -314,19 +347,19 @@ async def test_policy_exception_is_denial_and_records_no_content(limits):
 
 async def test_bounded_workers_hold_capacity_until_actual_exit_and_copy_context():
     workers = Workers(1)
-    entered, release = Event(), Event()
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
     marker = ContextVar("fabricated_marker", default="missing")
     marker.set("copied")
 
     def work():
-        entered.set()
-        if not release.wait(2):
-            raise TimeoutError("test_worker_release")
+        loop.call_soon_threadsafe(entered.set)
+        release.wait()
         return marker.get()
 
     first = asyncio.create_task(workers.call("session", work))
     try:
-        await asyncio.wait_for(asyncio.to_thread(entered.wait), 2)
+        await _await_state_or_terminal(entered, first)
         first.cancel()
         with pytest.raises(asyncio.CancelledError):
             await first
@@ -335,7 +368,7 @@ async def test_bounded_workers_hold_capacity_until_actual_exit_and_copy_context(
             await workers.call("other", lambda: None)
     finally:
         release.set()
-        await asyncio.gather(*tuple(workers.active))
+        await _settle_tasks(*tuple(workers.active))
     assert not workers.busy("session")
     assert await workers.call("session", lambda: marker.get()) == "copied"
 
@@ -391,27 +424,30 @@ async def test_cancelled_queued_worker_never_calls_function(monkeypatch):
     monkeypatch.setattr(asyncio.get_running_loop(), "run_in_executor", queued)
     workers = Workers(1)
     waiting = asyncio.create_task(workers.call("session", lambda: calls.append(True)))
-    await asyncio.wait_for(entered.wait(), 2)
-    waiting.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await waiting
-    release.set()
-    await asyncio.gather(*tuple(workers.active), return_exceptions=True)
+    try:
+        await _await_state_or_terminal(entered, waiting)
+        waiting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting
+    finally:
+        release.set()
+        await _settle_tasks(*tuple(workers.active), waiting)
     assert not calls
     assert not workers.busy("session")
 
 
 async def test_worker_shutdown_is_finite_and_reports_outstanding_work():
     workers = Workers(1)
-    entered, release = Event(), Event()
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
 
     def work():
-        entered.set()
-        return release.wait(2)
+        loop.call_soon_threadsafe(entered.set)
+        return release.wait()
 
     task = asyncio.create_task(workers.call("session", work))
     try:
-        await asyncio.wait_for(asyncio.to_thread(entered.wait), 2)
+        await _await_state_or_terminal(entered, task)
         assert await workers.close(0.001) is False
         with pytest.raises(ExecutionDenied, match="engine_closed"):
             await workers.call("new", lambda: None)
@@ -423,17 +459,18 @@ async def test_worker_shutdown_is_finite_and_reports_outstanding_work():
 
 async def test_sync_tool_cancellation_blocks_new_turn_until_actual_exit(limits):
     h = Harness(limits)
-    entered, release = Event(), Event()
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
 
     def run(ctx, args):
-        entered.set()
-        release.wait(2)
+        loop.call_soon_threadsafe(entered.set)
+        release.wait()
         return "fabricated"
 
     h.tool.run = run
     task = asyncio.create_task(h.run())
     try:
-        await asyncio.wait_for(asyncio.to_thread(entered.wait), 2)
+        await _await_state_or_terminal(entered, task)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
@@ -441,7 +478,7 @@ async def test_sync_tool_cancellation_blocks_new_turn_until_actual_exit(limits):
             await h.run()
     finally:
         release.set()
-        await asyncio.gather(*tuple(h.engine.workers.active))
+        await _settle_tasks(*tuple(h.engine.workers.active), task)
     assert await h.engine.aclose()
     with pytest.raises(ExecutionDenied, match="engine_closed"):
         await h.run()

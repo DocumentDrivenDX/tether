@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling>=1.27,<2", "uv-dynamic-versioning>=0.7,<1"]
+requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [project]
 name = "novirhiza-tether"
-dynamic = ["version"]
+version = "0.2.0.dev0"
 description = "An embedded Python agent harness built on Pydantic AI Agent"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,9 @@ tui = ["textual==8.2.8"]
 postgres = ["psycopg[binary,pool]==3.3.6"]
 embedded-postgres = ["psycopg[binary,pool]==3.3.6"]
 openai = ["pydantic-ai-slim[openai]==2.59.0", "openai==3.37.0", "tiktoken==0.14.0"]
+remote = [
+    "httpx==0.28.1",
+]
 
 [dependency-groups]
 embedded-binaries = [
@@ -36,21 +39,33 @@ embedded-binaries = [
   "pgserver-pg18 @ https://github.com/DocumentDrivenDX/pgserver/releases/download/pg18.6-pgv0.8.6-r2/pgserver_pg18-18.6.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl#sha256=8cd40d44b54b8cb41b5b6950b1fea8bef58133c840a003bc12b217f7fb03b51d ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.13'",
 ]
 dev = [
+  "asyncpg==0.32.0",
+  "opentelemetry-api==1.45.1",
+  "opentelemetry-sdk==1.45.1",
+  "opentelemetry-exporter-otlp-proto-http==1.45.1",
   { include-group = "embedded-binaries" },
   "textual==8.2.8",
   "psycopg[binary,pool]==3.3.6",
-  "pydantic-ai-slim[openai]==2.59.0", "openai==3.37.0", "tiktoken==0.14.0",
-  "coverage>=7,<8", "hypothesis>=6,<7", "packaging>=25", "pyright>=1.1,<2",
-  "pytest>=8,<10", "pytest-cov>=6,<8", "pytest-mock>=3,<4", "ruff>=0.12,<1",
+  "pydantic-ai-slim[openai]==2.59.0",
+  "openai==3.37.0",
+  "tiktoken==0.14.0",
+  "coverage>=7,<8",
+  "hypothesis>=6,<7",
+  "packaging>=25",
+  "pyright>=1.1,<2",
+  "pytest>=8,<10",
+  "pytest-cov>=6,<8",
+  "pytest-mock>=3,<4",
+  "ruff>=0.12,<1",
+  "fastapi==0.162.0",
+  "httpx==0.28.1",
+  "novirhiza-tether-web-api==0.2.0.dev0",
+  "novirhiza-tether-web-ui==0.2.0.dev0",
+  "novirhiza-tether-databricks==0.2.0.dev0",
+  "hypercorn==0.18.0",
+  "databricks-sdk>=0.89.0,<1",
+  "defusedxml>=0.7,<1",
 ]
-
-[tool.hatch.version]
-source = "uv-dynamic-versioning"
-
-[tool.uv-dynamic-versioning]
-vcs = "git"
-style = "pep440"
-fallback-version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tether"]
@@ -65,6 +80,16 @@ include = ["src", "scripts", "tests", "pyproject.toml", "uv.lock", "README.md", 
 build-constraint-dependencies = ["dunamai==1.26.3", "hatchling==1.32.4", "jinja2==3.1.6", "markupsafe==3.0.4", "packaging==26.3", "pathspec==1.1.1", "pluggy==1.7.0", "tomlkit==0.15.2", "trove-classifiers==2026.9.21.13", "uv-dynamic-versioning==0.14.1"]
 cache-keys = [{file = "pyproject.toml"}, {file = "src/**/*.py"}, {git = {commit = true, tags = true}}]
 
+[tool.uv.workspace]
+members = ["packages/web-api", "packages/web-ui", "packages/databricks"]
+exclude = ["examples/databricks-app"]
+
+[tool.uv.sources]
+novirhiza-tether = { workspace = true }
+novirhiza-tether-web-api = { workspace = true }
+novirhiza-tether-web-ui = { workspace = true }
+novirhiza-tether-databricks = { workspace = true }
+
 [[tool.uv.index]]
 name = "pypi"
 url = "https://pypi.org/simple"
@@ -74,7 +99,7 @@ default = true
 target-version = "py311"
 line-length = 100
 src = ["src"]
-include = ["src/**/*.py", "scripts/**/*.py", "tests/**/*.py"]
+include = ["src/**/*.py", "scripts/**/*.py", "tests/**/*.py", "packages/**/*.py", "examples/**/*.py"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "PT", "C901", "PLR", "ASYNC", "TID251"]
@@ -85,6 +110,9 @@ ignore = ["PLR2004", "PLR0913", "PLR0917"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+"packages/*/tests/**" = ["S101"]
+"examples/embed/tests/**" = ["S101"]
+"examples/otel/tests/**" = ["S101"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "os.getenv" = {msg = "Pass explicit configuration; core code must not read the environment."}
@@ -101,22 +129,22 @@ max-public-methods = 15
 
 [tool.pyright]
 pythonVersion = "3.11"
-include = ["src", "scripts", "tests"]
+include = ["src", "scripts", "tests", "packages", "examples"]
 typeCheckingMode = "standard"
-strict = ["src"]
-extraPaths = ["src", "scripts"]
+strict = ["src", "packages/web-api/src", "packages/web-ui/src", "packages/databricks/src"]
+extraPaths = ["src", "scripts", "tests", "packages/web-api/src", "packages/web-ui/src", "packages/databricks/src", "examples/databricks-app/src", "examples/embed/src", "examples/otel/src"]
 venvPath = "."
 venv = ".venv"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["scripts"]
+testpaths = ["tests", "packages", "examples"]
+pythonpath = ["scripts", "tests", "examples/embed/src", "examples/databricks-app/src", "examples/otel/src"]
 addopts = "--strict-markers --strict-config --cov=src/tether --cov=scripts --cov-branch"
 markers = ["fast: deterministic local checks", "contract: boundary conformance", "acceptance: installed-package checks", "slow: process or packaging checks"]
 
 [tool.coverage.run]
 branch = true
-source = ["src/tether", "scripts"]
+source = ["src/tether", "scripts", "packages/web-api/src/tether_web_api", "packages/web-ui/src/tether_web_ui", "packages/databricks/src/tether_databricks"]
 
 [tool.coverage.report]
 fail_under = 85

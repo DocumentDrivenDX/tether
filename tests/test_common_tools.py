@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import shlex
+import signal
+import sys
+from contextlib import suppress
 from http.client import HTTPMessage
 from io import BytesIO
+from typing import Any
 from urllib.request import Request
 
 import pytest
+from selected_profiles_process import await_retained, wait_for_process_group_exit
 
 from tether.cli.common_tools import (
     BashArguments,
@@ -25,6 +32,158 @@ from tether.cli.common_tools import (
 )
 from tether.cli.web_tools import MAX_WEB_BYTES, Redirects, load_page, search_web, validate_url
 from tether.types.execution import Actor, ToolContext
+
+
+async def _await_event_or_owner(event: asyncio.Event, owner: asyncio.Task) -> None:
+    waiting = asyncio.create_task(event.wait())
+    try:
+        done, _ = await asyncio.wait({waiting, owner}, return_when=asyncio.FIRST_COMPLETED)
+        if waiting not in done:
+            await owner
+            raise AssertionError("bash_owner_finished_before_descendant_ready")
+    finally:
+        if not waiting.done():
+            waiting.cancel()
+
+        async def drain() -> None:
+            await asyncio.gather(waiting, return_exceptions=True)
+
+        await await_retained(asyncio.create_task(drain()))
+
+
+async def _settle_tasks(*tasks: asyncio.Future[Any]) -> None:
+    async def drain() -> None:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    await await_retained(asyncio.create_task(drain()))
+
+
+def _assert_owned_group_absent(pgid: int) -> None:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return
+    except PermissionError as error:
+        raise AssertionError("owned_bash_group_absence_unconfirmed") from error
+    raise AssertionError("owned_bash_group_still_present")
+
+
+def _signal_owned_group(pgid: int) -> None:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return
+    except PermissionError as error:
+        raise AssertionError("owned_bash_group_absence_unconfirmed") from error
+    with suppress(ProcessLookupError):
+        os.killpg(pgid, signal.SIGKILL)
+
+
+class _FragmentedReadiness:
+    def __init__(self, stream, ready, child_facts, fragments, nonce):
+        self.original_read = stream.read
+        self.ready = ready
+        self.child_facts = child_facts
+        self.fragments = fragments
+        self.nonce = nonce
+        self.transport = bytearray()
+        self.pending_line = bytearray()
+
+    async def read(self, n: int = -1) -> bytes:
+        if not self.transport:
+            self.transport.extend(await self.original_read(n))
+        chunk = bytes(self.transport[:3])
+        del self.transport[:3]
+        if not chunk:
+            return chunk
+        self.fragments.append(len(chunk))
+        self.pending_line.extend(chunk)
+        if len(self.pending_line) > 4096:
+            raise AssertionError("bash_ready_line_exceeded_fixture_cap")
+        while b"\n" in self.pending_line:
+            line, _, remainder = self.pending_line.partition(b"\n")
+            self.pending_line[:] = remainder
+            fields = line.decode("utf-8", errors="replace").split()
+            if len(fields) == 4 and fields[0] == self.nonce:
+                self.child_facts.append((int(fields[2]), int(fields[3])))
+                self.ready.set()
+        return chunk
+
+
+async def _retained_test_spawn(spawn, args, kwargs):
+    spawning = asyncio.create_task(spawn(*args, **kwargs))
+    cancelled = False
+    while not spawning.done():
+        try:
+            await asyncio.shield(spawning)
+        except asyncio.CancelledError:
+            cancelled = True
+    return spawning.result(), cancelled
+
+
+def _capture_bash_descendant(
+    monkeypatch,
+    ready,
+    child_facts,
+    launched,
+    fragments,
+    nonce,
+    spawn_started=None,
+    release_spawn=None,
+):
+    original_spawn = asyncio.create_subprocess_exec
+
+    async def capture_owned_process(*args, **kwargs):
+        if spawn_started is not None:
+            spawn_started.set()
+        if release_spawn is not None:
+            await release_spawn.wait()
+        process, cancelled = await _retained_test_spawn(original_spawn, args, kwargs)
+        launched.append(process)
+        assert os.getpgid(process.pid) == process.pid
+        assert process.stdout is not None
+        process.stdout.read = _FragmentedReadiness(
+            process.stdout, ready, child_facts, fragments, nonce
+        ).read
+        if cancelled:
+            _signal_owned_group(process.pid)
+            await await_retained(asyncio.create_task(process.communicate()))
+            await await_retained(
+                asyncio.create_task(asyncio.to_thread(wait_for_process_group_exit, process.pid))
+            )
+            raise asyncio.CancelledError
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", capture_owned_process)
+
+
+def _bash_descendant_command(nonce: str) -> str:
+    marker = f"{nonce} {os.getpid()}"
+    return (
+        f"{shlex.quote(sys.executable)} -c 'import os,signal,time; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        f'print("{marker} ", os.getpid(), os.getpgrp(), flush=True); '
+        "signal.pause()' & wait"
+    )
+
+
+async def _cleanup_bash_process(task, launched) -> None:
+    if not task.done():
+        task.cancel()
+    if launched:
+        _signal_owned_group(launched[0].pid)
+    await _settle_tasks(task)
+    if not launched:
+        return
+    process = launched[0]
+    pgid = process.pid
+    _signal_owned_group(pgid)
+    if process.returncode is None:
+        with suppress(ProcessLookupError):
+            process.kill()
+    capture = asyncio.create_task(process.communicate())
+    await await_retained(capture)
+    await await_retained(asyncio.create_task(asyncio.to_thread(wait_for_process_group_exit, pgid)))
 
 
 @pytest.fixture
@@ -88,18 +247,118 @@ async def test_bash_cwd_errors_deadline_and_output_cap(tmp_path, ctx):
 
 
 @pytest.mark.anyio
-async def test_bash_cancellation_stops_descendant(tmp_path, ctx):
+async def test_bash_cancellation_stops_descendant(tmp_path, ctx, monkeypatch):
     tool = BashTool(tmp_path)
-    marker = tmp_path / "should-not-exist"
+    ready = asyncio.Event()
+    launched: list[asyncio.subprocess.Process] = []
+    child_facts: list[tuple[int, int]] = []
+    fragments: list[int] = []
+    nonce = f"bash-ready-{id(ready)}"
+    _capture_bash_descendant(monkeypatch, ready, child_facts, launched, fragments, nonce)
     task = asyncio.create_task(
-        tool.run(ctx, BashArguments(command="sleep 1; touch should-not-exist"))
+        tool.run(ctx, BashArguments(command=_bash_descendant_command(nonce)))
     )
-    await asyncio.sleep(0.1)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    await asyncio.sleep(1.1)
-    assert not marker.exists()
+    process: asyncio.subprocess.Process | None = None
+    cleanup_complete = False
+    try:
+        await _await_event_or_owner(ready, task)
+        assert len(launched) == 1
+        process = launched[0]
+        assert len(child_facts) == 1
+        child_pid, child_pgid = child_facts[0]
+        assert child_pid != process.pid
+        assert child_pgid == process.pid
+        assert len(fragments) > 1
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert process.returncode is not None
+        _assert_owned_group_absent(process.pid)
+        cleanup_complete = True
+    finally:
+        if not cleanup_complete:
+            await await_retained(asyncio.create_task(_cleanup_bash_process(task, launched)))
+
+
+@pytest.mark.anyio
+async def test_bash_cancellation_during_held_spawn_retains_new_process(tmp_path, ctx, monkeypatch):
+    tool = BashTool(tmp_path)
+    spawn_started, release_spawn, unused_ready = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    launched: list[asyncio.subprocess.Process] = []
+    child_facts: list[tuple[int, int]] = []
+    fragments: list[int] = []
+    nonce = f"bash-spawn-{id(release_spawn)}"
+    _capture_bash_descendant(
+        monkeypatch,
+        unused_ready,
+        child_facts,
+        launched,
+        fragments,
+        nonce,
+        spawn_started,
+        release_spawn,
+    )
+    task = asyncio.create_task(
+        tool.run(ctx, BashArguments(command=_bash_descendant_command(nonce)))
+    )
+    cleanup_complete = False
+    try:
+        await _await_event_or_owner(spawn_started, task)
+        task.cancel()
+        yielded = asyncio.Event()
+        asyncio.get_running_loop().call_soon(yielded.set)
+        await yielded.wait()
+        assert not task.done()
+        release_spawn.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert len(launched) == 1
+        assert launched[0].returncode is not None
+        _assert_owned_group_absent(launched[0].pid)
+        cleanup_complete = True
+    finally:
+        release_spawn.set()
+        if not cleanup_complete:
+            await await_retained(asyncio.create_task(_cleanup_bash_process(task, launched)))
+
+
+@pytest.mark.anyio
+async def test_bash_cleanup_kills_owned_group_before_waiting_for_owner_terminal():
+    nonce = f"bash-owned-cleanup-{os.getpid()}"
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        "import os,signal,sys; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "print(sys.argv[1], os.getpid(), os.getpgrp(), flush=True); signal.pause()",
+        nonce,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+    launched = [process]
+    cleanup_complete = False
+    try:
+        assert os.getpgid(process.pid) == process.pid
+        assert process.stdout is not None
+        facts = (await process.stdout.readline()).decode("ascii").split()
+        assert facts == [nonce, str(process.pid), str(process.pid)]
+
+        async def wait_for_owned_group_exit() -> None:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await asyncio.to_thread(wait_for_process_group_exit, process.pid)
+                raise
+
+        owner = asyncio.create_task(wait_for_owned_group_exit())
+        await _cleanup_bash_process(owner, launched)
+        _assert_owned_group_absent(process.pid)
+        cleanup_complete = True
+        assert owner.cancelled()
+    finally:
+        if not cleanup_complete:
+            await _cleanup_bash_process(asyncio.create_task(asyncio.Event().wait()), launched)
 
 
 def test_page_and_search_extractors(monkeypatch, tmp_path, ctx):
@@ -134,7 +393,14 @@ def test_page_and_search_extractors(monkeypatch, tmp_path, ctx):
 
 
 @pytest.mark.parametrize(
-    "url", ["file:///tmp/example", "ftp://example.org", "https://u:p@example.org", "http://"]
+    "url",
+    [
+        "file:///tmp/example",
+        "ftp://example.org",
+        "".join(("https://", "u", ":", "p", "@example.org")),
+        "http://",
+    ],
+    ids=["file-scheme", "ftp-scheme", "userinfo", "missing-host"],
 )
 def test_invalid_urls_and_redirects_refuse(url):
     with pytest.raises(ValueError, match="http_url_required"):

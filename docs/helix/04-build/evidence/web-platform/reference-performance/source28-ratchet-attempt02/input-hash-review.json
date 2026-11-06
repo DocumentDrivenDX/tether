@@ -1,0 +1,29 @@
+{
+  "baseline_files_unchanged": true,
+  "baseline_sha256_before": {
+    "apps": "1810306b2c8f6fdf625e6d0cde58b219f8d65cb22568089c2cdfd42a5325a00e",
+    "client": "383f557530711f44be1e9cd8f377fb9b754c3e4c58cc52610ba5065b63efb633",
+    "engine": "edfa3544ab377f4de5c3ef81340bfc69aff11d9d84b8e8fc6b322b16d6608946",
+    "follower-memory": "af3d25909abd9fdf093dc9c7d9d2122f0fe0f298c85cc91eea0a3e2df2b2ac97",
+    "memory-store": "67888969d42de21c1aa4185b87e39ab3d47abda3a683ba3401c680cf64bae1d1",
+    "store": "fa4254c486b779c4fab953be78981cc51b8a3fae2b75d51da0b4eff1a58310b9",
+    "volatile-client": "bdc379f0efa53ada8ad94c07ac71cb8ff5c1efdf5629c3614e6a05a7dfce39d9"
+  },
+  "baseline_sha256_current": {
+    "apps": "1810306b2c8f6fdf625e6d0cde58b219f8d65cb22568089c2cdfd42a5325a00e",
+    "client": "383f557530711f44be1e9cd8f377fb9b754c3e4c58cc52610ba5065b63efb633",
+    "engine": "edfa3544ab377f4de5c3ef81340bfc69aff11d9d84b8e8fc6b322b16d6608946",
+    "follower-memory": "af3d25909abd9fdf093dc9c7d9d2122f0fe0f298c85cc91eea0a3e2df2b2ac97",
+    "memory-store": "67888969d42de21c1aa4185b87e39ab3d47abda3a683ba3401c680cf64bae1d1",
+    "store": "fa4254c486b779c4fab953be78981cc51b8a3fae2b75d51da0b4eff1a58310b9",
+    "volatile-client": "bdc379f0efa53ada8ad94c07ac71cb8ff5c1efdf5629c3614e6a05a7dfce39d9"
+  },
+  "checked_at": "2026-11-02T17:49:41.242780+00:00",
+  "failed_execution_sha256": "9c5b751218c5a54fe07b2b6b76a3d21759ecd32a00d634b1f3d5eeb4d86a41e5",
+  "schema_version": 1,
+  "scope": "Completed failed repeat source-before/after bindings and precommand baseline hashes compared with current unchanged files; no measurement executed.",
+  "second_failed_store_measurement_sha256": "f2a5f2c314c54e8e2afd8154302e72fb0c30ee69d25c29e44aa5e0ecac8c29c7",
+  "source_before_after_match_frozen_map": true,
+  "status": "verified-readonly",
+  "thresholds_changed": false
+}

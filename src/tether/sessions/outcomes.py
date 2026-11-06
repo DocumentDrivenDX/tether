@@ -7,7 +7,7 @@ from collections.abc import Sequence
 
 from tether.engine import Engine
 from tether.types import Message
-from tether.types.client import ReadLimit
+from tether.types.client import ReadLimit, UnknownTurn
 from tether.types.execution import Actor, Entry, ExecutionDenied, TurnResult
 from tether.types.storage import IntegrityError, TurnInProgress
 
@@ -34,6 +34,42 @@ async def read_outcome(
         lambda: outcome(access, engine, actor, session_id, turn_id),
         session_id=session_id,
     )
+
+
+async def read_client_outcome(
+    access: SessionAccess, engine: Engine, actor: Actor, session_id: str, turn_id: str
+) -> TurnResult | None:
+    """Read a turn result without requiring a process-local acceptance handle."""
+    return await access.metadata(
+        actor,
+        session_id,
+        lambda: client_outcome(access, engine, actor, session_id, turn_id),
+        session_id=session_id,
+    )
+
+
+async def client_outcome(
+    access: SessionAccess, engine: Engine, actor: Actor, session_id: str, turn_id: str
+) -> TurnResult | None:
+    current = await _entries(access, actor, session_id, turn_id)
+    starts = tuple(
+        entry for entry in current if entry.kind == "turn_started" and entry.turn_id == turn_id
+    )
+    if not starts:
+        raise UnknownTurn("unknown_turn")
+    try:
+        ended = terminal(current)
+    except TurnInProgress:
+        return None
+    if ended.facts.get("stop_reason") == "cancelled":
+        raw_reason = ended.facts.get("reason")
+        reason = raw_reason if isinstance(raw_reason, str) else None
+        return TurnResult(
+            turn_id=turn_id,
+            stop_reason="cancelled",
+            reason=reason,
+        )
+    return await outcome(access, engine, actor, session_id, turn_id)
 
 
 async def outcome(

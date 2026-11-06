@@ -1,0 +1,493 @@
+"""Run the shipped live qualifier with private durable shutdown observation."""
+from __future__ import annotations
+import argparse,asyncio,contextlib,hashlib,importlib,io,json,os,sys,time,types,uuid,zipfile
+from pathlib import Path
+from typing import Any
+
+MODE='instrumented-qualification-only'
+_FAILURE_STATE:dict[str,Any]={}
+_WRAPPED_FAILURE_PHASES={
+    'reopen_remote_client',
+    'verify_recovery_barrier',
+    'browser_recovery',
+}
+_WRAPPED_FAILURE_CODES={
+    'qualification_restart_readiness_timeout',
+    'live_recovered_session_read_failed',
+    'live_unknown_effect_recovery_not_visible',
+    'live_unknown_effect_barrier_not_enforced',
+    'live_browser_recovery_terminal_status_invalid',
+    'live_browser_case_failed',
+    'live_browser_rendezvous_invalid',
+    'live_browser_exited_before_rendezvous',
+    'RemoteProblem',
+    'RemoteTransportError',
+    'TimeoutError',
+}
+
+def _set_phase(value:str)->None:
+    if value in {
+        'startup','input_validation','candidate_verification','workspace_snapshot',
+        'identity_setup','public_qualifier','worker_probe','platform_stop',
+        'wait_stopped','wait_running','stopped_snapshot','observer_connect','observer_query','observer_evaluate',
+        'receipt_write','restart_start','restart_start_returned','restart_recovery',
+        'qualifier_returned','complete',
+    }:
+        _FAILURE_STATE['phase']=value
+
+def _wrapped_live_failure(error:BaseException)->tuple[str,str]|None:
+    if type(error) is not RuntimeError or len(error.args)!=1 or type(error.args[0]) is not str:
+        return None
+    message=error.args[0]
+    for phase in _WRAPPED_FAILURE_PHASES:
+        prefix=f'live_unknown_effect_{phase}_'
+        if not message.startswith(prefix):
+            continue
+        code=message[len(prefix):]
+        if code in _WRAPPED_FAILURE_CODES:
+            return phase,code
+        return None
+    return None
+
+def _write_private_stop_binding(path:Path)->None:
+    names=(
+        'stop_correlation_id','deployment_id','source_code_path','worker_invocation_id',
+        'base_candidate_sha256','overlay_snapshot_sha256','candidate_modules_byte_identical',
+        'stop_command_returned','stop_state_observed','stop_state','snapshot_deployment_id',
+        'snapshot_source_code_path','active_snapshot_matched','restart_running_observed',
+    )
+    record={
+        'schema_version':1,'stop_attempted':_FAILURE_STATE.get('stop_attempted') is True,
+        **{name:_FAILURE_STATE.get(name) for name in names if name in _FAILURE_STATE},
+    }
+    path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+    temporary=path.with_suffix('.tmp')
+    temporary.write_text(json.dumps(record,sort_keys=True,separators=(',',':'))+'\n')
+    os.chmod(temporary,0o600)
+    temporary.replace(path)
+
+def _safe_failure(error:BaseException)->dict[str,object]:
+    classes={TimeoutError:'timeout',OSError:'io',RuntimeError:'runtime',ValueError:'value',
+             KeyError:'key',TypeError:'type',ImportError:'import',AttributeError:'attribute',
+             asyncio.CancelledError:'cancelled'}
+    category=next((label for kind,label in classes.items() if isinstance(error,kind)),'other')
+    names={TimeoutError:'TimeoutError',OSError:'OSError',RuntimeError:'RuntimeError',
+           ValueError:'ValueError',KeyError:'KeyError',TypeError:'TypeError',
+           ImportError:'ImportError',AttributeError:'AttributeError',
+           asyncio.CancelledError:'CancelledError'}
+    exception_name=next((label for kind,label in names.items() if isinstance(error,kind)),'other')
+    known_exception_names={'RemoteProblem','ApiFailure','DatabricksError','OperationFailed','HTTPStatusError'}
+    if type(error).__name__ in known_exception_names:
+        exception_name=type(error).__name__
+    known_codes={
+        'active_deployment_mismatch','app_name_missing','app_not_running',
+        'base_candidate_digest_mismatch','candidate_bytes_changed','candidate_runtime_source_mismatch',
+        'composition_module_ambiguous','databricks_wheel_ambiguous','deployment_reference_invalid',
+        'durable_shutdown_row_not_qualified','immutable_deployment_mismatch','immutable_export_empty',
+        'immutable_export_unavailable','immutable_snapshot_bytes_mismatch','instrumented_mode_required',
+        'multiple_stop_commands_refused','observer_overlay_settings_mismatch',
+        'observer_reader_identity_unavailable','observer_stop_prerequisite_missing',
+        'platform_stop_state_not_observed','probe_nonce_invalid','project_root_unrecognized',
+        'protected_probe_not_correlated','reader_unavailable','settings_invalid',
+        'stopped_active_deployment_mismatch','stopped_snapshot_mismatch',
+    }
+    code='other'
+    inner_phase=None
+    wrapped=_wrapped_live_failure(error)
+    if wrapped is not None:
+        inner_phase,code=wrapped
+    if type(error) is RuntimeError and len(error.args)==1 and type(error.args[0]) is str and error.args[0] in known_codes:
+        code=error.args[0]
+    allowed_files={
+        'run_instrumented_qualification.py','qualify_live_apps.py',
+        'qualify_live_apps_lifecycle.py','qualify_live_apps_transport.py',
+        'read_observer.py','observer_launcher.py','app.py',
+    }
+    safe_frame:dict[str,object]={}
+    tb=error.__traceback__
+    while tb is not None:
+        frame=tb.tb_frame
+        name=Path(frame.f_code.co_filename).name
+        if name in allowed_files:
+            safe_frame={'failure_file':name,'failure_line':tb.tb_lineno,'failure_function':frame.f_code.co_name}
+        tb=tb.tb_next
+    failure_status=None
+    error_fields=getattr(error,'__dict__',{})
+    if isinstance(error_fields,dict):
+        candidate_status=error_fields.get('status')
+        if type(candidate_status) is int and 100<=candidate_status<=599:
+            failure_status=candidate_status
+        candidate_code=error_fields.get('code')
+        known_error_codes={'REMOTE_REQUEST_FAILED','PERMISSION_DENIED','INVALID_TOKEN','UNAUTHENTICATED','INTERNAL','UNKNOWN'}
+        if type(candidate_code) is str and candidate_code in known_error_codes:
+            code=candidate_code
+    result={'failure_category':category,'failure_exception':exception_name,'failure_code':code,'failure_status':failure_status,**safe_frame}
+    if inner_phase is not None:
+        result['failure_inner_phase']=inner_phase
+    return result
+
+def _failure_result(error:BaseException)->dict[str,object]:
+    return {
+        'schema_version':1,'mode':MODE,'status':'failed',**_safe_failure(error),**{
+            key:_FAILURE_STATE.get(key) for key in (
+                'phase','stop_attempted','stop_state_observed','row_query_attempted','row_found',
+                'reader_status','protected_probe_observed','worker_started_observed',
+                'stop_binding_record_written','stop_binding_sha256','restart_running_observed',
+            )
+        },
+    }
+
+
+def _digest_inventory(values:dict[str,str])->str:
+    return hashlib.sha256(json.dumps(values,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+def _sha(path:Path)->str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def _status_value(value:Any)->Any:
+    state=getattr(value,'state',None)
+    return getattr(state,'value',state)
+
+def _wheel_info(bundle:Path)->tuple[Path,str,str]:
+    matches=list((bundle/'wheelhouse').glob('novirhiza_tether_databricks-*.whl'))
+    if len(matches)!=1: raise RuntimeError('databricks_wheel_ambiguous')
+    wheel=matches[0]
+    with zipfile.ZipFile(wheel) as archive:
+        names=[n for n in archive.namelist() if n.endswith('tether_databricks/composition.py')]
+        if len(names)!=1: raise RuntimeError('composition_module_ambiguous')
+        composition=hashlib.sha256(archive.read(names[0])).hexdigest()
+    return wheel,_sha(wheel),composition
+
+def _expected_app_manifest(base_text:str,values:dict[str,str])->str|None:
+    lines=base_text.splitlines()
+    try:
+        command_start=lines.index('command:')
+        env_start=next(i for i in range(command_start+1,len(lines)) if lines[i]=='env:')
+    except (ValueError,StopIteration): return None
+    if lines[command_start:env_start] != ['command:','  - "uv"','  - "run"','  - "--locked"','  - "python"','  - "src/app.py"']:
+        return None
+    names=[line.strip()[len('- name: '):] for line in lines[env_start+1:] if line.strip().startswith('- name: ')]
+    required={'TETHER_DIAG_BASE_CANDIDATE_SHA256','TETHER_DIAG_SCHEMA','TETHER_DIAG_PROBE_NONCE','TETHER_DIAG_PROTECTED_PATH'}
+    if len(names)!=len(set(names)) or required.intersection(names) or set(values)!=required:
+        return None
+    if any('\n' in value or '\r' in value for value in values.values()): return None
+    command=['command:','  - "uv"','  - "run"','  - "--locked"','  - "python"','  - "src/observer_launcher.py"']
+    expected=lines[:command_start]+command+lines[env_start:]
+    for name in ('TETHER_DIAG_BASE_CANDIDATE_SHA256','TETHER_DIAG_SCHEMA','TETHER_DIAG_PROBE_NONCE','TETHER_DIAG_PROTECTED_PATH'):
+        expected.extend((f'  - name: {name}',f'    value: {json.dumps(values[name])}'))
+    return '\n'.join(expected)+'\n'
+
+def _candidate_bytes_equal(base:dict[str,str],overlay:dict[str,str],base_app_text:str,overlay_app_text:str,diagnostic_values:dict[str,str],inventory_text:str)->bool:
+    added={'src/observer_launcher.py','src/observer_metadata.py','src/read_observer.py','src/tether_h2c_probe.py','observer_payload_inventory.json'}
+    if added.intersection(base) or set(overlay)!=set(base)|added: return False
+    expected=_expected_app_manifest(base_app_text,diagnostic_values)
+    if expected is None or overlay_app_text!=expected: return False
+    try: inventory=json.loads(inventory_text)
+    except (ValueError,TypeError): return False
+    if inventory!={"schema_version":1,"files":sorted(overlay)}: return False
+    return all(overlay.get(path)==digest for path,digest in base.items() if path!='app.yaml')
+
+class _KeepTemporaryDirectory:
+    def __init__(self,path:Path): self.path=path
+    def __enter__(self)->str:
+        self.path.mkdir(mode=0o700,parents=True,exist_ok=False)
+        return str(self.path)
+    def __exit__(self,*_args:object)->None: return None
+
+async def _app_snapshot(workspace:Any,app_name:str,bundle:Path,expected_deployment_id:str,expected_source_path:str,*,require_stopped:bool)->tuple[bool,str,str]:
+    from databricks.sdk.service.workspace import ExportFormat
+    from selected_profiles_bundle import _local_inventory,_snapshot_inventory
+    app=await asyncio.to_thread(workspace.apps.get,app_name)
+    app_state=_status_value(app.app_status)
+    compute_state=_status_value(app.compute_status)
+    active=getattr(app,'active_deployment',None)
+    active_id=getattr(active,'deployment_id',None)
+    active_path=getattr(active,'source_code_path',None)
+    if require_stopped:
+        if app_state not in {'STOPPED','UNAVAILABLE'} or compute_state!='STOPPED':
+            raise RuntimeError('platform_stop_state_not_observed')
+        if active_id not in {None,expected_deployment_id} or active_path not in {None,expected_source_path}:
+            raise RuntimeError('stopped_active_deployment_mismatch')
+    elif app_state!='RUNNING' or compute_state!='ACTIVE' or active_id!=expected_deployment_id or active_path!=expected_source_path:
+        raise RuntimeError('active_deployment_mismatch')
+    deployment=await asyncio.to_thread(workspace.apps.get_deployment,app_name,expected_deployment_id)
+    state=getattr(getattr(deployment,'status',None),'state',None)
+    if getattr(deployment,'deployment_id',None)!=expected_deployment_id or getattr(state,'value',state)!='SUCCEEDED' or getattr(deployment,'source_code_path',None)!=expected_source_path:
+        raise RuntimeError('immutable_deployment_mismatch')
+    artifacts=getattr(deployment,'deployment_artifacts',None)
+    export_path=getattr(artifacts,'source_code_path',None)
+    if not isinstance(export_path,str) or not export_path: raise RuntimeError('immutable_export_unavailable')
+    exported=await asyncio.to_thread(workspace.workspace.export,export_path,format=ExportFormat.AUTO)
+    if not isinstance(exported.content,str) or not exported.content: raise RuntimeError('immutable_export_empty')
+    import base64
+    with zipfile.ZipFile(io.BytesIO(base64.b64decode(exported.content,validate=True))) as archive:
+        remote=_snapshot_inventory(archive)
+    local=await asyncio.to_thread(_local_inventory,bundle)
+    if not local or remote!=local: raise RuntimeError('immutable_snapshot_bytes_mismatch')
+    return True,_digest_inventory(local),app_state
+
+async def _main(args:argparse.Namespace)->int:
+    _FAILURE_STATE.clear()
+    _FAILURE_STATE.update({
+        'phase':'startup','stop_attempted':False,'stop_state_observed':False,
+        'row_query_attempted':False,'row_found':False,'reader_status':'not_started',
+        'protected_probe_observed':False,'worker_started_observed':False,
+        'stop_binding_record_written':False,
+        'restart_running_observed':False,
+    })
+    _set_phase('input_validation')
+    if args.mode!=MODE: raise RuntimeError('instrumented_mode_required')
+    project_root=Path(args.project_root).resolve(strict=True)
+    if not (project_root/'scripts/qualify_live_apps.py').is_file() or not (project_root/'packages/databricks/src/tether_databricks/composition.py').is_file():
+        raise RuntimeError('project_root_unrecognized')
+    sys.path.insert(0,str(project_root/'scripts'))
+    output=Path(args.output_dir)
+    output.mkdir(mode=0o700,parents=True,exist_ok=False)
+    binding_path=output/'stop-binding-private.json'
+    for k in tuple(os.environ):
+        if k.startswith('DATABRICKS_'): os.environ.pop(k,None)
+    if args.config_file: os.environ['DATABRICKS_CONFIG_FILE']=str(args.config_file)
+    settings=json.loads(Path(args.settings_file).read_text())
+    if not isinstance(settings,dict) or any(not isinstance(k,str) or not isinstance(v,str) for k,v in settings.items()):
+        raise RuntimeError('settings_invalid')
+    from web_artifacts import inventory
+    from selected_profiles_bundle import _local_inventory,deployed_bundle_matches_lock
+    base=Path(args.base_bundle); bundle=Path(args.overlay_bundle)
+    _set_phase('candidate_verification')
+    base_map=await asyncio.to_thread(_local_inventory,base)
+    overlay_map=await asyncio.to_thread(_local_inventory,bundle)
+    base_digest=_digest_inventory(base_map)
+    if base_digest!=args.base_candidate_sha256: raise RuntimeError('base_candidate_digest_mismatch')
+    nonce=settings.get('TETHER_DIAG_PROBE_NONCE')
+    schema=settings.get('TETHER_DIAG_SCHEMA')
+    if not isinstance(nonce,str) or not isinstance(schema,str) or args.diagnostic_schema!=schema:
+        raise RuntimeError('observer_overlay_settings_mismatch')
+    diagnostic_values={
+        'TETHER_DIAG_BASE_CANDIDATE_SHA256':base_digest,
+        'TETHER_DIAG_SCHEMA':schema,
+        'TETHER_DIAG_PROBE_NONCE':nonce,
+        'TETHER_DIAG_PROTECTED_PATH':'/api/v1/capabilities',
+    }
+    candidate_bytes_match=_candidate_bytes_equal(
+        base_map,overlay_map,(base/'app.yaml').read_text(),(bundle/'app.yaml').read_text(),diagnostic_values,
+        (bundle/'observer_payload_inventory.json').read_text(),
+    )
+    if not candidate_bytes_match: raise RuntimeError('candidate_bytes_changed')
+    app_name=settings.get('TETHER_QUALIFICATION_APP')
+    if not isinstance(app_name,str) or not app_name: raise RuntimeError('app_name_missing')
+    deployment_ref=Path(args.deployment_reference)
+    ref=json.loads(deployment_ref.read_text())
+    deployment_id=ref.get('deployment_id'); source_path=ref.get('source_code_path')
+    if not isinstance(deployment_id,str) or not isinstance(source_path,str): raise RuntimeError('deployment_reference_invalid')
+    from databricks.sdk import WorkspaceClient
+    workspace=WorkspaceClient(profile=args.admin_profile)
+    _set_phase('workspace_snapshot')
+    app=await asyncio.to_thread(workspace.apps.get,app_name)
+    await deployed_bundle_matches_lock(workspace,app,app_name,bundle,deployment_ref)
+    _before_ok,overlay_digest,initial_state=await _app_snapshot(workspace,app_name,bundle,deployment_id,source_path,require_stopped=False)
+    if initial_state!='RUNNING': raise RuntimeError('app_not_running')
+    from qualify_live_apps_config import settings_from_environment
+    from qualify_live_apps_transport import _profile_credential
+    source={**settings,'PATH':os.environ.get('PATH',''),'HOME':os.environ.get('HOME','')}
+    live_settings=settings_from_environment(source)
+    _set_phase('identity_setup')
+    _profile_token,authorization=await _profile_credential(args.profile)
+    from databricks.sdk import WorkspaceClient as ReaderWorkspaceClient
+    reader_workspace=ReaderWorkspaceClient(profile=args.admin_profile,config_file=args.config_file) if args.config_file else ReaderWorkspaceClient(profile=args.admin_profile)
+    reader_identity=await asyncio.to_thread(reader_workspace.current_user.me)
+    reader_role=getattr(reader_identity,'user_name',None)
+    if not isinstance(reader_role,str) or not reader_role: raise RuntimeError('observer_reader_identity_unavailable')
+    if len(nonce)!=32 or any(c not in '0123456789abcdef' for c in nonce): raise RuntimeError('probe_nonce_invalid')
+    process_id=hashlib.sha256(nonce.encode()).hexdigest()
+    from selected_profiles_bundle import _local_inventory as local_inventory
+    wheel,wheel_hash,composition_hash=_wheel_info(bundle)
+    app_source_hash=_sha(bundle/'src/app.py')
+    observer_hash=_sha(bundle/'src/observer_launcher.py')
+    probe_hash=_sha(bundle/'src/tether_h2c_probe.py')
+    current_app_hash=_sha(project_root/'examples/databricks-app/src/app.py')
+    current_composition_hash=_sha(project_root/'packages/databricks/src/tether_databricks/composition.py')
+    if app_source_hash!=current_app_hash or composition_hash!=current_composition_hash:
+        raise RuntimeError('candidate_runtime_source_mismatch')
+
+    live=importlib.import_module('qualify_live_apps')
+    lifecycle=importlib.import_module('qualify_live_apps_lifecycle')
+    private_root=Path(__file__).resolve().parent
+    reader=importlib.util.spec_from_file_location('private_shutdown_reader',private_root/'src/read_observer.py')
+    if reader is None or reader.loader is None: raise RuntimeError('reader_unavailable')
+    reader_module=importlib.util.module_from_spec(reader); reader.loader.exec_module(reader_module)
+    nonce_hash=hashlib.sha256(nonce.encode()).hexdigest()
+    state:dict[str,Any]={'probe':None,'stop_id':None,'receipt':None,'row_passed':False}
+    original_temp=live.TemporaryDirectory
+    rendezvous=output/'browser-rendezvous'
+    live.TemporaryDirectory=lambda prefix='':_KeepTemporaryDirectory(rendezvous)
+    original_start=live.start_log_monitor
+    async def instrumented_start(*start_args:Any,**start_kwargs:Any)->Any:
+        monitor=await original_start(*start_args,**start_kwargs)
+        _FAILURE_STATE['worker_invocation_id']=monitor.invocation_id
+        _write_private_stop_binding(binding_path)
+        original_worker_wait=monitor.wait_worker_started
+        async def wait_worker_started(*,timeout_seconds:float)->None:
+            _set_phase('worker_probe')
+            await original_worker_wait(timeout_seconds=timeout_seconds)
+            _FAILURE_STATE['worker_started_observed']=True
+            import httpx
+            from urllib.parse import urljoin
+            headers={'Authorization':authorization,'x-tether-qualification-h2c-probe':nonce}
+            auth=None
+            if args.service_caller:
+                from tether.client.databricks import service_caller_auth
+                auth=service_caller_auth()
+            url=live_settings.url+live_settings.mount_path+live_settings.api_prefix+'/capabilities'
+            async with httpx.AsyncClient(timeout=20,http2=True,trust_env=False,auth=auth) as http:
+                response=await http.get(url,headers=headers)
+            values={key.lower():response.headers.get(key) for key in ('x-tether-diagnostic-process','x-tether-diagnostic-nonce-sha256','x-tether-diagnostic-asgi-http-version')}
+            frontend=response.http_version
+            if response.status_code!=200 or values['x-tether-diagnostic-process'] is None or values['x-tether-diagnostic-nonce-sha256']!=nonce_hash or values['x-tether-diagnostic-asgi-http-version'] not in {'1.1','2'} or frontend not in {'HTTP/2','HTTP/1.1'}:
+                raise RuntimeError('protected_probe_not_correlated')
+            state['probe']={'process_uuid':values['x-tether-diagnostic-process'],'nonce_sha256':values['x-tether-diagnostic-nonce-sha256'],'frontend_http_version':frontend,'asgi_http_version':values['x-tether-diagnostic-asgi-http-version'],'response_status':response.status_code}
+            _FAILURE_STATE['protected_probe_observed']=True
+        monitor.wait_worker_started=wait_worker_started
+        async def wait_shutdown_report(*,timeout_seconds:float)->dict[str,Any]:
+            if state['probe'] is None or state['stop_id'] is None: raise RuntimeError('observer_stop_prerequisite_missing')
+            _set_phase('stopped_snapshot')
+            _stopped,verified_overlay_digest,app_state=await _app_snapshot(workspace,app_name,bundle,deployment_id,source_path,require_stopped=True)
+            _FAILURE_STATE['stop_state_observed']=True
+            _FAILURE_STATE.update({
+                'stop_state':'STOPPED','snapshot_deployment_id':deployment_id,
+                'snapshot_source_code_path':source_path,'active_snapshot_matched':True,
+                'base_candidate_sha256':base_digest,'overlay_snapshot_sha256':overlay_digest,
+                'candidate_modules_byte_identical':candidate_bytes_match,
+            })
+            _write_private_stop_binding(binding_path)
+            _FAILURE_STATE['stop_binding_sha256']=_sha(binding_path)
+            _FAILURE_STATE['stop_binding_record_written']=True
+            if verified_overlay_digest!=overlay_digest or app_state not in {'STOPPED','UNAVAILABLE'}: raise RuntimeError('stopped_snapshot_mismatch')
+            invocation=monitor.invocation_id
+            expected={
+                'process_uuid':state['probe']['process_uuid'],'nonce_sha256':nonce_hash,
+                'base_candidate_sha256':base_digest,'overlay_snapshot_sha256':overlay_digest,
+                'app_source_sha256':app_source_hash,'databricks_wheel_sha256':wheel_hash,
+                'loaded_composition_sha256':composition_hash,'observer_sha256':observer_hash,'probe_sha256':probe_hash,
+                'invocation_id':invocation,'deployment_id':deployment_id,'snapshot_deployment_id':deployment_id,
+                'stop_deployment_id':deployment_id,'stop_invocation_id':invocation,
+                'stop_correlation_id':state['stop_id'],'platform_stop_observed':True,
+                'observer_mode':MODE,'stop_state':'STOPPED','candidate_modules_byte_identical':candidate_bytes_match,
+                'active_snapshot_matched':True,'frontend_http_version':state['probe']['frontend_http_version'],
+            }
+            reader_config={'profile':args.admin_profile,'config_file':args.config_file,'endpoint':settings['TETHER_PG_ENDPOINT'],'host':settings['TETHER_PG_HOST'],'database':settings['TETHER_PG_DATABASE'],'reader_role':reader_role,'sslrootcert':settings['TETHER_PG_SSLROOTCERT'],'schema':args.diagnostic_schema,'invocation_id':invocation,'wait_seconds':20,**expected}
+            _set_phase('observer_connect')
+            connection=await asyncio.to_thread(reader_module._connect,reader_config)
+            try:
+                _set_phase('observer_query')
+                deadline=asyncio.get_running_loop().time()+min(30,max(1,timeout_seconds))
+                row=None
+                while asyncio.get_running_loop().time()<deadline:
+                    _FAILURE_STATE['row_query_attempted']=True
+                    row=await asyncio.to_thread(reader_module._fetch,connection,reader_config['schema'],invocation)
+                    _FAILURE_STATE['row_found']=row is not None
+                    if row is not None: break
+                    await asyncio.sleep(0.5)
+            finally:
+                await asyncio.to_thread(connection.close)
+            _set_phase('observer_evaluate')
+            evaluated=reader_module._evaluate(row,expected)
+            _FAILURE_STATE['reader_status']=evaluated.get('status','unknown')
+            if evaluated.get('status')!='passed' or not isinstance(evaluated.get('shutdown_observation'),dict):
+                raise RuntimeError('durable_shutdown_row_not_qualified')
+            state['row_passed']=True
+            _set_phase('restart_recovery')
+            return evaluated['shutdown_observation']
+        monitor.wait_shutdown_report=wait_shutdown_report
+        return monitor
+    live.start_log_monitor=instrumented_start
+    old_admin=lifecycle._admin_cli
+    old_wait_app_state=lifecycle._wait_app_state
+    async def observed_wait_app_state(profile:str,config_file:str|None,source:dict[str,str],app:str,accepted:set[tuple[str,str]],*,timeout_seconds:float)->None:
+        waiting_for_stop=any(app_state in {'STOPPED','UNAVAILABLE'} and compute_state=='STOPPED' for app_state,compute_state in accepted)
+        _set_phase('wait_stopped' if waiting_for_stop else 'wait_running')
+        await old_wait_app_state(profile,config_file,source,app,accepted,timeout_seconds=timeout_seconds)
+        if waiting_for_stop:
+            _FAILURE_STATE['stop_state_observed']=True
+            _FAILURE_STATE['stop_state']='STOPPED'
+        else:
+            _FAILURE_STATE['restart_running_observed']=True
+            _set_phase('restart_recovery')
+        _write_private_stop_binding(binding_path)
+        _FAILURE_STATE['stop_binding_sha256']=_sha(binding_path)
+        _FAILURE_STATE['stop_binding_record_written']=True
+    lifecycle._wait_app_state=observed_wait_app_state
+    async def observed_admin(profile:str,config_file:str|None,source:dict[str,str],*arguments:str,timeout_seconds:float=120)->str:
+        is_stop=len(arguments)>=3 and arguments[0:2]==('apps','stop')
+        is_start=len(arguments)>=3 and arguments[0:2]==('apps','start')
+        if is_stop:
+            if state['stop_id'] is not None: raise RuntimeError('multiple_stop_commands_refused')
+            state['stop_id']=uuid.uuid4().hex
+            _FAILURE_STATE['stop_attempted']=True
+            _FAILURE_STATE.update({
+                'stop_correlation_id':state['stop_id'],'deployment_id':deployment_id,
+                'source_code_path':source_path,'base_candidate_sha256':base_digest,
+                'overlay_snapshot_sha256':overlay_digest,
+                'candidate_modules_byte_identical':candidate_bytes_match,
+            })
+            _write_private_stop_binding(binding_path)
+            _set_phase('platform_stop')
+        if is_start: _set_phase('restart_start')
+        result=await old_admin(profile,config_file,source,*arguments,timeout_seconds=timeout_seconds)
+        if is_stop:
+            _FAILURE_STATE['stop_command_returned']=True
+            _write_private_stop_binding(binding_path)
+        if is_start: _set_phase('restart_start_returned')
+        return result
+    lifecycle._admin_cli=observed_admin
+    summary={'schema_version':1,'mode':MODE,'command':'python <private-driver> --mode instrumented-qualification-only --profile <caller-profile> --admin-profile <operator-profile> --settings-file <private-settings> --base-bundle <base-bundle> --overlay-bundle <instrumented-bundle> --deployment-reference <private-ref> --base-candidate-sha256 <digest> --diagnostic-schema <schema> --output-dir <fresh-private-dir>','base_candidate_digest_verified':True,'overlay_snapshot_verified':False,'candidate_modules_byte_identical':candidate_bytes_match,'protected_probe_correlated':False,'durable_row_visible_after_stop':False,'public_qualifier_called':False,'private_receipt_written':False,'status':'failed'}
+    try:
+        summary['overlay_snapshot_verified']=True
+        private_receipt=output/'live-profile-receipt.json'
+        _set_phase('public_qualifier')
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            await live._run(args.profile,args.admin_profile,args.config_file,source,private_receipt,args.service_caller)
+        _set_phase('qualifier_returned')
+        summary.update({'public_qualifier_called':True,'protected_probe_correlated':state['probe'] is not None,'durable_row_visible_after_stop':state['row_passed'],'private_receipt_written':private_receipt.is_file(),'status':'passed'})
+        (output/'live-profile-receipt.json').chmod(0o600)
+        summary['receipt_sha256']=_sha(private_receipt)
+        _set_phase('complete')
+    finally:
+        live.TemporaryDirectory=original_temp
+        live.start_log_monitor=original_start
+        lifecycle._admin_cli=old_admin
+        lifecycle._wait_app_state=old_wait_app_state
+    summary.update({key:_FAILURE_STATE.get(key) for key in (
+        'phase','stop_attempted','stop_state_observed','row_query_attempted','row_found',
+        'reader_status','protected_probe_observed','worker_started_observed',
+        'stop_binding_record_written','stop_binding_sha256','restart_running_observed',
+    )})
+    out=output/'instrumented-result.json';out.write_text(json.dumps(summary,sort_keys=True)+'\n');out.chmod(0o600)
+    print(json.dumps(summary,sort_keys=True))
+    return 0 if summary['status']=='passed' else 1
+
+def main()->int:
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--mode',choices=(MODE,),required=True)
+    parser.add_argument('--project-root',required=True,type=Path)
+    parser.add_argument('--profile',required=True)
+    parser.add_argument('--admin-profile',required=True)
+    parser.add_argument('--config-file')
+    parser.add_argument('--settings-file',required=True,type=Path)
+    parser.add_argument('--base-bundle',required=True,type=Path)
+    parser.add_argument('--overlay-bundle',required=True,type=Path)
+    parser.add_argument('--deployment-reference',required=True,type=Path)
+    parser.add_argument('--base-candidate-sha256',required=True)
+    parser.add_argument('--diagnostic-schema',required=True)
+    parser.add_argument('--output-dir',required=True,type=Path)
+    parser.add_argument('--service-caller',action='store_true')
+    args=parser.parse_args()
+    try: return asyncio.run(_main(args))
+    except BaseException as error:
+        safe=_failure_result(error)
+        try:
+            args.output_dir.mkdir(mode=0o700,parents=True,exist_ok=True)
+            path=args.output_dir/'instrumented-result.json'
+            if not path.exists(): path.write_text(json.dumps(safe,sort_keys=True)+'\n');path.chmod(0o600)
+        except OSError: pass
+        print(json.dumps(safe,sort_keys=True));return 1
+if __name__=='__main__': raise SystemExit(main())

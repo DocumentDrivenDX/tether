@@ -5,7 +5,7 @@ ddx:
   activity: discover
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-23
+  updated: 2026-10-29
   authoring:
     home: repo
   links:
@@ -64,8 +64,8 @@ All rows are assumptions to validate in `frame`; the survey ([competitive analys
 
 ## Non-Goals
 
-- Not a user interface. The command-line client and terminal UI are reference clients for development and testing.
-- Not a server. Tether has no HTTP, WebSocket, or server-sent-events surface in the library; a server is an adapter written over the client API.
+- Embedders retain ownership of presentation and deployment. Optional terminal, HTTP API and browser UI components consume the same client boundary and can be extended or replaced independently.
+- The core remains an embedded library. Optional server adapters carry their own dependencies and do not become a requirement for direct Python embedding.
 - Not an agent orchestration framework: no graphs, no multi-agent handoffs, in the first releases.
 - Not a coding agent and not a replacement for one.
 - Not a model provider SDK, and not tied to any provider. Model calls speak the open OpenAI-compatible protocol, and provider SDKs stay out of base packaging/public core types while explicitly selected optional adapters may reuse them (ADR-012). SDK wrapping alone does not settle runtime selection.

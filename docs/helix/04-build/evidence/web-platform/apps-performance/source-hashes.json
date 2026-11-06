@@ -1,0 +1,19 @@
+{
+  "files": {
+    "read_bounded_controls27.py.txt": {
+      "bytes": 4268,
+      "sha256": "91c5a49b602a1a7bcd27424724bbf1cbe20205e24c6bea002679b5e401c00322"
+    },
+    "run_apps_performance.py.txt": {
+      "bytes": 12798,
+      "sha256": "3d50bd31c3af63e774727d71328478a9b7e7683aa12c97feef3159bfd0d14efc"
+    },
+    "run_apps_performance27_fixed.py.txt": {
+      "bytes": 13049,
+      "sha256": "a5bf66c9ebb768b58f8daca446eb5e39e4250c2f8a0a361b3693e808f592ac9e"
+    }
+  },
+  "schema_version": 1,
+  "scope": "Generic externally supervised Apps read measurement operator; private inputs excluded",
+  "status": "source-only; no Apps measurement observation"
+}

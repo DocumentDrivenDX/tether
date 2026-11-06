@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import Enum
 from typing import Literal, Protocol
 
@@ -28,6 +29,17 @@ class UnknownModelCall(StoreError):
 
 class RequestConflict(StoreError):
     pass
+
+
+class UnknownTurn(StoreError):
+    """The requested turn was never accepted in this session."""
+
+
+class ClientCapabilities(Payload):
+    """Stable operation and tier support for one configured client."""
+
+    methods: Mapping[str, Literal["supported", "unsupported"]]
+    tiers: Mapping[Literal["live", "archive"], Literal["available", "unavailable"]]
 
 
 class ClientLimits(Payload):

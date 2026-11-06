@@ -1,0 +1,40 @@
+{
+  "identity": {
+    "checks.credential_accepted_on_all_requests": true,
+    "checks.deployment_current_and_exact": true,
+    "checks.same_preacquired_credential": true,
+    "http_versions": [
+      "HTTP/2"
+    ],
+    "limits.client_timing": "credential-provider+network+typed-decode",
+    "limits.server_hardware": "unknown-managed",
+    "limits.transport": "persistent-httpx-sequential",
+    "measurements.capability_handshake.sample_count": 100,
+    "measurements.list_page.sample_count": 100,
+    "versions": {
+      "architecture": "arm64",
+      "platform": "Darwin",
+      "python": "3.11.17"
+    },
+    "workload.capability_requests": 100,
+    "workload.credential_mode": "preacquired-ram",
+    "workload.list_items_per_page": 50,
+    "workload.list_limit": 50,
+    "workload.list_requests": 100,
+    "workload.persistent_httpx": true,
+    "workload.samples": 100
+  },
+  "metrics": {
+    "measurements.capability_handshake.p99_ms": {
+      "maximum": 437.17935,
+      "observed": 364.316125
+    },
+    "measurements.list_page.p99_ms": {
+      "maximum": 859.8674496,
+      "observed": 716.556208
+    }
+  },
+  "profile": "apps-public-client-read",
+  "receipt_sha256": "3acc508dc86fe1c3e9819aa20adfffc4cc0b463a6b4696ef176a08139f266505",
+  "tolerance": 1.2
+}

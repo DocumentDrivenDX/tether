@@ -31,6 +31,11 @@ ddx:
 
 ## Scope
 
+The separately scoped [IP-002 modular interface and Databricks carrier plan](web-platform-implementation-plan.md)
+orders FR-65–70 work across public client/TUI, HTTP, browser, packaging and platform
+qualification. Its repository task checklist preserves this consumer plan's
+contract-acceptance boundary and does not authorize runtime implementation.
+
 This is the immediately next work after 0.1 publication, before consumer adoption or other P1 enhancement work. FR-54 to FR-61 cover the eight requested consumer seams; FR-62 to FR-64 cover configuration, dependency and telemetry compatibility. The governing PRD, SD-001, CONTRACT-001 to CONTRACT-005 and TP-001 remain authoritative. CONTRACT-002/003/005 own the primary seam paragraphs; CONTRACT-001/004 add the required purpose/profile and context-transition bindings. The proposed paragraphs are not current API claims and do not reopen 0.1 P0 qualification.
 
 Deliver one coherent contract/design proposal and its acceptance packet before implementing a seam. Erik LaBianca must accept the affected paragraph before dependent source work. Technical design must resolve concrete transaction/operation state and versioning before implementation; this plan does not invent a missing accepted design.

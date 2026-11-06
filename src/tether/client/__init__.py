@@ -1,135 +1,331 @@
-"""Owner-bound Client facade."""
+"""Stable embedded-client API; concrete engine composition stays private."""
 
-from collections.abc import AsyncIterator, Mapping, Sequence
-from typing import Literal
+from tether.ports import (
+    AttemptRecorder,
+    AuditSink,
+    HistoryProvider,
+    ModelPort,
+    Policy,
+    Provider,
+    ResultGuard,
+    SessionStore,
+    Tracer,
+)
+from tether.types import (
+    AttachmentRef,
+    AttemptIdentity,
+    Count,
+    Credential,
+    JsonValue,
+    Message,
+    ModelAttemptDenied,
+    ModelExecutionLimits,
+    ModelRequest,
+    ModelResponse,
+    ModelUnavailable,
+    Payload,
+    PositiveInt,
+    RequestTags,
+    ResponseReceipt,
+    StreamItem,
+    TextDelta,
+    TokenUsage,
+    ToolCall,
+    ToolSpec,
+)
+from tether.types.archive import (
+    ArchiveCapabilities,
+    ArchivedSession,
+    ArchiveLimits,
+    ArchiveReadError,
+    ArchiveSink,
+    ArchiveSource,
+    NotRestorable,
+)
+from tether.types.client import (
+    UNSET,
+    CallDetail,
+    Change,
+    ClientCapabilities,
+    ClientLimits,
+    EntriesAppended,
+    HistoryPage,
+    Lagged,
+    ReadLimit,
+    ReplyReset,
+    ReplyText,
+    RequestConflict,
+    ResyncRequired,
+    SessionRemoved,
+    SessionUpdated,
+    TurnHandle,
+    UnknownModelCall,
+    UnknownTurn,
+    Unset,
+)
+from tether.types.context import (
+    CompactionRecord,
+    ContextConfig,
+    ContextError,
+    ContextGroup,
+    ContextInput,
+    ContextPart,
+    ContextPlan,
+    ContextPreparation,
+    ContextSource,
+    ContextStrategy,
+    ContextSummary,
+    ContextUse,
+    ModelLimits,
+    SourceRange,
+    TokenEstimate,
+    TokenEstimator,
+)
+from tether.types.execution import (
+    Actor,
+    AgentSpec,
+    Answer,
+    AuthzRequest,
+    CallManifest,
+    Clock,
+    CommitUnknown,
+    Decision,
+    Effect,
+    EffectsUnresolved,
+    Entry,
+    EntryConflict,
+    ExecutionDenied,
+    ExecutionLimits,
+    GuardInput,
+    GuardVerdict,
+    HistoryRef,
+    NewEntry,
+    NotInterrupted,
+    NotUnresolved,
+    PendingConfirmation,
+    Refusal,
+    Replay,
+    Resolution,
+    ResolutionConflict,
+    ResumeLimit,
+    RetrievalDenied,
+    SessionState,
+    Tool,
+    ToolContext,
+    ToolOutput,
+    TurnResult,
+    UsageSoFar,
+    WorkerOutstanding,
+)
+from tether.types.history import (
+    ExchangeBinding,
+    ExchangeRefs,
+    HistoryCapabilities,
+    HistoryRecord,
+    HistoryStatus,
+    HistoryValue,
+)
+from tether.types.lifetime import WorkerLifetime
+from tether.types.mutations import CreateReceipt, MutationCommit, MutationReceipts, UpdateReceipt
+from tether.types.storage import (
+    ArchiveBundle,
+    ChangeFeed,
+    ChangeGap,
+    EffectPage,
+    EntryPage,
+    IntegrityError,
+    LeaseLost,
+    Page,
+    PersistedChange,
+    RecoveredTurn,
+    RootBusy,
+    SessionArchive,
+    SessionClosed,
+    SessionInit,
+    SessionPatch,
+    SessionQuery,
+    SessionSnapshot,
+    SessionSummary,
+    SessionTurnLog,
+    SessionView,
+    SpecRef,
+    StoreCapabilities,
+    StoreError,
+    ToolInfo,
+    TurnInProgress,
+    UnknownSession,
+    Unsupported,
+)
+from tether.types.telemetry import AuditContext, AuditRecord, Span, TraceIds, TraceScalar
 
-from tether.sessions import closing, content, links, resolution
-from tether.sessions.metadata import MetadataCommands
-from tether.sessions.service import SessionService
-from tether.types import AttachmentRef, JsonValue
-from tether.types.client import UNSET, Change, TurnHandle, Unset
-from tether.types.execution import Actor, Answer, Entry, HistoryRef, PendingConfirmation, Resolution
-from tether.types.storage import SessionInit, SessionPatch, SessionSummary
+from ._composition import (
+    Client,
+    ClientHost,
+    ClientPorts,
+    ClientSettings,
+    LocalJsonlSettings,
+    ProvidedStorage,
+    VolatileSettings,
+)
+from .protocol import ClientProtocol, ClientProvider, CredentialProvider
 
-from .reads import ClientReads
-
-
-class Client(ClientReads):
-    def __init__(self, service: SessionService, actor: Actor) -> None:
-        super().__init__(service.access, actor, service.archives)
-        self._service = service
-        self._metadata = MetadataCommands(service.access)
-
-    async def pending(self, session_id: str) -> PendingConfirmation | None:
-        return await self._access.metadata(
-            self._actor,
-            session_id,
-            lambda: content.pending_view(
-                self._access, self._service.engine, self._actor, session_id
-            ),
-            session_id=session_id,
-        )
-
-    def follow(
-        self, *, session_id: str | None = None, since: int | None = None
-    ) -> AsyncIterator[Change]:
-        return self._service.followers.follow(self._actor, session_id=session_id, since=since)
-
-    async def send(
-        self,
-        session_id: str,
-        text: str,
-        *,
-        request_id: str | None = None,
-        attachments: Sequence[AttachmentRef] = (),
-        spec: str | None = None,
-    ) -> TurnHandle:
-        return await self._service.turns.send(
-            self._actor, session_id, text, request_id=request_id, attachments=attachments, spec=spec
-        )
-
-    async def cancel(self, session_id: str) -> bool:
-        return await self._service.turns.cancel(self._actor, session_id)
-
-    async def confirm(
-        self,
-        session_id: str,
-        invocation_id: str,
-        answer: Answer,
-    ) -> TurnHandle | None:
-        return await self._service.turns.confirm(self._actor, session_id, invocation_id, answer)
-
-    async def create(
-        self,
-        *,
-        ref: str | None = None,
-        spec: str | None = None,
-        title: str | None = None,
-        tags: Sequence[str] = (),
-        settings: Mapping[str, JsonValue] | None = None,
-    ) -> SessionSummary:
-        return await self._metadata.create(
-            self._actor,
-            SessionInit(
-                ref=ref, spec=spec, title=title, tags=tuple(tags), settings=dict(settings or {})
-            ),
-        )
-
-    async def update(
-        self,
-        session_id: str,
-        *,
-        title: str | Unset | None = UNSET,
-        tags: Sequence[str] | None = None,
-        settings: Mapping[str, JsonValue] | None = None,
-    ) -> SessionSummary:
-        changes: dict[str, JsonValue] = {}
-        if not isinstance(title, Unset):
-            changes["title"] = title
-        if tags is not None:
-            changes["tags"] = list(tags)
-        if settings is not None:
-            changes["settings"] = dict(settings)
-        return await self._metadata.update(
-            self._actor, session_id, SessionPatch.model_validate(changes)
-        )
-
-    async def close(self, session_id: str) -> SessionSummary:
-        return await closing.close_session(
-            self._access, self._service.engine, self._actor, session_id
-        )
-
-    async def resolve(
-        self,
-        session_id: str,
-        invocation_id: str,
-        outcome: Literal["completed", "not_completed"],
-        *,
-        reason: str,
-    ) -> SessionSummary:
-        return await resolution.resolve(
-            self._access,
-            self._service.engine,
-            self._actor,
-            session_id,
-            Resolution(invocation_id=invocation_id, outcome=outcome, reason=reason),
-        )
-
-    async def link_history(
-        self,
-        session_id: str,
-        message_index: int,
-        previous: HistoryRef,
-        verified: HistoryRef,
-        *,
-        key: str,
-    ) -> Entry:
-        return await links.bind(
-            self._access, self._actor, session_id, message_index, previous, verified, key=key
-        )
-
-    async def resume(self, session_id: str) -> TurnHandle:
-        return await self._service.turns.resume(self._actor, session_id)
-
-    async def restore(self, session_id: str) -> SessionSummary:
-        return await self._service.archives.restore(self._actor, session_id)
+__all__ = [
+    "UNSET",
+    "Actor",
+    "AgentSpec",
+    "Answer",
+    "ArchiveBundle",
+    "ArchiveCapabilities",
+    "ArchiveLimits",
+    "ArchiveReadError",
+    "ArchiveSink",
+    "ArchiveSource",
+    "ArchivedSession",
+    "AttachmentRef",
+    "AttemptIdentity",
+    "AttemptRecorder",
+    "AuditContext",
+    "AuditRecord",
+    "AuditSink",
+    "AuthzRequest",
+    "CallDetail",
+    "CallManifest",
+    "Change",
+    "ChangeFeed",
+    "ChangeGap",
+    "Client",
+    "ClientCapabilities",
+    "ClientHost",
+    "ClientLimits",
+    "ClientPorts",
+    "ClientProtocol",
+    "ClientProvider",
+    "ClientSettings",
+    "Clock",
+    "CommitUnknown",
+    "CompactionRecord",
+    "ContextConfig",
+    "ContextError",
+    "ContextGroup",
+    "ContextInput",
+    "ContextPart",
+    "ContextPlan",
+    "ContextPreparation",
+    "ContextSource",
+    "ContextStrategy",
+    "ContextSummary",
+    "ContextUse",
+    "Count",
+    "CreateReceipt",
+    "Credential",
+    "CredentialProvider",
+    "Decision",
+    "Effect",
+    "EffectPage",
+    "EffectsUnresolved",
+    "EntriesAppended",
+    "Entry",
+    "EntryConflict",
+    "EntryPage",
+    "ExchangeBinding",
+    "ExchangeRefs",
+    "ExecutionDenied",
+    "ExecutionLimits",
+    "GuardInput",
+    "GuardVerdict",
+    "HistoryCapabilities",
+    "HistoryPage",
+    "HistoryProvider",
+    "HistoryRecord",
+    "HistoryRef",
+    "HistoryStatus",
+    "HistoryValue",
+    "IntegrityError",
+    "JsonValue",
+    "Lagged",
+    "LeaseLost",
+    "LocalJsonlSettings",
+    "Message",
+    "ModelAttemptDenied",
+    "ModelExecutionLimits",
+    "ModelLimits",
+    "ModelPort",
+    "ModelRequest",
+    "ModelResponse",
+    "ModelUnavailable",
+    "MutationCommit",
+    "MutationReceipts",
+    "NewEntry",
+    "NotInterrupted",
+    "NotRestorable",
+    "NotUnresolved",
+    "Page",
+    "Payload",
+    "PendingConfirmation",
+    "PersistedChange",
+    "Policy",
+    "PositiveInt",
+    "ProvidedStorage",
+    "Provider",
+    "ReadLimit",
+    "RecoveredTurn",
+    "Refusal",
+    "Replay",
+    "ReplyReset",
+    "ReplyText",
+    "RequestConflict",
+    "RequestTags",
+    "Resolution",
+    "ResolutionConflict",
+    "ResponseReceipt",
+    "ResultGuard",
+    "ResumeLimit",
+    "ResyncRequired",
+    "RetrievalDenied",
+    "RootBusy",
+    "SessionArchive",
+    "SessionClosed",
+    "SessionInit",
+    "SessionPatch",
+    "SessionQuery",
+    "SessionRemoved",
+    "SessionSnapshot",
+    "SessionState",
+    "SessionStore",
+    "SessionSummary",
+    "SessionTurnLog",
+    "SessionUpdated",
+    "SessionView",
+    "SourceRange",
+    "Span",
+    "SpecRef",
+    "StoreCapabilities",
+    "StoreError",
+    "StreamItem",
+    "TextDelta",
+    "TokenEstimate",
+    "TokenEstimator",
+    "TokenUsage",
+    "Tool",
+    "ToolCall",
+    "ToolContext",
+    "ToolInfo",
+    "ToolOutput",
+    "ToolSpec",
+    "TraceIds",
+    "TraceScalar",
+    "Tracer",
+    "TurnHandle",
+    "TurnInProgress",
+    "TurnResult",
+    "UnknownModelCall",
+    "UnknownSession",
+    "UnknownTurn",
+    "Unset",
+    "Unsupported",
+    "UpdateReceipt",
+    "UsageSoFar",
+    "VolatileSettings",
+    "WorkerLifetime",
+    "WorkerOutstanding",
+]

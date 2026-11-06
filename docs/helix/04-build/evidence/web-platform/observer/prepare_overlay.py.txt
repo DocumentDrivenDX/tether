@@ -1,0 +1,144 @@
+"""Create a private instrumentation overlay without changing candidate files."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import secrets
+import shutil
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "src"))
+from run_instrumented_qualification import (  # noqa: E402
+    _candidate_bytes_equal,
+    _digest_inventory,
+    _expected_app_manifest,
+)
+
+_PRIVATE_FILES = {
+    "observer_launcher.py": ROOT / "src/observer_launcher.py",
+    "observer_metadata.py": ROOT / "src/observer_metadata.py",
+    "read_observer.py": ROOT / "src/read_observer.py",
+    "tether_h2c_probe.py": ROOT / "src/tether_h2c_probe.py",
+}
+
+
+def prepare_overlay(base: Path, output: Path, settings_path: Path, schema: str, project_root: Path) -> dict[str, Any]:
+    if output.exists():
+        raise RuntimeError("overlay_output_exists")
+    base = base.resolve(strict=True)
+    settings_path = settings_path.resolve(strict=True)
+    project_root = project_root.resolve(strict=True)
+    if not (project_root / "scripts/qualify_live_apps.py").is_file():
+        raise RuntimeError("project_root_unrecognized")
+    sys.path.insert(0, str(project_root / "scripts"))
+    from selected_profiles_bundle import _local_inventory
+    base_map = _local_inventory(base)
+    if not base_map or "app.yaml" not in base_map or "src/app.py" not in base_map or "uv.lock" not in base_map:
+        raise RuntimeError("base_bundle_incomplete")
+    if any(path.is_symlink() for path in base.rglob("*")):
+        raise RuntimeError("base_bundle_symlink_refused")
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    if not isinstance(settings, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in settings.items()):
+        raise RuntimeError("settings_invalid")
+    if settings.get("TETHER_QUALIFICATION_SCENARIO") != "shared-session":
+        raise RuntimeError("shared_scenario_required")
+    if settings.get("TETHER_DIAG_SCHEMA") is not None:
+        raise RuntimeError("diagnostic_settings_already_present")
+    if not schema or not schema.replace("_", "").isalnum():
+        raise RuntimeError("observer_schema_invalid")
+    output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    shutil.copytree(base, output, symlinks=False)
+    nonce = secrets.token_hex(16)
+    values = {
+        "TETHER_DIAG_BASE_CANDIDATE_SHA256": _digest_inventory(base_map),
+        "TETHER_DIAG_SCHEMA": schema,
+        "TETHER_DIAG_PROBE_NONCE": nonce,
+        "TETHER_DIAG_PROTECTED_PATH": "/api/v1/capabilities",
+    }
+    base_manifest = (base / "app.yaml").read_text(encoding="utf-8")
+    expected_manifest = _expected_app_manifest(base_manifest, values)
+    if expected_manifest is None:
+        shutil.rmtree(output)
+        raise RuntimeError("base_app_manifest_shape_unsupported")
+    for name, source in _PRIVATE_FILES.items():
+        target = output / "src" / name
+        if target.exists():
+            shutil.rmtree(output)
+            raise RuntimeError("instrumentation_file_collision")
+        shutil.copyfile(source, target)
+    (output / "app.yaml").write_text(expected_manifest, encoding="utf-8")
+    inventory_path = output / "observer_payload_inventory.json"
+    if inventory_path.exists():
+        shutil.rmtree(output)
+        raise RuntimeError("inventory_file_collision")
+    payload_files = sorted(
+        path.relative_to(output).as_posix()
+        for path in output.rglob("*")
+        if path.is_file()
+    )
+    if any(path.is_symlink() for path in output.rglob("*")):
+        shutil.rmtree(output)
+        raise RuntimeError("overlay_symlink_refused")
+    inventory_path.write_text(
+        json.dumps({"schema_version": 1, "files": sorted([*payload_files, inventory_path.name])}, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    overlay_map = _local_inventory(output)
+    if not _candidate_bytes_equal(
+        base_map,
+        overlay_map,
+        base_manifest,
+        expected_manifest,
+        values,
+        inventory_path.read_text(encoding="utf-8"),
+    ):
+        shutil.rmtree(output)
+        raise RuntimeError("instrumentation_overlay_diff_invalid")
+    settings.update(values)
+    private_settings = output.parent / f"{output.name}-settings.json"
+    manifest = output.parent / f"{output.name}-private-manifest.json"
+    for target in (private_settings, manifest):
+        if target.exists():
+            shutil.rmtree(output)
+            raise RuntimeError("overlay_sidecar_exists")
+    private_settings.write_text(json.dumps(settings, sort_keys=True) + "\n", encoding="utf-8")
+    private_settings.chmod(0o600)
+    metadata = {
+        "schema_version": 1,
+        "mode": "instrumented-qualification-only",
+        "base_candidate_sha256": values["TETHER_DIAG_BASE_CANDIDATE_SHA256"],
+        "overlay_snapshot_sha256": _digest_inventory(overlay_map),
+        "nonce_sha256": hashlib.sha256(nonce.encode("ascii")).hexdigest(),
+        "candidate_modules_byte_identical": True,
+        "scenario_is_shared_session": True,
+    }
+    manifest.write_text(json.dumps(metadata, sort_keys=True) + "\n", encoding="utf-8")
+    manifest.chmod(0o600)
+    return metadata
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-bundle", type=Path, required=True)
+    parser.add_argument("--output-bundle", type=Path, required=True)
+    parser.add_argument("--settings-file", type=Path, required=True)
+    parser.add_argument("--diagnostic-schema", required=True)
+    parser.add_argument("--project-root", type=Path, required=True)
+    args = parser.parse_args()
+    try:
+        result = prepare_overlay(args.base_bundle, args.output_bundle, args.settings_file, args.diagnostic_schema, args.project_root)
+    except Exception as error:
+        code = str(error) if type(error) is RuntimeError else "preparation_failed"
+        print(json.dumps({"schema_version": 1, "status": "failed", "code": code}, sort_keys=True))
+        return 1
+    print(json.dumps({"schema_version": 1, "status": "prepared", **result}, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
