@@ -14,7 +14,7 @@ from tether.types.execution import (
     ResolutionConflict,
 )
 
-from .effects import unresolved_invocations
+from .effects import unresolved_invocations, unresolved_settlements
 from .governance import Governance
 from .results import result_content_key
 
@@ -167,6 +167,8 @@ async def unknown_result(gov: Governance, invocation_id: str, intent: Entry) -> 
 
 
 async def resolve(gov: Governance, value: Resolution) -> None:
+    if value.invocation_id in unresolved_settlements(gov.log.entries):
+        raise ExecutionDenied("settlement_reconciliation_required")
     decisions = await authorize(gov, value.invocation_id)
     if prior_resolution(gov.log.entries, value):
         return

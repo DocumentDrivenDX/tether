@@ -291,13 +291,13 @@ The public context_strategy_suite accepts an asynchronous fresh ContextStrategy 
 - `ScriptedContext` and `FixedEstimator` are deterministic dummies; `FullContext` is the default strategy. The default adapter supplies its declared wire-aware estimator; third-party adapters must supply an estimator explicitly.
 - Dummies and built-ins MUST pass their applicable logical suites above. Separate executor qualification MUST verify authorization, identity, usage, cancellation, byte/deadline/call bounds, protected pending/unknown groups, failed commits, source compatibility, real wire estimates and restart reconstruction; a logical suite report alone cannot establish those guarantees.
 
-## Proposed next consumer context bindings
+## Next consumer context bindings (development)
 
 After an accepted specification transition between completed call groups, the next model step MUST allocate a fresh preparation ordinal and bind the accepted specification id/version/digest, registry generation, current scope and model profile. It reauthorizes sources and estimates the complete new instructions/tool schemas/output reservation. Incompatible summaries and cached projections cannot be reused under the new bindings; original entries, tool manifests, approvals and unresolved effects remain authoritative and unchanged. A missing source, unsettled old-spec group or unknown transition acknowledgment refuses preparation rather than guessing a current application state.
 
 An application-scheduled auxiliary purpose/profile uses the same source-addressed coverage, current-read authorization, full-payload estimation and explicit deadline/byte/call bounds. It pins the authorized source frontier and profile revision/digest, offers no tools for naming/suggestions, and refuses an unavailable estimator or unknown per-tier capacity. It cannot borrow an unbounded summary allowance or use a stale answer projection after read revocation. The application supplies scheduling and the live caller credential; core records the accepted context/attempt/usage facts under its own lease operation.
 
-Acceptance MUST combine transition with cached-summary reuse, changed source access, new tool schemas and exact fit/overflow; verify original source immutability and zero egress on incompatible bindings. Auxiliary tests MUST revoke access between scheduling and estimation/egress, exhaust configured bounds, cancel retained counting work and reopen accepted versus uncertain context facts. These are proposed post-0.1 obligations requiring Erik LaBianca's acceptance before dependent implementation.
+Acceptance MUST combine transition with cached-summary reuse, changed source access, new tool schemas and exact fit/overflow; verify original source immutability and zero egress on incompatible bindings. Auxiliary tests MUST revoke access between scheduling and estimation/egress, exhaust configured bounds, cancel retained counting work and reopen accepted versus uncertain context facts. Erik LaBianca authorized implementation of these post-0.1 obligations on 2026-10-29; executed evidence governs the declared development subset.
 
 ## Precedence and Compatibility
 

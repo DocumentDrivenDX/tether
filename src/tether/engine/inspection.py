@@ -12,14 +12,19 @@ from tether.types.execution import (
     Actor,
     AgentSpec,
     ApprovalBinding,
+    AuthzRequest,
     CallManifest,
+    Decision,
     Entry,
     ExecutionDenied,
     ExecutionLimits,
     PendingConfirmation,
+    Policy,
     SessionState,
     Tool,
+    copy_actor,
 )
+from tether.types.lifetime import WorkerLifetime
 from tether.types.tooling import Normalized, definition, normalize
 
 from .tools import Registry
@@ -88,7 +93,10 @@ async def describe_pending(
         or manifest.tool not in registry.tools
     ):
         raise ExecutionDenied("approval_invalid")
-    tool = registry.tools[manifest.tool].tool
+    pinned = registry.tools[manifest.tool]
+    if digest(definition(pinned.original)) != pinned.sha256:
+        raise ExecutionDenied("approval_invalid")
+    tool = pinned.tool
     async with asyncio.timeout(limits.hook_timeout_seconds):
         args = await workers.call(
             session.id,
@@ -111,4 +119,45 @@ async def describe_pending(
         history_ref=source.history_ref,
         description=tool.description,
         expires_at=datetime.fromisoformat(expiry) if isinstance(expiry, str) else None,
+    )
+
+
+async def authorized_pending(
+    actor: Actor,
+    session: SessionState,
+    source: Entry,
+    request: Entry,
+    proposal: Message,
+    *,
+    lifetime: WorkerLifetime,
+    policy: Policy,
+    workers: Workers,
+    limits: ExecutionLimits,
+    registry: Registry,
+    specs: Mapping[str, AgentSpec],
+) -> PendingConfirmation:
+    try:
+        async with asyncio.timeout(limits.hook_timeout_seconds):
+            decision = Decision.model_validate(
+                await policy.authorize(
+                    AuthzRequest(
+                        actor=copy_actor(actor), action="read_session", resource=session.id
+                    )
+                )
+            )
+    except Exception:
+        raise ExecutionDenied("policy_denied") from None
+    if not decision.allowed or actor.id != session.owner:
+        raise ExecutionDenied("policy_denied")
+    workers.scopes[session.id] = lifetime
+    return await describe_pending(
+        actor,
+        session,
+        source,
+        request,
+        proposal,
+        registry,
+        specs,
+        workers,
+        limits,
     )

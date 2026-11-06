@@ -1,7 +1,7 @@
 """Recovery preparation only; Agent executes every eligible invocation."""
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from tether.types import Message
 from tether.types.canonical import digest
@@ -12,10 +12,12 @@ from tether.types.execution import (
     Entry,
     ExecutionDenied,
     NewEntry,
+    ResultGuard,
     ResumeLimit,
     ResumePlan,
     ResumeStep,
     ResumeTool,
+    TurnResult,
 )
 from tether.types.tooling import definition, tool_spec
 
@@ -43,7 +45,7 @@ async def planned(gov: Governance, registry: Registry, workers: Workers) -> Resu
             gov.log.session.id,
             _plan,
             tuple(gov.log.entries),
-            registry.tools.copy(),
+            dict(registry.tools),
             gov.log.session.id,
         )
     if len(resume_chain(gov.log.entries, plan.interrupted_turn_id)) > gov.limits.max_resumes:
@@ -247,3 +249,41 @@ async def restore(run: Run, plan: ResumePlan) -> None:
         run.recovery_tools = tuple(
             tool_spec(run.executor.registry.tools[name].tool) for name in names
         )
+
+
+async def execute(
+    gov: Governance,
+    registry: Registry,
+    workers: Workers,
+    guards: tuple[ResultGuard, ...],
+    specs: Mapping[str, AgentSpec],
+    create: Callable[[Governance, AgentSpec], Run],
+    runs: dict[str, Run],
+    accepted: Callable[[], None] | None,
+) -> TurnResult:
+    from .commands import resume_invocation
+    from .reconstruction import pinned_spec
+
+    await decisions(gov)
+    latest = next(
+        (entry for entry in reversed(gov.log.entries) if entry.kind == "turn_started"), None
+    )
+    spec = pinned_spec(gov.log.entries, specs)
+    gov.spec_id, gov.spec_version = spec.id, spec.version
+    if latest is not None and latest.facts.get("origin") == "client":
+        return await resume_invocation(gov, registry, workers, guards, spec, accepted)
+    if latest is not None and latest.facts.get("origin") in {
+        "auxiliary",
+        "spec_transition",
+        "reconcile_settlement",
+    }:
+        raise ExecutionDenied("operation_not_resumable")
+    plan = await planned(gov, registry, workers)
+    await accept(gov, plan, spec, registry, workers)
+    runs.pop(gov.log.session.id, None)
+    if accepted is not None:
+        accepted()
+    run = create(gov, spec)
+    await restore(run, plan)
+    runs[gov.log.session.id] = run
+    return await run.finish(continuing=bool(run.deferred_ids), recovered_final=not plan.steps)

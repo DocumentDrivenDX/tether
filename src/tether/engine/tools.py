@@ -13,7 +13,6 @@ from tether.context.provenance import compatible
 from tether.types import Message, ToolCall
 from tether.types.canonical import canonical, digest
 from tether.types.execution import (
-    ENGINE_CONTRACT_VERSION,
     AgentSpec,
     ApprovalBinding,
     CallManifest,
@@ -32,45 +31,16 @@ from tether.types.execution import (
 )
 from tether.types.tooling import Normalized, definition, normalize
 
-from .effects import unresolved_invocations
+from .edits import executable as edited_arguments
+from .effects import unresolved_invocations, unresolved_settlements
 from .governance import Governance, PolicyDenied, reason_code
 from .observers.metadata import Scope
 from .providers import provider_hook
+from .registry import PinnedTool as PinnedTool
+from .registry import Registry as Registry
 from .results import prepare_result
+from .settlement import finish as settle_result
 from .workers import Workers
-
-
-@dataclass(frozen=True)
-class PinnedTool:
-    tool: Tool
-    sha256: str
-
-
-class Registry:
-    def __init__(self, tools: tuple[Tool, ...], providers: tuple[Provider, ...]) -> None:
-        self.tools: dict[str, PinnedTool] = {}
-        self.providers = providers
-        ids = [p.id for p in providers]
-        if len(set(ids)) != len(ids) or any(
-            not 1 <= p.contract <= ENGINE_CONTRACT_VERSION for p in providers
-        ):
-            raise ValueError("provider_conflict")
-        for tool in (*tools, *(t for p in providers for t in p.tools())):
-            if tool.name in self.tools:
-                raise ValueError("provider_conflict")
-            self.tools[tool.name] = PinnedTool(tool, digest(definition(tool)))
-
-    def manifest(self, call: ToolCall, position: int) -> CallManifest:
-        pinned = self.tools[call.name]
-        return CallManifest(
-            position=position,
-            call_id=call.id,
-            tool=call.name,
-            args_digest=digest(call.arguments),
-            tool_digest=pinned.sha256,
-            effect=pinned.tool.effect,
-            replay=pinned.tool.replay,
-        )
 
 
 @dataclass(frozen=True)
@@ -88,9 +58,14 @@ class ToolExecutor:
         spec: AgentSpec,
         workers: Workers,
         guards: tuple[ResultGuard, ...],
+        *,
+        current_registry: Callable[[], Registry] | None = None,
     ) -> None:
         self.gov, self.registry, self.spec = gov, registry, spec
         self.workers, self.guards = workers, guards
+        self.current_registry = (
+            current_registry if current_registry is not None else lambda: registry
+        )
         self.calls: dict[str, Invocation] = {}
         self.pending: dict[str, PendingConfirmation] = {}
         self.contexts: dict[str, ToolContext] = {}
@@ -135,6 +110,8 @@ class ToolExecutor:
         return await self._dispatch(inv, pinned.tool, normalized)
 
     async def _gates(self, inv: Invocation, call: ToolCall, pinned: PinnedTool) -> Normalized:
+        if inv.manifest.effect == "effectful" and unresolved_settlements(self.gov.log.entries):
+            raise ExecutionDenied("settlement_unresolved")
         if inv.manifest.effect == "effectful" and self.unresolved(inv.id):
             await self.gov.fact(
                 "authorization",
@@ -154,6 +131,7 @@ class ToolExecutor:
         if (
             call.name not in self.spec.tools
             or digest(definition(pinned.tool)) != inv.manifest.tool_digest
+            or digest(definition(pinned.original)) != inv.manifest.tool_digest
         ):
             raise ExecutionDenied("definition_changed")
         source = await self.gov.read(inv.source.history_ref, source_index=inv.source.index)
@@ -168,6 +146,17 @@ class ToolExecutor:
                 proposal.arguments,
                 self.gov.limits.max_argument_bytes,
             )
+        edited = await edited_arguments(
+            self.gov,
+            self.workers,
+            pinned.tool,
+            inv.id,
+            inv.source,
+            inv.manifest,
+            proposal.arguments,
+        )
+        if edited is not None:
+            normalized = edited
         executable = call.model_copy(update={"arguments": normalized.arguments}, deep=True)
         for provider in self.registry.providers:
             result = await self._hook(
@@ -228,8 +217,20 @@ class ToolExecutor:
             spec_digest=digest(self.spec.model_dump(mode="json")),
             actor_id=self.gov.actor.id,
         )
+        edited = next((e for e in self.gov.log.entries if e.key == "approval_edit:" + inv.id), None)
+        if edited is not None:
+            binding = binding.model_copy(
+                update={
+                    "proposal_digest": edited.facts.get("proposal_digest"),
+                    "shown_digest": edited.facts.get("shown_digest"),
+                    "executable_digest": args.sha256,
+                }
+            )
         answered = next((e for e in self.gov.log.entries if e.key == "approval:" + inv.id), None)
         if answered is not None:
+            current = self.current_registry().tools.get(tool.name)
+            if current is None or current.sha256 != inv.manifest.tool_digest:
+                raise ExecutionDenied("approval_invalid")
             if answered.facts.get("binding") != binding.model_dump(mode="json"):
                 raise ExecutionDenied("approval_invalid")
             state = answered.facts.get("state")
@@ -249,6 +250,8 @@ class ToolExecutor:
                     raise ExecutionDenied("approval_invalid")
         if self.gov.log.session.approval != "manual" and not asks:
             return False
+        if inv.source.facts.get("origin") == "client":
+            raise ExecutionDenied("approval_required")
         now = self.gov.clock()
         ttl = self.gov.limits.approval_ttl_seconds
         pending = PendingConfirmation(
@@ -343,6 +346,25 @@ class ToolExecutor:
         message = await self._guard(tool, output, message)
         message = await self._after(inv, tool, args, message, output)
         status = "withheld" if message.is_error else "ok"
+        if output.settlement is not None:
+            message, entries = await prepare_result(
+                self.gov,
+                inv.id,
+                inv.manifest,
+                status,
+                "withheld" if message.is_error else None,
+                message,
+            )
+            if not await settle_result(
+                self.gov,
+                self.workers,
+                output.settlement,
+                inv.id,
+                entries,
+                withheld=message.is_error,
+            ):
+                raise ExecutionDenied("settlement_uncertain")
+            return message
         return await self.result(inv, status, "withheld" if message.is_error else None, message)
 
     async def _guard(self, tool: Tool, output: ToolOutput, message: Message) -> Message:

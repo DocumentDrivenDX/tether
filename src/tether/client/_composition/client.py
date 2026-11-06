@@ -20,6 +20,7 @@ from tether.types.execution import (
 )
 from tether.types.storage import SessionInit, SessionPatch, SessionSummary
 
+from ..operations import OperationClient
 from .reads import ClientReads
 
 
@@ -123,7 +124,7 @@ class ClientTurnOperations:
         )
 
 
-class Client(ClientTurnOperations, ClientReads):
+class Client(ClientTurnOperations, OperationClient, ClientReads):
     def __init__(self, service: SessionService, actor: Actor) -> None:
         super().__init__(service.access, actor, service.archives)
         self._service = service

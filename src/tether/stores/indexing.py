@@ -36,7 +36,12 @@ def entry_groups(session_id: str, entry: Entry) -> set[tuple[str, str]]:
         if isinstance(binding, dict)
         else entry.facts.get("invocation_id")
     )
-    if isinstance(inv, str) and entry.kind in {"confirmation", "tool_call", "resolved"}:
+    if isinstance(inv, str) and entry.kind in {
+        "confirmation",
+        "tool_call",
+        "resolved",
+        "settlement",
+    }:
         groups.add(("invocation", inv))
     groups.update(
         ("invocation", digest([session_id, entry.index, m.position])) for m in entry.call_manifest

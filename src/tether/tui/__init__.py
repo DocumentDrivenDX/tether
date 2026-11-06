@@ -228,7 +228,9 @@ class DemoApp(App[None]):
         if not self.is_running:
             return
         self.sessions = page.items
-        listing = self.query_one("#sessions", ListView)
+        listing = next((node for node in self.query(ListView) if node.id == "sessions"), None)
+        if listing is None:
+            return
         await listing.clear()
         for item in page.items:
             if not self.is_running:

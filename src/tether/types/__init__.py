@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import re
-from typing import Annotated, Literal, Protocol, runtime_checkable
+from typing import Annotated, Literal, Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
-MODEL_PORT_VERSION = 3
+MODEL_PORT_VERSION = 4
 PositiveInt = Annotated[int, Field(gt=0, strict=True)]
 Count = Annotated[int, Field(ge=0, strict=True)]
 PositiveSeconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
-Purpose = Literal["answer", "summary", "correction"]
+Purpose = Literal["answer", "summary", "correction", "auxiliary"]
 
 
 class Payload(BaseModel):
@@ -105,6 +105,16 @@ class RequestTags(Payload):
     turn_id: str
     model_call_id: str
     purpose: Purpose = "answer"
+    purpose_profile: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def profile_binding(self) -> Self:
+        if (self.purpose == "auxiliary") != (self.purpose_profile is not None):
+            raise ValueError("purpose_profile_invalid")
+        return self
+
     context: dict[str, tuple[str, ...]] = Field(default_factory=dict)
 
 
@@ -152,12 +162,15 @@ class TextDelta(Payload):
 StreamItem = TextDelta | ModelResponse
 
 
+MODEL_EXECUTION_DEFAULTS_VERSION = 1
+
+
 class ModelExecutionLimits(Payload):
-    max_response_bytes: PositiveInt
-    max_tool_argument_bytes: PositiveInt
-    max_attempts: PositiveInt
-    request_timeout_seconds: PositiveSeconds
-    max_retry_delay_seconds: PositiveSeconds
+    max_response_bytes: PositiveInt = 8192
+    max_tool_argument_bytes: PositiveInt = 512
+    max_attempts: PositiveInt = 2
+    request_timeout_seconds: PositiveSeconds = 5
+    max_retry_delay_seconds: PositiveSeconds = 0.01
 
 
 class ModelUnavailable(Exception):

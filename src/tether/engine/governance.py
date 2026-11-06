@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 
 from tether.types import Message, Purpose
 from tether.types._entry_snapshot import current_history_links, matching_sources
+from tether.types.approval_edits import ArgumentTransform
 from tether.types.canonical import digest
 from tether.types.execution import (
     Actor,
@@ -26,6 +27,7 @@ from tether.types.execution import (
 )
 from tether.types.history import HistoryRecord
 from tether.types.history_links import select as select_history_ref
+from tether.types.settlement import SettlementParticipant
 from tether.types.storage import IntegrityError
 from tether.types.usage import UsageLedger
 
@@ -65,10 +67,14 @@ class Governance:
         clock: Clock = utc_now,
         *,
         observers: Observers | None = None,
+        settlements: tuple[SettlementParticipant, ...] = (),
+        transforms: Mapping[str, ArgumentTransform] | None = None,
     ) -> None:
         self.actor, self.log, self.history, self.policy = actor, log, history, policy
         self.turn_id, self.limits, self.clock = turn_id, limits, clock
         self.observers = observers if observers is not None else Observers()
+        self.transforms = dict(transforms or {})
+        self.settlements = {participant.id: participant for participant in settlements}
         self.spec_id: str | None = None
         self.spec_version: str | None = None
         self.configure_usage(frozenset({turn_id}))
@@ -115,11 +121,20 @@ class Governance:
         )
         return (await self.commit([entry]))[0]
 
-    async def commit(self, entries: Sequence[NewEntry]) -> tuple[Entry, ...]:
-        return await settled(self._commit(entries))
+    async def commit(
+        self,
+        entries: Sequence[NewEntry],
+        *,
+        append: Callable[[Sequence[NewEntry]], Awaitable[tuple[Entry, ...]]] | None = None,
+    ) -> tuple[Entry, ...]:
+        return await settled(self._commit(entries, append))
 
-    async def _commit(self, entries: Sequence[NewEntry]) -> tuple[Entry, ...]:
-        accepted = await self.log.append(entries)
+    async def _commit(
+        self,
+        entries: Sequence[NewEntry],
+        append: Callable[[Sequence[NewEntry]], Awaitable[tuple[Entry, ...]]] | None,
+    ) -> tuple[Entry, ...]:
+        accepted = await (append if append is not None else self.log.append)(entries)
         if len(accepted) != len(entries):
             raise ExecutionDenied("commit_not_accepted")
         accepted_prefix = self.log.entries if accepted else ()

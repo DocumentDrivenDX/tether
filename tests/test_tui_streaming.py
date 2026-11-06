@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pytest
 from test_client_reads import harness as harness
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import Input, ListView, RichLog, Static
 from tui_event_waits import (
     let_pilot_screen_wait_use_outer_owner,
     wait_for_event_or_operation,
@@ -215,6 +215,33 @@ async def test_reconnect_clears_the_current_reply_without_persisting_it(tmp_path
             model.next_fragment.set()
             model.finish.set()
             await sending
+
+
+async def test_inflight_session_refresh_finishes_after_list_widget_is_unmounted(
+    tmp_path, monkeypatch
+):
+    app = DemoApp(tmp_path, volatile=True)
+    entered, release = asyncio.Event(), asyncio.Event()
+    async with asyncio.timeout(20), app.run_test():
+        await app._stop_follower()
+        assert app.client is not None
+        original = app.client.list
+
+        async def delayed_list():
+            page = await original()
+            entered.set()
+            await release.wait()
+            return page
+
+        monkeypatch.setattr(app.client, "list", delayed_list)
+        refresh = asyncio.create_task(app._refresh_sessions())
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            await app.query_one("#sessions", ListView).remove()
+        finally:
+            release.set()
+            await refresh
+        assert app.sessions
 
 
 async def test_foreign_gap_and_session_switch_never_merge_partial_replies(tmp_path):

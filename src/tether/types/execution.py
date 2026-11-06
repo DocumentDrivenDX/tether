@@ -16,12 +16,13 @@ from tether.types import (
     Payload,
     PositiveInt,
     PositiveSeconds,
+    Purpose,
     TokenUsage,
     ToolCall,
 )
 from tether.types.lifetime import WorkerLifetime
 
-ENGINE_CONTRACT_VERSION = 3
+ENGINE_CONTRACT_VERSION = 4
 
 HistoryStatus = Literal[
     "ready",
@@ -85,7 +86,7 @@ class AuthzRequest(Payload):
     held: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     requires: frozenset[str] = frozenset()
     permitted: frozenset[str] | None = None
-    purpose: Literal["answer", "summary", "correction"] | None = None
+    purpose: Purpose | None = None
     usage: UsageSoFar | None = None
 
 
@@ -108,6 +109,7 @@ class HistoryRef(Payload):
 
 
 class CallManifest(Payload):
+    registry_generation: str | None = Field(default=None, exclude_if=lambda value: value is None)
     position: int
     call_id: str
     tool: str
@@ -152,6 +154,9 @@ class ExecutionLimits(Payload):
 
 
 class ApprovalBinding(Payload):
+    proposal_digest: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    shown_digest: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    executable_digest: str | None = Field(default=None, exclude_if=lambda value: value is None)
     session_id: str
     invocation_id: str
     args_digest: str
@@ -172,6 +177,9 @@ class PendingConfirmation(ApprovalBinding):
 
 
 class Answer(Payload):
+    arguments: dict[str, JsonValue] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     approved: StrictBool
     note: str | None = None
 
@@ -191,7 +199,13 @@ class TurnResult(Payload):
     pending: tuple[PendingConfirmation, ...] = ()
 
 
+class SettlementStage(Payload):
+    participant: str = Field(min_length=1)
+    stage_id: str = Field(min_length=1)
+
+
 class ToolOutput(Payload):
+    settlement: SettlementStage | None = Field(default=None, exclude_if=lambda value: value is None)
     text: str
     attachments: tuple[AttachmentRef, ...] = ()
     facts: dict[str, JsonValue] = Field(default_factory=dict)

@@ -13,6 +13,7 @@ from tether.testing.execution import MemoryHistory, MemoryTurnLog
 from tether.types import Message, ToolCall
 from tether.types.context import ContextError, ContextSource
 from tether.types.execution import (
+    ENGINE_CONTRACT_VERSION,
     Actor,
     AgentSpec,
     AuthzRequest,
@@ -98,7 +99,9 @@ def test_registry_refuses_conflicts_and_invalid_definitions():
     assert Registry((), (provider,)).providers == (provider,)
     provider.contract = 3
     assert Registry((), (provider,)).providers == (provider,)
-    provider.contract = 4
+    provider.contract = ENGINE_CONTRACT_VERSION
+    assert Registry((), (provider,)).providers == (provider,)
+    provider.contract = ENGINE_CONTRACT_VERSION + 1
     with pytest.raises(ValueError, match="provider_conflict"):
         Registry((), (provider,))
     tool = DemoTool()

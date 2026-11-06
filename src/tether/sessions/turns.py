@@ -139,7 +139,7 @@ class OwnedTurns:
         if view is None:
             raise UnknownSession("unknown_session")
         if request_id is not None:
-            existing = await self._existing(actor, session_id, request_id, identity)
+            existing = await self.existing(actor, session_id, request_id, identity)
             if existing is not None:
                 return existing
         job = self.jobs.get(session_id)
@@ -148,22 +148,22 @@ class OwnedTurns:
                 raise TurnInProgress("turn_in_progress")
             if job.digest != identity:
                 raise RequestConflict("request_conflict")
-            return await self._accepted(actor, session_id, job)
+            return await self.accepted(actor, session_id, job)
         if view.summary.status == "closed":
             raise SessionClosed("session_closed")
         selected = spec if spec is not None else view.summary.spec_id or self.default_spec
         if selected is None:
             raise ExecutionDenied("spec_unavailable")
         definition = self.engine.spec(selected)
-        job = self._launch(
+        job = self.launch(
             session_id,
             start,
             identity,
             lambda job: self._run(actor, session_id, text, definition, job),
         )
-        return await self._accepted(actor, session_id, job)
+        return await self.accepted(actor, session_id, job)
 
-    def _launch(
+    def launch(
         self,
         session_id: str,
         start: TurnStart,
@@ -203,7 +203,7 @@ class OwnedTurns:
         turn_id = await self._pending_turn(actor, session_id, invocation_id)
         if turn_id is None or session_id in self.jobs:
             return None
-        job = self._launch(
+        job = self.launch(
             session_id,
             TurnStart(turn_id=turn_id),
             "approval:" + invocation_id,
@@ -239,13 +239,13 @@ class OwnedTurns:
             raise TurnInProgress("turn_in_progress")
         if not view.summary.resumable or view.summary.status != "interrupted":
             raise NotInterrupted("not_interrupted")
-        job = self._launch(
+        job = self.launch(
             session_id,
             TurnStart(turn_id=str(uuid4())),
             "resume",
             lambda job: self._resume(actor, session_id, job),
         )
-        return await self._accepted(actor, session_id, job)
+        return await self.accepted(actor, session_id, job)
 
     async def _resume(self, actor: Actor, session_id: str, job: Job) -> TurnResult:
         try:
@@ -325,7 +325,7 @@ class OwnedTurns:
                 job.ready.set_exception(error)
             raise
 
-    async def _existing(
+    async def existing(
         self, actor: Actor, session_id: str, request_id: str, identity: str
     ) -> TurnHandle | None:
         entries = await self.access.store_for(actor).lookup(
@@ -354,7 +354,7 @@ class OwnedTurns:
         )
         return Handle(self, actor, session_id, source.turn_id, task)
 
-    async def _accepted(self, actor: Actor, session_id: str, job: Job) -> TurnHandle:
+    async def accepted(self, actor: Actor, session_id: str, job: Job) -> TurnHandle:
         await asyncio.shield(job.ready)
         await self.access.authorize(
             actor,
@@ -371,7 +371,7 @@ class OwnedTurns:
                 session_id, actor.id, turn_id=job.start.turn_id
             ) as log:
                 if job.start.request_id is not None:
-                    existing = await self._existing(
+                    existing = await self.existing(
                         actor, session_id, job.start.request_id, job.digest
                     )
                     if existing is not None:
@@ -402,7 +402,7 @@ class OwnedTurns:
             if task.cancelled():
                 job.ready.cancel()
             else:
-                job.ready.set_exception(task.exception() or RuntimeError("turn_not_accepted"))
+                job.ready.set_exception(task.exception() or RuntimeError("turn_notaccepted"))
         if self.jobs.get(session_id) is job:
             self.jobs.pop(session_id)
         observe(task)

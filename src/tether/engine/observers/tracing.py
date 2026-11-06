@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -32,7 +33,9 @@ class GuardedSpan:
         return self._ids.traceparent if self._ids is not None else None
 
     def set_attribute(self, name: str, value: TraceScalar) -> None:
-        self._tracer.guard(lambda: self._span.set_attribute(name, value), None)
+        self._tracer.guard(
+            lambda: self._span.set_attribute(self._tracer.attribute(name), value), None
+        )
 
     def error(self, reason: str) -> None:
         self._tracer.guard(lambda: self._span.error(reason), None)
@@ -47,13 +50,29 @@ def copy_ids(value: object) -> TraceIds | None:
 
 
 class GuardedTracer:
-    def __init__(self, tracer: Tracer | None) -> None:
+    def __init__(
+        self,
+        tracer: Tracer | None,
+        *,
+        span_prefix: str = "tether",
+        attribute_namespace: str = "tether",
+    ) -> None:
+        for value in (span_prefix, attribute_namespace):
+            if (
+                type(value) is not str
+                or re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,127}", value) is None
+            ):
+                raise ValueError("telemetry_namespace_invalid")
+        self.span_prefix, self.attribute_namespace = span_prefix, attribute_namespace
         self.tracer = tracer if tracer is not None else NullTracer()
         self._failures = 0
         self._lock = Lock()
         self._current: ContextVar[GuardedSpan | None] = ContextVar(
             "tether_guarded_span", default=None
         )
+
+    def attribute(self, name: str) -> str:
+        return self.attribute_namespace + name[6:] if name.startswith("tether.") else name
 
     @property
     def failures(self) -> int:
@@ -76,6 +95,9 @@ class GuardedTracer:
     def start_as_current_span(
         self, name: str, *, attributes: Mapping[str, TraceScalar] | None = None
     ) -> Generator[Span, None, None]:
+        name = self.span_prefix + name[6:] if name.startswith("tether.") else name
+        if attributes is not None:
+            attributes = {self.attribute(key): value for key, value in attributes.items()}
         manager = self.guard(
             lambda: self.tracer.start_as_current_span(name, attributes=attributes), None
         )

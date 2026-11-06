@@ -33,7 +33,7 @@ ddx:
 
 **Contract ID**: CONTRACT-001
 **Type**: library (Python port)
-**Version**: v3
+**Version**: v4
 **Related**: ADR-001, ADR-002, ADR-011, ADR-012, SPIKE-001, SPIKE-002, CONTRACT-002
 
 ## Purpose
@@ -165,9 +165,9 @@ The native SDK may still parse ambient header configuration before this boundary
 fail closed with a static unavailable reason and no physical request or raw header diagnostic.
 Offline estimation uses a separate capture transport and creates no physical attempt.
 
-## Proposed auxiliary purpose/profile binding
+## Auxiliary purpose/profile binding (development revision 4)
 
-The next consumer contract revision proposes `purpose="auxiliary"` in addition to answer, summary and correction, with a required nonempty `purpose_profile` identifier for auxiliary calls. The configured profile has a pinned revision/digest and supplies model tier, instructions, explicit limits/source policy and caller-required identity. Naming and suggestion profiles are tool-free. Unknown profiles, missing caller credentials or inconsistent purpose/profile fields MUST refuse before egress; the adapter cannot downgrade the call to answer or fall back to application authority. Existing non-auxiliary tags do not silently acquire a profile.
+Development revision 4 adds `purpose="auxiliary"` in addition to answer, summary and correction, with a required nonempty `purpose_profile` identifier for auxiliary calls. The configured profile has a pinned revision/digest and supplies model tier, instructions, explicit limits/source policy and caller-required identity. Naming and suggestion profiles are tool-free. Unknown profiles, missing caller credentials or inconsistent purpose/profile fields MUST refuse before egress; the adapter cannot downgrade the call to answer or fall back to application authority. Existing non-auxiliary tags do not silently acquire a profile.
 
 The logical call, canonical request/cassette key, recorder binding and purpose-specific usage MUST retain the profile id/revision/digest. Every physical retry gets its own attempt identity, refreshes the same supplied live caller credential and repeats current policy. Auxiliary results use authorized HistoryProvider content; no mandatory session suggestion field is introduced. The new enum/field and replay compatibility require an explicit contract revision during accepted implementation; current 0.1 types are unchanged by this proposal.
 
@@ -235,3 +235,6 @@ experimental fixtures must be regenerated rather than silently repaired. The sel
 adapter remains nonstreaming and emits one whole-text delta bound to the successful transport
 attempt, including after a retry before any text. Live disclosure additionally requires Engine-owned
 proof of successful start and current session access; these frame claims alone establish neither.
+
+
+Revision 4 is development source and does not change the published 0.1.0 artifacts. `RequestTags.purpose_profile` MUST be nonempty exactly when purpose is auxiliary; it MUST be absent/None for other purposes and is omitted from serialization when None. AttemptIdentity purpose includes auxiliary; accepted logical operation facts bind the selected profile revision/digest. Existing answer/summary/correction representations remain unchanged when this optional field is absent. New auxiliary operation profiles use the journal attempt recorder and explicit caller identity; old model integrations require qualification before advertising auxiliary support.

@@ -1,13 +1,20 @@
 """Message view over the full content port; execution facts grant reachability elsewhere."""
 
 from tether.types import Message
-from tether.types.execution import Actor, ExecutionDenied, HistoryRef
+from tether.types.execution import Actor, ExecutionDenied, HistoryRef, MessageHistory, TurnLog
 from tether.types.history import HistoryProvider, HistoryRecord
+from tether.types.transactions import TurnHistoryProvider
 
 
 class MessageHistoryAdapter:
     def __init__(self, provider: HistoryProvider) -> None:
         self.provider = provider
+
+    def for_turn(self, log: TurnLog) -> MessageHistory:
+        provider = self.provider
+        if isinstance(provider, TurnHistoryProvider):
+            return MessageHistoryAdapter(provider.for_turn(log))
+        return self
 
     async def put(self, *, actor: Actor, session_id: str, key: str, message: Message) -> HistoryRef:
         return await self.provider.put(
