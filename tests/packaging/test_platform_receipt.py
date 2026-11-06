@@ -11,11 +11,11 @@ import web_quality
 import web_release_postcheck
 from qualify_live_apps_evidence import LIVE_CASE_IDS, profile_binding_sha256
 from qualify_selected_profiles import PROFILE_CASE_IDS
-from test_acceptance_closure import fixture_project
+from test_acceptance_closure import _write_performance_fixture, fixture_project
+from test_release_postcheck import aggregate as complete_aggregate
 from transport_fixture import shutdown_observation
 from web_artifacts import PROJECTS, inventory
 from web_closure import MANIFEST, PLAN, STP
-from web_gate_receipt import STAGES
 from web_platform_receipt import CARRIER_CRITERIA, PlatformEvidence, verify_live, verify_platform
 
 
@@ -150,6 +150,9 @@ def _fixture(root):
     original_data = json.loads(original.read_text())
     original_data["source_sha256"] = current
     original.write_text(json.dumps(original_data))
+    receipts, nodes = _write_performance_fixture(root, current)
+    manifest["tasks"]["WP-36"].update(tests=nodes, receipts=receipts)
+    _write(root, MANIFEST, manifest)
     return selected, receipt
 
 
@@ -360,17 +363,8 @@ def test_idle_or_different_transport_signal_cannot_substitute_for_held_worker(
 
 def test_postcheck_cannot_bypass_selected_platform_proofs(tmp_path, monkeypatch):
     selected, live = _fixture(tmp_path)
-    aggregate = {
-        "status": "passed",
-        "source_sha256": live["source_sha256"],
-        "command": "unit fixture only",
-        "recorded_at": "unit fixture",
-        "versions": live["versions"],
-        "stages": list(STAGES),
-        "test_results": [
-            {"node_id": "scripts/web_quality.py::" + stage, "outcome": "passed"} for stage in STAGES
-        ],
-    }
+    aggregate = complete_aggregate(tmp_path)
+    assert aggregate["source_sha256"] == live["source_sha256"]
     receipt = _write(tmp_path, "aggregate.json", aggregate)
     monkeypatch.chdir(tmp_path)
     arguments = ["postcheck", "--aggregate", str(receipt)]

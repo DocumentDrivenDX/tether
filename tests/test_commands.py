@@ -115,4 +115,9 @@ def test_shared_recipe_propagates_aggregate_suite_failure(monkeypatch: pytest.Mo
     monkeypatch.setattr(quality, "run_suite", suite)
     monkeypatch.setattr(sys, "argv", ["quality"])
     assert asyncio.run(quality.main()) == 2
-    suite.assert_awaited_once_with(sys.executable)
+    suite.assert_awaited_once_with(
+        sys.executable,
+        (),
+        child_deadline_seconds=quality.DEFAULT_CHILD_WATCHDOG_SECONDS,
+        evidence_path=None,
+    )

@@ -494,10 +494,10 @@ async def test_client_hung_sink_does_not_hold_mutation_or_root(tmp_path, limits,
         made = await client.create(ref="fabricated")
         changed = await client.update(made.id, title="Changed")
         assert changed.title == "Changed"
-        await asyncio.sleep(0)
-        assert engine.observers.delivery._runner is not None
-        runner = engine.observers.delivery._runner
-        await await_event_or_owners(entered, cast(asyncio.Future[object], runner))
+        # The runner may time out the hung sink and clear itself before this task
+        # resumes, so wait for the sink's own entry signal instead of the runner.
+        async with asyncio.timeout(5):
+            await entered.wait()
         assert not await app.aclose()
         reopened = await JsonlRoot.open(tmp_path)
         assert await reopened.aclose()

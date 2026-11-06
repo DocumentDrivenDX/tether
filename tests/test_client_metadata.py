@@ -100,7 +100,7 @@ async def test_metadata_uses_current_disclosure_policy_after_known_commit(harnes
 async def test_update_refuses_active_turn_then_succeeds_after_completion(turns):
     h = turns
     handle = await h.client.send(h.sid, "Fabricated")
-    await entered(h.model)
+    await entered(h.model, h.app.turns.jobs[h.sid].task)
     with pytest.raises(TurnInProgress):
         await h.client.update(h.sid, title="Busy")
     h.model.release.set()

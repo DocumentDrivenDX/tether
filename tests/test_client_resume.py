@@ -64,7 +64,7 @@ async def test_resume_acceptance_precedes_blocked_model_and_waiter_cancel_isolat
     async with app_for(h, fresh.engine, client_limits) as app:
         client = app.client(h.actor)
         handle = await client.resume(sid)
-        await entered(model)
+        await entered(model, app.turns.jobs[sid].task)
         summary = (await client.get(sid)).summary
         assert summary.status == "running"
         assert summary.active_turn_id == handle.turn_id

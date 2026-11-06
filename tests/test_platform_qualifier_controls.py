@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
-from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from qualify_live_apps_incomplete import LiveQualificationIncomplete
 from qualify_live_apps_lifecycle import (
     AppLogMonitor,
     _admin_cli,
@@ -16,13 +15,18 @@ from qualify_live_apps_lifecycle import (
     _wait_app_state,
     shutdown_report,
 )
+from qualify_live_apps_observation import (
+    LiveObservationPolicy,
+    use_live_observation_policy,
+)
 from qualify_web_platform import (
     Profile,
     _check_app,
     profile_from_environment,
     qualify,
 )
-from qualify_web_platform import _wait_app_state as wait_sync
+from qualify_web_platform_logs import restart_app as restart_sync
+from qualify_web_platform_logs import wait_app_state as wait_sync
 
 
 def _profile() -> Profile:
@@ -60,6 +64,20 @@ class _FakeProcess:
     async def wait(self) -> int:
         self.waited = True
         return int(self.returncode or 0)
+
+
+class _HangingProcess(_FakeProcess):
+    def __init__(self) -> None:
+        super().__init__(returncode=None)
+        self.exited = asyncio.Event()
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        await self.exited.wait()
+        return b"", b""
+
+    def kill(self) -> None:
+        super().kill()
+        self.exited.set()
 
 
 def test_admin_environment_keeps_only_safe_inherited_values() -> None:
@@ -150,22 +168,19 @@ def test_async_admin_cli_fails_closed_without_echoing_process_output(
 def test_async_admin_cli_kills_and_joins_timed_out_process(monkeypatch: pytest.MonkeyPatch) -> None:
     import qualify_live_apps_lifecycle as lifecycle
 
-    process = _FakeProcess()
+    process = _HangingProcess()
     monkeypatch.setattr(lifecycle.shutil, "which", lambda _name: "/bin/databricks")
 
     async def create(*_args: object, **_kwargs: object) -> _FakeProcess:
         return process
 
-    async def timeout(_awaitable: object, _seconds: float) -> object:
-        if inspect.iscoroutine(_awaitable):
-            _awaitable.close()
-        raise TimeoutError
-
     monkeypatch.setattr(lifecycle.asyncio, "create_subprocess_exec", create)
-    monkeypatch.setattr(lifecycle.asyncio, "wait_for", timeout)
 
     async def run() -> None:
-        with pytest.raises(RuntimeError, match="qualification_admin_cli_timeout"):
+        with (
+            use_live_observation_policy(LiveObservationPolicy(0)),
+            pytest.raises(LiveQualificationIncomplete, match="live_admin_command_not_completed"),
+        ):
             await _admin_cli("admin", None, {}, "apps", "get", "app")
 
     asyncio.run(run())
@@ -173,7 +188,7 @@ def test_async_admin_cli_kills_and_joins_timed_out_process(monkeypatch: pytest.M
     assert process.waited
 
 
-def test_monitor_timeout_classifies_parse_failure_and_log_eof() -> None:
+def test_monitor_reports_not_observed_without_classifying_unobserved_causes() -> None:
     async def monitor_with(
         *, parse_failed: bool, reader_done: bool, returncode: int | None
     ) -> tuple[str, _FakeProcess]:
@@ -191,23 +206,22 @@ def test_monitor_timeout_classifies_parse_failure_and_log_eof() -> None:
         if reader_done:
             await asyncio.sleep(0)
         try:
-            await monitor.wait_shutdown_report(timeout_seconds=0)
+            with use_live_observation_policy(LiveObservationPolicy(0)):
+                await monitor.wait_shutdown_report()
         except RuntimeError as error:
             return str(error), process
         raise AssertionError("monitor timeout unexpectedly succeeded")
 
-    assert asyncio.run(monitor_with(parse_failed=True, reader_done=False, returncode=None))[0] == (
-        "live_shutdown_report_malformed"
-    )
-    assert asyncio.run(monitor_with(parse_failed=False, reader_done=True, returncode=0))[0] == (
-        "live_shutdown_log_stream_ended"
-    )
-    assert asyncio.run(monitor_with(parse_failed=False, reader_done=True, returncode=4))[0] == (
-        "live_shutdown_log_follow_failed"
-    )
-    assert asyncio.run(monitor_with(parse_failed=False, reader_done=False, returncode=None))[0] == (
-        "live_shutdown_report_missing"
-    )
+    for parse_failed, reader_done, returncode in (
+        (True, False, None),
+        (False, True, 0),
+        (False, True, 4),
+        (False, False, None),
+    ):
+        reason, _process = asyncio.run(
+            monitor_with(parse_failed=parse_failed, reader_done=reader_done, returncode=returncode)
+        )
+        assert reason == "live_shutdown_report_not_observed"
 
 
 def test_monitor_close_terminates_process_and_waits_reader() -> None:
@@ -224,19 +238,19 @@ def test_monitor_close_terminates_process_and_waits_reader() -> None:
     assert asyncio.run(run()) == (True, True)
 
 
-def test_monitor_close_kills_process_when_reader_does_not_finish(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import qualify_live_apps_lifecycle as lifecycle
+def test_monitor_close_kills_process_when_reader_does_not_finish() -> None:
+    class _FollowerProcess(_FakeProcess):
+        def __init__(self) -> None:
+            super().__init__(returncode=None)
+            self.closed = asyncio.Event()
 
-    async def run() -> _FakeProcess:
-        finished = asyncio.Event()
+        def kill(self) -> None:
+            super().kill()
+            self.closed.set()
 
-        async def wait_for_reader() -> None:
-            await finished.wait()
-
-        task = asyncio.create_task(wait_for_reader())
-        process = _FakeProcess(returncode=None)
+    async def run() -> _FollowerProcess:
+        process = _FollowerProcess()
+        task = asyncio.create_task(process.closed.wait())
         monitor = AppLogMonitor(
             cast(Any, process),
             "call",
@@ -244,15 +258,14 @@ def test_monitor_close_kills_process_when_reader_does_not_finish(
             asyncio.get_running_loop().create_future(),
             reader=cast(Any, task),
         )
-
-        async def wait_for(awaitable: object, *_args: object, **_kwargs: object) -> None:
-            del awaitable
-            finished.set()
-            await task
-            raise TimeoutError
-
-        monkeypatch.setattr(lifecycle.asyncio, "wait_for", wait_for)
-        await monitor.aclose()
+        with (
+            use_live_observation_policy(LiveObservationPolicy(0)),
+            pytest.raises(
+                LiveQualificationIncomplete, match="live_log_follower_cleanup_not_observed"
+            ),
+        ):
+            await monitor.aclose()
+        assert task.done()
         return process
 
     process = asyncio.run(run())
@@ -275,14 +288,14 @@ def test_async_wait_app_state_returns_for_accepted_pair_and_times_out_at_zero(
         )
 
     monkeypatch.setattr(lifecycle, "_admin_cli", get_state)
-    asyncio.run(
-        _wait_app_state("admin", None, {}, "app", {("STOPPED", "STOPPED")}, timeout_seconds=1)
-    )
+    with use_live_observation_policy(LiveObservationPolicy(1)):
+        asyncio.run(_wait_app_state("admin", None, {}, "app", {("STOPPED", "STOPPED")}))
     assert calls == 1
-    with pytest.raises(RuntimeError, match="qualification_app_state_timeout"):
-        asyncio.run(
-            _wait_app_state("admin", None, {}, "app", {("RUNNING", "ACTIVE")}, timeout_seconds=0)
-        )
+    with (
+        use_live_observation_policy(LiveObservationPolicy(0)),
+        pytest.raises(LiveQualificationIncomplete, match="live_app_state_not_observed"),
+    ):
+        asyncio.run(_wait_app_state("admin", None, {}, "app", {("RUNNING", "ACTIVE")}))
 
 
 @pytest.mark.parametrize(
@@ -404,99 +417,30 @@ def test_check_app_rejects_each_deployment_state(monkeypatch: pytest.MonkeyPatch
         _check_app("p", settings)
 
 
-def test_platform_cli_wait_app_state_success_and_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    import qualify_web_platform as platform
-
-    monkeypatch.setattr(
-        platform,
-        "_cli",
-        lambda *_args, **_kwargs: json.dumps(
+def test_platform_cli_wait_app_state_success_and_deadline() -> None:
+    def cli(*_args: object, **_kwargs: object) -> str:
+        return json.dumps(
             {"app_status": {"state": "RUNNING"}, "compute_status": {"state": "ACTIVE"}}
-        ),
-    )
-    wait_sync("p", "app", {("RUNNING", "ACTIVE")}, timeout=1)
-    with pytest.raises(RuntimeError, match="qualification_app_state_timeout"):
-        wait_sync("p", "app", {("STOPPED", "STOPPED")}, timeout=0)
+        )
+
+    wait_sync("p", "app", {("RUNNING", "ACTIVE")}, deadline=None, cli=cli)
+    with pytest.raises(LiveQualificationIncomplete, match="qualification_app_state_not_observed"):
+        wait_sync("p", "app", {("STOPPED", "STOPPED")}, deadline=0.0, cli=cli)
 
 
-def test_restart_app_stops_log_process_and_requires_healthy_restart(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import qualify_web_platform as platform
-
-    settings = _profile()
-    process = SimpleNamespace(
-        stdout=None,
-        stderr=None,
-        returncode=0,
-        poll=lambda: 0,
-        communicate=lambda timeout=None: (
-            'TETHER_SHUTDOWN_REPORT {"complete":true,"outstanding":[],"asgi_http_versions":["2"]}',
-            "",
-        ),
-        terminate=lambda: None,
-        kill=lambda: None,
-    )
-    monkeypatch.setattr(platform.shutil, "which", lambda _name: "/bin/databricks")
-    monkeypatch.setattr(platform.subprocess, "Popen", lambda *args, **kwargs: process)
+def test_restart_app_is_incomplete_without_attachment_acknowledgment() -> None:
     calls: list[tuple[str, ...]] = []
 
-    def cli(profile: str, *args: str, **kwargs: object) -> str:
-        del profile, kwargs
+    def cli(_profile: str, *args: str, **_kwargs: object) -> str:
         calls.append(args)
-        if args[:2] == ("apps", "list-deployments"):
-            return "{}"
         return "{}"
 
-    monkeypatch.setattr(platform, "_cli", cli)
-    monkeypatch.setattr(platform, "_wait_app_state", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(platform.time, "sleep", lambda _seconds: None)
-    platform._restart_app("p", settings)
-    assert calls[0][:2] == ("apps", "stop")
-    assert calls[-1][:2] == ("apps", "start")
-
-
-@pytest.mark.parametrize(
-    ("log", "expected"),
-    [
-        (
-            'TETHER_SHUTDOWN_REPORT {"complete":false,"outstanding":["client_host"]}',
-            "bounded_shutdown_report_incomplete",
-        ),
-        (
-            'TETHER_SHUTDOWN_REPORT {"complete":true,"outstanding":[],"asgi_http_versions":["1"]}',
-            "apps_backend_http2_not_observed",
-        ),
-        ("TETHER_SHUTDOWN_REPORT {bad json", "bounded_shutdown_report_incomplete"),
-    ],
-)
-def test_restart_app_rejects_incomplete_or_wrong_protocol_report(
-    monkeypatch: pytest.MonkeyPatch, log: str, expected: str
-) -> None:
-    import qualify_web_platform as platform
-
-    process = SimpleNamespace(
-        stdout=None,
-        stderr=None,
-        returncode=0,
-        poll=lambda: 0,
-        communicate=lambda timeout=None: (log, ""),
-        terminate=lambda: None,
-        kill=lambda: None,
-    )
-    monkeypatch.setattr(platform.shutil, "which", lambda _name: "/bin/databricks")
-    monkeypatch.setattr(platform.subprocess, "Popen", lambda *_args, **_kwargs: process)
-    starts: list[bool] = []
-    monkeypatch.setattr(
-        platform,
-        "_cli",
-        lambda _profile, *args, **_kwargs: starts.append(args[1] == "start") or "{}",
-    )
-    monkeypatch.setattr(platform, "_wait_app_state", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(platform.time, "sleep", lambda _seconds: None)
-    with pytest.raises(RuntimeError, match=expected):
-        platform._restart_app("p", _profile())
-    assert any(starts)
+    with pytest.raises(
+        LiveQualificationIncomplete,
+        match="qualification_log_observer_readiness_unavailable",
+    ):
+        restart_sync("p", "app", None, cli)
+    assert calls == []
 
 
 @pytest.mark.parametrize(
@@ -539,7 +483,7 @@ def test_platform_qualify_rejects_ingress_before_database_or_remote(
 
     monkeypatch.setattr(platform, "_database_probe", database)
     monkeypatch.setattr(platform, "_remote_probe", remote)
-    operation = qualify("profile", _profile(), restart_app=False)
+    operation = qualify("profile", _profile(), restart_app=False, watchdog_seconds=None)
     if expected is None:
         asyncio.run(operation)
         assert calls == ["app", "database", "remote"]
@@ -577,7 +521,7 @@ def test_platform_qualify_runs_restart_profile_when_selected(
     monkeypatch.setattr(platform, "_database_probe", lambda *_args: _mark(calls, "database"))
     monkeypatch.setattr(platform, "_remote_probe", lambda *_args, **_kwargs: _mark(calls, "remote"))
     with pytest.raises(RuntimeError, match="apps_ingress_http2_auth_gate_failed"):
-        asyncio.run(qualify("profile", _profile(), restart_app=True))
+        asyncio.run(qualify("profile", _profile(), restart_app=True, watchdog_seconds=None))
     assert calls == []
 
 

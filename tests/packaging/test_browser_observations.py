@@ -4,6 +4,7 @@ import json
 
 import pytest
 from browser_evidence import playwright_results, record, vitest_results
+from process import CommandIncompleteError
 from web_artifacts import inventory
 
 
@@ -60,11 +61,18 @@ def test_observed_identity_is_relative_and_private_metadata_is_not_copied(tmp_pa
     assert str(tmp_path) not in json.dumps(results)
 
 
-@pytest.mark.parametrize("outcome", ["skipped", "failed", "timedOut"])
+@pytest.mark.parametrize("outcome", ["skipped", "failed"])
 def test_failed_or_skipped_browser_observation_blocks_receipt(tmp_path, outcome):
     report(tmp_path, "browser", status=outcome)
     with pytest.raises(ValueError, match="not_all_passed"):
         record(tmp_path, "test:e2e", inventory(tmp_path))
+
+
+def test_timed_out_browser_observation_is_incomplete_not_a_receipt(tmp_path):
+    report(tmp_path, "browser", status="timedOut")
+    with pytest.raises(CommandIncompleteError, match="watchdog_exhausted"):
+        record(tmp_path, "test:e2e", inventory(tmp_path))
+    assert not (tmp_path / "artifacts" / "browser-receipt.json").exists()
 
 
 def test_missing_or_stale_report_cannot_qualify(tmp_path):

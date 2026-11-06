@@ -22,6 +22,13 @@ def test_observed_pass_uses_exact_collected_parametrized_identity(tmp_path):
     assert junit_results(path, [node]) == [{"node_id": node, "outcome": "passed"}]
 
 
+def test_observed_pass_keeps_node_separators_inside_parameter_ids(tmp_path):
+    name = "test_one[tests/test_fake.py::test_complete]"
+    path = report(tmp_path, f'<testcase classname="tests.test_example" name="{name}"/>')
+    node = f"tests/test_example.py::{name}"
+    assert junit_results(path, [node]) == [{"node_id": node, "outcome": "passed"}]
+
+
 @pytest.mark.parametrize(
     ("tag", "outcome"), [("failure", "failed"), ("error", "failed"), ("skipped", "skipped")]
 )

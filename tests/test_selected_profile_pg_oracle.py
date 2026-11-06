@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import socket
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -54,11 +55,20 @@ def _postgres_tool(name: str) -> str:
 
 def _run_postgres_tool(name: str, arguments: list[str], *, timeout: float) -> None:
     async def run() -> None:
+        executable = _postgres_tool(name)
+        environment = None
+        if sys.platform == "darwin":
+            # The postmaster refuses to start under an unset or "C" macOS locale.
+            environment = {
+                "LC_ALL": "en_US.UTF-8",
+                "PATH": os.pathsep.join((str(Path(executable).parent), "/usr/bin", "/bin")),
+            }
         process = await asyncio.create_subprocess_exec(
-            _postgres_tool(name),
+            executable,
             *arguments,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
+            env=environment,
         )
         try:
             async with asyncio.timeout(timeout):

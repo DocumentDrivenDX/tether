@@ -68,7 +68,11 @@ def junit_results(path: Path, required: list[str]) -> list[dict[str, str]]:
         raise ValueError("missing_observed_test_report")
     lookup = {}
     for node in required:
-        file, *parts = node.split("::")
+        # Parameter ids may themselves contain "::"; only split the path before them.
+        bracket = node.find("[")
+        head, parameters = (node, "") if bracket < 0 else (node[:bracket], node[bracket:])
+        file, *parts = head.split("::")
+        parts[-1] += parameters
         key = (".".join([file.removesuffix(".py").replace("/", "."), *parts[:-1]]), parts[-1])
         if key in lookup:
             raise ValueError("ambiguous_observed_test_identity")

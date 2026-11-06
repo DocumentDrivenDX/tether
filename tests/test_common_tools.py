@@ -177,6 +177,9 @@ async def _cleanup_bash_process(task, launched) -> None:
         return
     process = launched[0]
     pgid = process.pid
+    # Some platforms report EPERM, not absence, for a group whose killed leader has
+    # not been reaped yet; the group was SIGKILLed above, so reaping cannot block.
+    await await_retained(asyncio.create_task(process.wait()))
     _signal_owned_group(pgid)
     if process.returncode is None:
         with suppress(ProcessLookupError):

@@ -111,7 +111,7 @@ async def test_close_race_has_one_closure(harness):
 async def test_close_refuses_active_task_without_canceling_it(turns):
     h = turns
     handle = await h.client.send(h.sid, "Fabricated")
-    await entered(h.model)
+    await entered(h.model, h.app.turns.jobs[h.sid].task)
     with pytest.raises(TurnInProgress):
         await h.client.close(h.sid)
     assert (await h.client.get(h.sid)).summary.status == "running"

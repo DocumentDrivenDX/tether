@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from packages.databricks.tests.test_carrier_shutdown import _connect_when_listening
+from test_carrier_shutdown import _connect_when_listening
 
 pytestmark = pytest.mark.anyio
 
