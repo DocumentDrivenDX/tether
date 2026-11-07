@@ -1,0 +1,40 @@
+{
+  "kind": "tether.dependency-matrix",
+  "version": 1,
+  "profile": "highest",
+  "source_commit": "5a4c0b5adb69c4d3e508836514d5b094a93152c8",
+  "source_dirty": true,
+  "python": "3.11.17 (main, Oct  3 2026, 00:54:14) [Clang 22.1.3 ]",
+  "platform": "Darwin arm64",
+  "declared_ranges": {
+    "anyio": "anyio>=4.15.1,<5",
+    "pydantic": "pydantic>=2.12,<2.15",
+    "pydantic-ai-slim": "pydantic-ai-slim[openai]>=2.59.0,<2.63",
+    "psycopg": "psycopg[binary,pool]>=3.3.6,<3.4"
+  },
+  "requested": {
+    "anyio": "anyio>=4.15.1,<5",
+    "pydantic": "pydantic>=2.12,<2.15",
+    "pydantic-ai-slim": "pydantic-ai-slim[openai]>=2.59.0,<2.63",
+    "psycopg": "psycopg[binary,pool]>=3.3.6,<3.4"
+  },
+  "resolved": {
+    "anyio": "4.16.0",
+    "pydantic": "2.14.3",
+    "pydantic-ai-slim": "2.62.0",
+    "psycopg": "3.3.8",
+    "pydantic-core": "2.50.4",
+    "pydantic-graph": "2.62.0",
+    "psycopg-binary": "3.3.8",
+    "psycopg-pool": "3.3.3",
+    "openai": "3.46.0",
+    "genai-prices": "0.2.1",
+    "griffe": null,
+    "opentelemetry-api": "1.45.1",
+    "httpx": "0.28.1"
+  },
+  "suite": "scripts/test_suite.py (full inventory, bounded groups, 85% branch floor)",
+  "suite_returncode": 0,
+  "started": "2026-11-07T02:08:46.399482+00:00",
+  "finished": "2026-11-07T02:23:27.428156+00:00"
+}

@@ -14,7 +14,7 @@ protocol.
 
 ## Install the core
 
-This guide targets the `0.3.0` release. Published core `0.2.0`
+This guide targets the `0.3.1` release. Published core `0.2.0`
 has an earlier client facade without `ClientHost`; it cannot replace this
 candidate. Candidate Python interface packages require the exact core cohort.
 In the checkout, `uv sync --frozen` resolves that workspace source. The registry
@@ -104,6 +104,25 @@ async def run() -> None:
         print(result.messages[-1].content)
 ```
 
+### Set the limits for production
+
+The `ModelExecutionLimits` defaults are conservative floors, sized for the
+fabricated doubles and tests: `max_response_bytes` 8192,
+`max_tool_argument_bytes` 512, `max_attempts` 2, `request_timeout_seconds` 5
+and `max_retry_delay_seconds` 0.01. They refuse ordinary production responses
+and tool arguments rather than letting an unbounded one through. A production
+application is expected to set every `ModelExecutionLimits` field for its model
+tiers and tools, and to set `ClientLimits.read_timeout_seconds`,
+`heartbeat_interval_seconds`, `shutdown_timeout_seconds`, `max_active_turns`
+and `max_request_bytes` for its deployment. The example above shows one such
+set; the reference terminal client allows 1 MiB responses. Measure your own
+largest responses and tool arguments before choosing values.
+
+The default values are versioned by `MODEL_EXECUTION_DEFAULTS_VERSION` and
+`CLIENT_DEFAULTS_VERSION` (both 1 in 0.3.1). A release that changes a default
+bumps the matching version and names the change in its release notes; defaults
+never change silently.
+
 `ClientHost.open()` returns a ready host and `async with` initiates its bounded
 shutdown. `await host.aclose()` returns `False` if physical work remains;
 `host.drained` reports whether shutdown has settled. After initiating shutdown,
@@ -151,6 +170,46 @@ async with fabricated_storage() as storage:
         client = host.client(actor)
         # Exercise the application against the public client protocol.
 ```
+
+## Call from synchronous code
+
+Tether's public I/O is asynchronous and each host belongs to the event loop that
+opened it. Tether ships no blocking facade. A synchronous web framework owns
+the bridge: run one event loop in a thread for the process, open the host on
+that loop, and send every call through the same portal.
+
+```python
+from contextlib import asynccontextmanager
+
+from anyio.from_thread import start_blocking_portal
+
+from tether.client import ClientHost
+
+
+@asynccontextmanager
+async def open_host(settings):
+    async with await ClientHost.open(settings) as host:
+        yield host
+
+
+portal_cm = start_blocking_portal()
+portal = portal_cm.__enter__()  # one loop thread for the process
+host_cm = portal.wrap_async_context_manager(open_host(settings))
+host = host_cm.__enter__()
+
+
+def send_sync(actor, session_id, text, request_id):
+    async def send():
+        client = host.client(actor)
+        handle = await client.send(session_id, text, request_id=request_id)
+        return await handle.result()
+
+    return portal.call(send)
+```
+
+On shutdown, call `host_cm.__exit__(None, None, None)`, then
+`portal_cm.__exit__(None, None, None)`. Never call a host from a second event loop; a wrong-loop call
+raises.
 
 ## Optional terminal UI and remote client
 

@@ -14,8 +14,14 @@ Tether's policy, validation, approval and commit gates. Model doubles and shared
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
 Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Explicit durable resume is implemented for the qualified local profile. Optional PostgreSQL18 session storage and independent content history are implemented for the qualified database profile. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
 
-The declared support profile is macOS arm64, Python 3.11.17, the locked dependency versions,
-local POSIX JSONL storage and PostgreSQL 18, including the optional embedded helper. Live
+The complete release gate (`make check`) has passed on macOS arm64 with Python 3.11.17, the
+locked dependency versions, local POSIX JSONL storage and PostgreSQL 18, including the optional
+embedded helper. That is the qualified platform. Base and extras installs of published 0.2.0
+from PyPI also pass on Linux aarch64 and x86_64 with Python 3.11
+([receipt](docs/helix/03-test/evidence/release-020-publication-20261106.md)), but the complete
+suite has not yet passed on Linux; the `Release gate` workflow runs it there. Published base
+dependency ranges and the versions that passed at each end are in the
+[dependency matrix](docs/helix/03-test/evidence/dependency-matrix-20261106.md). Live
 compatible-model evidence covers the recorded local DS4/Qwen text/function-tool profile,
 with explicit response caps, approximate token estimates and configured safety margins.
 The [P0 qualification receipt](docs/helix/03-test/evidence/p0-qualification-20261028.md)
@@ -23,7 +29,7 @@ names exact versions, workloads, boundary refusals and process-fault evidence. A
 operating systems, Python versions, model servers, native media/reasoning, Gateway joins
 and the OpenTelemetry exporter require separate qualification.
 
-## Embeddable web interfaces (unreleased)
+## Embeddable web interfaces (source only, not on PyPI)
 
 The public `tether.client` boundary now supplies typed protocols, explicit
 `ClientHost` construction and ownership, journal-backed turn results and targeted
@@ -84,8 +90,8 @@ uvx --from 'novirhiza-tether[tui,openai]' tether --openai-api-baseurl=http://loc
 
 `uvx tether` looks for a distribution named `tether`; this project installs as
 `novirhiza-tether` and provides the `tether` executable.
-These changes are currently unreleased. To test the current checkout through uvx,
-use `uvx --from '.[tui,openai]' tether --openai-api-baseurl=http://localhost:18001/v1`.
+To run the current checkout through uvx instead of the published package, use
+`uvx --from '.[tui,openai]' tether --openai-api-baseurl=http://localhost:18001/v1`.
 Use HTTP if your server serves HTTP; HTTPS keeps certificate verification enabled.
 
 The launcher discovers `/models`, prefers an advertised `-chat` alias, and shows
@@ -132,6 +138,51 @@ both URL and authentication, so combining it with an explicit URL or authorizati
 file is refused. Inference API compatibility, streaming, discovery and credentials
 are separate capabilities; this shortcut does not imply discovery/auth support for
 other gateway products.
+
+### Calling the gateway on behalf of a signed-in user
+
+An application that already holds the signed-in user's token for the current request
+passes it as that request's caller credential. Tether never reads, stores or logs the
+token; the application owns where it comes from and how long it lives.
+
+```python
+from tether.adapters.openai_compat import OpenAICompatModel
+from tether.types.execution import Actor
+
+
+class RequestToken:
+    """One request's user token. Build a new one per request; never cache it."""
+
+    def __init__(self, token: str) -> None:
+        self._token = token
+
+    async def authorization(self) -> str:
+        return f"Bearer {self._token}"
+
+
+model = OpenAICompatModel(
+    base_url="https://WORKSPACE/serving-endpoints",
+    tiers={"default": "ENDPOINT"},
+    limits=limits,
+    output_limit_field="max_tokens",
+    request_tags_header="Databricks-Ai-Gateway-Request-Tags",
+)
+actor = Actor(id=user_email, principal=user_id, credential=RequestToken(user_token))
+async with tether.client(actor) as client:
+    handle = await client.send(session_id, text, request_id=request_id)
+```
+
+With the default `identity_mode="caller"`, each physical model attempt sends only that
+actor's `Authorization` value; an application credential configured on the model is
+never read for a caller request. The session, turn, call and principal identifiers travel
+as string tags in `Databricks-Ai-Gateway-Request-Tags` (not in `User-Agent`), the current
+`traceparent` is forwarded, and the gateway's `x-request-id` is recorded on the response
+receipt and on `ModelUnavailable.request_id`. Gateway errors surface as `http <status>`
+with no response body text. A continuation after approval uses the answering actor's
+current credential, not the one that started the turn. The mock-transport wire tests in
+`tests/test_databricks_caller_identity_wire.py` cover these properties, including five
+concurrent callers. Live per-tier receipts against a development workspace are an
+operator step that needs a signed-in user and are recorded separately.
 
 ## Optional compatible model reference
 

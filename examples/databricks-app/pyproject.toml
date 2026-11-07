@@ -1,13 +1,13 @@
 [project]
 name = "tether-databricks-app-example"
-version = "0.3.0"
+version = "0.3.1"
 description = "Reusable Databricks Apps composition for Tether"
 requires-python = ">=3.11"
 dependencies = [
-  "novirhiza-tether[postgres]==0.3.0",
-  "novirhiza-tether-web-api==0.3.0",
-  "novirhiza-tether-web-ui==0.3.0",
-  "novirhiza-tether-databricks==0.3.0",
+  "novirhiza-tether[postgres]==0.3.1",
+  "novirhiza-tether-web-api==0.3.1",
+  "novirhiza-tether-web-ui==0.3.1",
+  "novirhiza-tether-databricks==0.3.1",
   "databricks-sdk>=0.89.0,<1",
   "hypercorn==0.18.0",
 ]

@@ -1,0 +1,78 @@
+name: Release gate
+# Runs the complete `make check` on Linux for a release candidate or tag, and
+# optionally installs an already published version from the public index into
+# fresh environments. It never builds for upload or publishes anything; the
+# local publication route in docs/release-publishing.md is unchanged.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag or commit to check (for example v0.3.1)
+        required: true
+        type: string
+      published_version:
+        description: Optional version to install from PyPI after the check (for example 0.3.1)
+        required: false
+        default: ""
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-gate-${{ inputs.ref }}
+  cancel-in-progress: false
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+        python: ["3.11"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.3"
+          python-version: ${{ matrix.python }}
+          enable-cache: false
+      - run: uv sync --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: npm
+      - run: npm install --global --ignore-scripts npm@11.20.0
+      - run: npm ci --ignore-scripts
+      - name: Build the browser assets the suite serves
+        run: npm run build
+      - name: Complete release check
+        run: |
+          set -o pipefail
+          make check 2>&1 | tee "$RUNNER_TEMP/make-check.log"
+      - name: Fresh installs from the public index
+        if: ${{ inputs.published_version != '' }}
+        run: |
+          uv run --locked python scripts/index_install_smoke.py "${{ inputs.published_version }}" \
+            --python "${{ matrix.python }}" --output "$RUNNER_TEMP/index-install.json"
+      - name: Receipt
+        if: ${{ always() }}
+        run: |
+          {
+            echo "ref=${{ inputs.ref }}"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "runner=${{ matrix.os }} $(uname -m)"
+            echo "python=$(uv run --locked python -VV)"
+            echo "run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > "$RUNNER_TEMP/release-gate.txt"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: release-gate-${{ matrix.os }}-py${{ matrix.python }}
+          path: |
+            ${{ runner.temp }}/release-gate.txt
+            ${{ runner.temp }}/make-check.log
+            ${{ runner.temp }}/index-install.json
+          if-no-files-found: warn

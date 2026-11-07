@@ -6,4 +6,8 @@ Release staging and PyPI upload no longer run in GitHub Actions. The release ope
 
 The former trusted-publisher workflow used GitHub Actions OIDC, which cannot supply a token to a local upload. No pending publisher for `novirhiza-tether` has been verified; even one would not reserve the name or authenticate the local path. Because the project has not yet been created on PyPI, the first direct upload requires an **account-scoped PyPI API token** supplied securely as `UV_PUBLISH_TOKEN`. Do not paste the token into chat, a command argument, source control, or release assets. After the project exists, replace it with a project-scoped token for any later direct upload. See [PyPI's API-token guidance](https://docs.pypi.org/publishing/publishing-to-pypi/) and [uv's publish guide](https://docs.astral.sh/uv/guides/publish/).
 
+Before tagging, also dispatch the **Release gate** workflow (`.github/workflows/release-gate.yml`) with the candidate commit as `ref`. It runs the complete `make check` on Linux x86_64 and Linux arm64 with Python 3.11 and uploads the log as a workflow artifact; link that run in the release's qualification receipt. After the PyPI upload, dispatch it again with the tag as `ref` and the version as `published_version` to install the base, `postgres`, `openai` and `tui` profiles from the public index into fresh environments. The workflow never builds for upload or publishes.
+
+Release and merge commits do not carry `[skip ci]`. Pull request checks are the only automatic CI, so the marker never saved a run; it only made a release commit look unchecked.
+
 PyPI will not replace an existing filename. If a published release is broken, yank it and publish a corrected new version; keep the original tag, release assets, and manifest unchanged.

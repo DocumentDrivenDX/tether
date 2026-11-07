@@ -33,10 +33,29 @@ BOUND_VERSIONS = {
     "pydantic-ai-slim": "2.59.0",
     "pydantic-graph": "2.59.0",
 }
+# The ends of the published ranges that the dependency matrix ran
+# (docs/helix/03-test/evidence/dependency-matrix-*.json). Any other installed
+# set needs a new matrix run before it is added here.
+MATRIX_VERSIONS = (
+    {
+        "pydantic": "2.12.0",
+        "pydantic-core": "2.41.1",
+        "pydantic-ai-slim": "2.59.0",
+        "pydantic-graph": "2.59.0",
+    },
+    {
+        "pydantic": "2.14.3",
+        "pydantic-core": "2.50.4",
+        "pydantic-ai-slim": "2.62.0",
+        "pydantic-graph": "2.62.0",
+    },
+)
+INSTALLED = {name: version(name) for name in BOUND_VERSIONS}
+LOCKED = INSTALLED == BOUND_VERSIONS
 
 
 def test_locked_sdk_versions_require_explicit_requalification() -> None:
-    assert {name: version(name) for name in BOUND_VERSIONS} == BOUND_VERSIONS
+    assert INSTALLED in (BOUND_VERSIONS, *MATRIX_VERSIONS)
 
 
 def test_frozen_cassette_replays_and_records_identical_bytes(model_request: ModelRequest) -> None:
@@ -85,6 +104,16 @@ def test_frozen_sdk_checkpoint_round_trips_and_refuses_version_drift() -> None:
             )
         ],
     )
+    if not LOCKED:
+        # A checkpoint is a derivative cache bound to the exact SDK and Pydantic
+        # versions; one written under the locked pins must be refused here.
+        with pytest.raises(ModelUnavailable, match="unsupported_checkpoint_codec"):
+            decode_conversation(
+                frozen,
+                expected_sha256=hashlib.sha256(frozen).hexdigest(),
+                source_sha256=source,
+            )
+        frozen = encode_conversation(conversation, source_sha256=source)
     assert encode_conversation(conversation, source_sha256=source) == frozen
     restored = decode_conversation(
         frozen,
@@ -92,7 +121,9 @@ def test_frozen_sdk_checkpoint_round_trips_and_refuses_version_drift() -> None:
         source_sha256=source,
     )
     assert encode_conversation(restored, source_sha256=source) == frozen
-    changed = frozen.replace(b'"sdk_version":"2.59.0"', b'"sdk_version":"0.0.0"', 1)
+    sdk_version = f'"sdk_version":"{INSTALLED["pydantic-ai-slim"]}"'.encode()
+    changed = frozen.replace(sdk_version, b'"sdk_version":"0.0.0"', 1)
+    assert changed != frozen
     with pytest.raises(ModelUnavailable, match="unsupported_checkpoint_codec"):
         decode_conversation(
             changed,

@@ -5,7 +5,7 @@ ddx:
   activity: frame
   status: draft
   owner: Erik LaBianca
-  updated: 2026-11-02
+  updated: 2026-11-06
   authoring:
     home: repo
   links:
@@ -515,7 +515,7 @@ This section records decisions; the rationale is in the ADRs.
 
 ### Current dependency compatibility
 
-The 0.1 tested compatibility set is Python 3.11.17 with Pydantic 2.14.1, Pydantic AI 2.59.0 and Textual 8.2.8 where selected. Current exact metadata constraints disclose that set. No broader Pydantic, Agent or Textual range is claimed from these passes. FR-63 is near the top of the next compatibility slice: qualify proposed lower/upper versions and consumer resolution together before widening published ranges; retain exact executable pins in `uv.lock`.
+From 0.3.1 the base metadata publishes ranges that passed the complete suite at both ends under FR-63 ([dependency matrix](../03-test/evidence/dependency-matrix-20261106.md)): `pydantic>=2.12,<2.15`, `pydantic-ai-slim>=2.59.0,<2.63`, `anyio>=4.15.1,<5`, and `psycopg[binary,pool]>=3.3.6,<3.4` in the Postgres extras. `uv.lock` retains one exact qualified set (Pydantic 2.14.1, Pydantic AI 2.59.0, Python 3.11.17). Textual, OpenAI and tiktoken stay exact pins in their extras. Pydantic AI 2.63.0 and later are excluded because they add SDK instruction text that the derived-history check refuses; widening past 2.62 needs a design decision, not only a new matrix run. Any range change requires a new matrix run at the new boundaries before metadata changes.
 
 ## Constraints, Assumptions, Dependencies
 
@@ -567,9 +567,11 @@ The supplied consumer proposal labels these choices as assumptions. They remain 
 
 | Decision | Proposed default from consumer request | Owner / state |
 |---|---|---|
-| Last-turn replacement | Immutable retraction after cutover; refuse unresolved effects | Erik LaBianca — open |
+| Last-turn replacement | Proposed 2026-11-06: no retraction of a committed turn in 0.3.x; corrections are appended. Immutable retraction that refuses unresolved effects remains the candidate for a later release | Erik LaBianca — open |
 | Batch approval required for cutover | No; serial answers | Erik LaBianca — open |
-| Existing-session import required for cutover | No; allow integration without import | Erik LaBianca — open |
+| Existing-session import required for cutover | Proposed 2026-11-06: no import. An application finishes existing sessions on its previous runtime or starts new ones; no transcript is loaded as a Tether session without replay | Erik LaBianca — open |
+| Cross-process live text | Proposed 2026-11-06: a follower in another process receives committed entries only, when their step commits; no `LISTEN/NOTIFY` or other cross-process live-text transport in 0.3.x. A client that reconnects mid-stream sees the last committed entry, then the turn's result when it commits | Erik LaBianca — open |
+| Synchronous callers | Proposed 2026-11-06: bridging a synchronous caller to the event loop is the application's job (for example an anyio blocking portal it owns). Tether ships no blocking facade or `run_sync` helper (ADR-001); documentation may show the pattern | Erik LaBianca — open |
 | Application PostgreSQL settlement profile | Shared transaction when the verified root is shared | Erik LaBianca — open |
 | Original-transcript versus exchange-payload read permission | Keep two actions, matching the current implementation | Erik LaBianca — open; current protections remain enforced |
 | Ongoing release channel and signing authority | PyPI through the existing local publication route; signing authority unspecified | Erik LaBianca — open; the separately authorized 0.1 publication does not establish a signing policy |
