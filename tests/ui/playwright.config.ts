@@ -2,7 +2,10 @@ import { defineConfig } from "@playwright/test";
 import { createServer } from "node:net";
 import { MAX_FUNCTIONAL_WATCHDOG_MS } from "./functional-watchdog.js";
 
-const functionalWatchdog = MAX_FUNCTIONAL_WATCHDOG_MS;
+// Playwright adds elapsed time to these deadlines before arming a timer, so the
+// 32-bit timer maximum itself overflows and Node fires it after 1 ms. Half of it
+// stays effectively unbounded; the outer functional watchdog still owns hangs.
+const functionalWatchdog = Math.floor(MAX_FUNCTIONAL_WATCHDOG_MS / 2);
 
 async function selectedLoopbackPort(): Promise<number> {
   const server = createServer();
@@ -36,7 +39,7 @@ const browserOrigin = `http://127.0.0.1:${browserPort}`;
 export default defineConfig({
   testDir: ".", testMatch: "reference.spec.ts", timeout: functionalWatchdog, workers: 1,
   expect: { timeout: functionalWatchdog },
-  outputDir: "../../artifacts/browser-results", reporter: [["list"], ["json", { outputFile: new URL("../../artifacts/browser-report.json", import.meta.url).pathname }], new URL("./playwright-timeout-reporter.mjs", import.meta.url).pathname],
+  outputDir: "../../artifacts/browser-results", reporter: [["list"], ["json", { outputFile: new URL("../../artifacts/browser-report.json", import.meta.url).pathname }], [new URL("./playwright-timeout-reporter.mjs", import.meta.url).pathname]],
   use: {
     baseURL: browserOrigin,
     viewport: { width: 1440, height: 1000 },

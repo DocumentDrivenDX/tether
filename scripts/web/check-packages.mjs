@@ -29,7 +29,10 @@ function captured(program, args, options = {}) {
     throw error;
   }
 }
-const npm = (args, cwd) => captured("npm", ["--cache", "/private/tmp/tether-npm-cache", ...args], { cwd, encoding: "utf8" });
+// Offline installs read the cache that `npm ci` filled for this checkout; a fixed
+// macOS-only path was empty on fresh hosts and absent on Linux.
+const npmCache = process.env.npm_config_cache || captured("npm", ["config", "get", "cache"], { encoding: "utf8" }).trim();
+const npm = (args, cwd) => captured("npm", ["--cache", npmCache, ...args], { cwd, encoding: "utf8" });
 try {
   const archives = [];
   for (const [index, directory] of packages.entries()) {
