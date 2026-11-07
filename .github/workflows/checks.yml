@@ -54,4 +54,12 @@ jobs:
       - run: uv sync --locked
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
+      - name: Put native PostgreSQL tools on PATH
+        # The TLS oracle tests run initdb and postgres from PATH.
+        run: |
+          if ! ls -d /usr/lib/postgresql/*/bin >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql
+          fi
+          ls -d /usr/lib/postgresql/*/bin | sort -V | tail -n 1 >> "$GITHUB_PATH"
       - run: make web-check
