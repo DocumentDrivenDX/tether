@@ -8,9 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Published release tag, for example v0.3.0
+        description: Published release tag, for example v0.3.0 or web-api-v0.3.0
         required: true
         type: string
+      package:
+        description: PyPI project the release carries, for example novirhiza-tether-web-api
+        required: true
+        type: string
+        default: novirhiza-tether
 
 permissions:
   contents: read
@@ -25,6 +30,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_PACKAGE: ${{ inputs.package }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,7 +48,7 @@ jobs:
             --release-json "$RUNNER_TEMP/verified/release.json" \
             --dist-dir "$RUNNER_TEMP/verified/dist" \
             --tag "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY" \
-            --source-commit "$source_commit" --package novirhiza-tether
+            --source-commit "$source_commit" --package "$RELEASE_PACKAGE"
           mkdir "$RUNNER_TEMP/upload"
           cp "$RUNNER_TEMP"/verified/dist/*.whl "$RUNNER_TEMP"/verified/dist/*.tar.gz "$RUNNER_TEMP/upload/"
       - name: Upload only the verified wheel and source archive
