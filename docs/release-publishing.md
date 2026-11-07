@@ -10,4 +10,8 @@ PyPI upload uses a trusted publisher, so no token is stored, pasted or handled. 
 
 Run the workflow manually (`workflow_dispatch`) with the tag and package of an already published, immutable release. The core package uses `vX.Y.Z`; each companion package uses `<component>-vX.Y.Z` (for example `web-api-v0.3.0` for `novirhiza-tether-web-api`), which the verifier binds to that package name. It never builds. It downloads that release's assets, refuses a release that is not immutable, runs `verify-release` against GitHub's reported digests and the tag's source commit, and uploads only the verified wheel and source archive. No tag, release or push event can start it. After the upload, compare PyPI's reported SHA-256 values with `release-manifest.json` and run the fresh Python 3.11 install smoke before claiming support.
 
+Before tagging, also dispatch the **Release gate** workflow (`.github/workflows/release-gate.yml`) with the candidate commit as `ref`. It runs the complete `make check` on Linux x86_64 and Linux arm64 with Python 3.11 and uploads the log as a workflow artifact; link that run in the release's qualification receipt. After the PyPI upload, dispatch it again with the tag as `ref` and the version as `published_version` to install the base, `postgres`, `openai` and `tui` profiles from the public index into fresh environments. The workflow never builds for upload or publishes.
+
+Release and merge commits do not carry `[skip ci]`. Pull request checks are the only automatic CI, so the marker never saved a run; it only made a release commit look unchecked.
+
 PyPI will not replace an existing filename. If a published release is broken, yank it and publish a corrected new version; keep the original tag, release assets, and manifest unchanged.

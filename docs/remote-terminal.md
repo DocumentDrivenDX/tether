@@ -24,7 +24,7 @@ back to local storage.
 
 ## Install
 
-The remote client and CLI profile flags target the `0.3.0`
+The remote client and CLI profile flags target the `0.3.1`
 candidate. Published core `0.2.0` is a different, unqualified client cohort.
 From this checkout, run with the locked environment and explicit extras:
 

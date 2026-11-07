@@ -129,12 +129,38 @@ class BashTool(CommonTool):
         )
 
 
+GROUP_EXIT_SECONDS = 5.0
+
+
+async def await_group_exit(pgid: int, *, seconds: float = GROUP_EXIT_SECONDS) -> None:
+    """Return once no process remains in the killed group.
+
+    SIGKILL delivery is asynchronous, and an orphaned descendant is reaped by
+    init rather than by us, so the shell's exit does not prove the group exited.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + seconds
+    while True:
+        try:
+            os.killpg(pgid, 0)
+        except (ProcessLookupError, PermissionError):
+            return  # gone, or the id now belongs to another user's group
+        if loop.time() >= deadline:
+            raise RuntimeError("process_group_exit_unconfirmed")
+        await asyncio.sleep(0.01)
+
+
+async def _reap(process: asyncio.subprocess.Process) -> None:
+    await process.communicate()
+    await await_group_exit(process.pid)
+
+
 async def stop_process(process: asyncio.subprocess.Process) -> None:
     # Kill descendants even if the shell exited while they retain its output pipe.
     with suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGSTOP)
         os.killpg(process.pid, signal.SIGKILL)
-    cleanup = asyncio.create_task(process.communicate())
+    cleanup = asyncio.create_task(_reap(process))
     cancelled = False
     while not cleanup.done():
         try:

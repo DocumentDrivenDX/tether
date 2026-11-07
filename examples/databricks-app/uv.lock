@@ -545,7 +545,7 @@ wheels = [
 
 [[package]]
 name = "novirhiza-tether"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "../../" }
 dependencies = [
     { name = "anyio" },
@@ -563,11 +563,11 @@ requires-dist = [
     { name = "anyio", specifier = ">=4.15.1,<5" },
     { name = "httpx", marker = "extra == 'remote'", specifier = "==0.28.1" },
     { name = "openai", marker = "extra == 'openai'", specifier = "==3.37.0" },
-    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'embedded-postgres'", specifier = "==3.3.6" },
-    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = "==3.3.6" },
-    { name = "pydantic", specifier = "==2.14.1" },
-    { name = "pydantic-ai-slim", specifier = "==2.59.0" },
-    { name = "pydantic-ai-slim", extras = ["openai"], marker = "extra == 'openai'", specifier = "==2.59.0" },
+    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'embedded-postgres'", specifier = ">=3.3.6,<3.4" },
+    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = ">=3.3.6,<3.4" },
+    { name = "pydantic", specifier = ">=2.12,<2.15" },
+    { name = "pydantic-ai-slim", specifier = ">=2.59.0,<2.63" },
+    { name = "pydantic-ai-slim", extras = ["openai"], marker = "extra == 'openai'", specifier = ">=2.59.0,<2.63" },
     { name = "textual", marker = "extra == 'tui'", specifier = "==8.2.8" },
     { name = "tiktoken", marker = "extra == 'openai'", specifier = "==0.14.0" },
 ]
@@ -624,7 +624,7 @@ embedded-binaries = [
 
 [[package]]
 name = "novirhiza-tether-databricks"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "../../packages/databricks" }
 dependencies = [
     { name = "novirhiza-tether", extra = ["postgres"] },
@@ -641,7 +641,7 @@ requires-dist = [
 
 [[package]]
 name = "novirhiza-tether-web-api"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "../../packages/web-api" }
 dependencies = [
     { name = "fastapi" },
@@ -656,7 +656,7 @@ requires-dist = [
 
 [[package]]
 name = "novirhiza-tether-web-ui"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "../../packages/web-ui" }
 
 [[package]]
@@ -1032,7 +1032,7 @@ wheels = [
 
 [[package]]
 name = "tether-databricks-app-example"
-version = "0.3.0"
+version = "0.3.1"
 source = { virtual = "." }
 dependencies = [
     { name = "databricks-sdk" },

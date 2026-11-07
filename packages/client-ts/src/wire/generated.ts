@@ -5,6 +5,14 @@ export type ResultUrl = string;
 export type State = "accepted";
 export type TurnId = string;
 export type Approved = boolean;
+export type Arguments = {
+  [k: string]: JsonValue;
+} | null;
+/**
+ * This interface was referenced by `TetherWire`'s JSON-Schema
+ * via the `definition` "JsonValue".
+ */
+export type JsonValue = unknown;
 export type Note = string | null;
 export type Filename = string;
 export type Id = string;
@@ -14,7 +22,7 @@ export type SizeBytes = string;
 export type Withheld = boolean;
 export type AttemptId = string;
 export type ModelCallId = string;
-export type Purpose = "answer" | "summary" | "correction";
+export type Purpose = "answer" | "summary" | "correction" | "auxiliary";
 export type SessionId = string;
 export type SpanId = string | null;
 export type TraceId = string | null;
@@ -26,11 +34,6 @@ export type Content = string;
 export type IsError = boolean;
 export type Role = "user" | "assistant" | "tool";
 export type ToolCallId = string | null;
-/**
- * This interface was referenced by `TetherWire`'s JSON-Schema
- * via the `definition` "JsonValue".
- */
-export type JsonValue = unknown;
 export type Id1 = string;
 export type Name = string;
 export type ToolCalls = ToolCall[];
@@ -80,6 +83,7 @@ export type ArgsDigest = string;
 export type CallId = string;
 export type Effect = "read_only" | "effectful";
 export type Position = string;
+export type RegistryGeneration = string | null;
 export type Replay = "safe" | "unsafe";
 export type Tool = string;
 export type ToolDigest = string;
@@ -158,10 +162,11 @@ export type Type6 = "resync_required";
 export type Accepted = false;
 export type ActorId = string;
 export type ArgsDigest1 = string;
-export type Arguments1 = {
+export type Arguments2 = {
   [k: string]: JsonValue;
 } | null;
 export type Description = string;
+export type ExecutableDigest = string | null;
 export type ExpiresAt = string | null;
 export type HistoryStatus =
   | "not_loaded"
@@ -177,9 +182,11 @@ export type HistoryStatus =
       | "integrity_error"
     );
 export type InvocationId = string;
+export type ProposalDigest = string | null;
 export type Reason4 = string | null;
 export type RequestedAt = string;
 export type SessionId6 = string;
+export type ShownDigest = string | null;
 export type SpecDigest = string;
 export type Tool1 = string;
 export type ToolDigest1 = string;
@@ -316,6 +323,7 @@ export interface AcceptedTurn {
  */
 export interface Answer {
   approved: Approved;
+  arguments?: Arguments;
   note?: Note;
 }
 /**
@@ -396,11 +404,11 @@ export interface Message {
  * via the `definition` "ToolCall".
  */
 export interface ToolCall {
-  arguments: Arguments;
+  arguments: Arguments1;
   id: Id1;
   name: Name;
 }
-export interface Arguments {
+export interface Arguments1 {
   [k: string]: JsonValue;
 }
 /**
@@ -449,6 +457,7 @@ export interface CallManifest {
   call_id: CallId;
   effect: Effect;
   position: Position;
+  registry_generation?: RegistryGeneration;
   replay: Replay;
   tool: Tool;
   tool_digest: ToolDigest;
@@ -628,15 +637,18 @@ export interface SessionView {
 export interface PendingConfirmation {
   actor_id: ActorId;
   args_digest: ArgsDigest1;
-  arguments: Arguments1;
+  arguments: Arguments2;
   description?: Description;
+  executable_digest?: ExecutableDigest;
   expires_at?: ExpiresAt;
   history_ref?: HistoryRef | null;
   history_status?: HistoryStatus;
   invocation_id: InvocationId;
+  proposal_digest?: ProposalDigest;
   reason?: Reason4;
   requested_at: RequestedAt;
   session_id: SessionId6;
+  shown_digest?: ShownDigest;
   spec_digest: SpecDigest;
   tool: Tool1;
   tool_digest: ToolDigest1;
