@@ -1,0 +1,51 @@
+name: Publish verified release to PyPI
+
+# Manual only. Uploads the two distribution files of an already published,
+# immutable GitHub release after verifying them against the release manifest and
+# GitHub's reported asset digests. Nothing is built here, and no tag or release
+# event can start this workflow. The `pypi` environment requires reviewer approval.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag, for example v0.3.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v7
+      - name: Download and verify the published release assets
+        run: |
+          set -euo pipefail
+          source_commit=$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")
+          mkdir -p "$RUNNER_TEMP/verified/dist"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/verified/dist"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/verified/release.json"
+          test "$(jq -r .immutable "$RUNNER_TEMP/verified/release.json")" = true
+          uv run --locked python scripts/verify_release_artifacts.py verify-release \
+            --release-json "$RUNNER_TEMP/verified/release.json" \
+            --dist-dir "$RUNNER_TEMP/verified/dist" \
+            --tag "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY" \
+            --source-commit "$source_commit" --package novirhiza-tether
+          mkdir "$RUNNER_TEMP/upload"
+          cp "$RUNNER_TEMP"/verified/dist/*.whl "$RUNNER_TEMP"/verified/dist/*.tar.gz "$RUNNER_TEMP/upload/"
+      - name: Upload only the verified wheel and source archive
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ${{ runner.temp }}/upload
