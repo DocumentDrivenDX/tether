@@ -12,7 +12,10 @@ from email import message_from_bytes
 from pathlib import Path
 from typing import Any
 
-TAG_PATTERN = re.compile(r"v(?P<version>\d+\.\d+\.\d+)\Z")
+TAG_PATTERN = re.compile(
+    r"(?:(?P<component>[a-z][a-z0-9]*(?:-[a-z0-9]+)*)-)?v(?P<version>\d+\.\d+\.\d+)\Z"
+)
+COMPONENT_PACKAGE_PREFIX = "novirhiza-tether-"
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}\Z")
 MANIFEST_NAME = "release-manifest.json"
 
@@ -29,10 +32,17 @@ def normalized_name(value: str) -> str:
     return re.sub(r"[-_.]+", "-", value).lower()
 
 
-def release_version(tag: str) -> str:
+def release_version(tag: str, package: str | None = None) -> str:
     match = TAG_PATTERN.fullmatch(tag)
     if match is None:
         raise ValueError("stable vMAJOR.MINOR.PATCH tag required")
+    component = match.group("component")
+    if (
+        component is not None
+        and package is not None
+        and normalized_name(package) != COMPONENT_PACKAGE_PREFIX + component
+    ):
+        raise ValueError("component tag must name its package")
     return match.group("version")
 
 
@@ -89,7 +99,7 @@ def create_manifest(
     source_commit: str,
     package: str,
 ) -> dict[str, Any]:
-    version = release_version(tag)
+    version = release_version(tag, package)
     if COMMIT_PATTERN.fullmatch(source_commit) is None:
         raise ValueError("full lowercase source commit required")
     files = distribution_files(directory, package, version)
@@ -115,7 +125,7 @@ def verify_release(
     source_commit: str,
     package: str,
 ) -> dict[str, Any]:
-    version = release_version(tag)
+    version = release_version(tag, package)
     release = json.loads(release_path.read_text(encoding="utf-8"))
     if (
         release.get("tag_name") != tag

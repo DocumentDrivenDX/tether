@@ -19,6 +19,18 @@ class TestReleaseArtifacts:
             with pytest.raises(ValueError, match="stable"):
                 release_version(tag)
 
+    def test_component_tags_must_name_their_package(self) -> None:
+        assert release_version("web-api-v1.2.3", "novirhiza-tether-web-api") == "1.2.3"
+        assert release_version("web-api-v1.2.3", "novirhiza_tether_web_api") == "1.2.3"
+        for tag, package in (
+            ("web-api-v1.2.3", "novirhiza-tether"),
+            ("web-api-v1.2.3", "novirhiza-tether-web-ui"),
+            ("web-api-v1.2.3.dev1", "novirhiza-tether-web-api"),
+            ("-v1.2.3", "novirhiza-tether-web-api"),
+        ):
+            with pytest.raises(ValueError, match=r"stable|component"):
+                release_version(tag, package)
+
     def test_manifest_verification_rejects_identity_and_immutable_mismatch(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory) / "dist"
