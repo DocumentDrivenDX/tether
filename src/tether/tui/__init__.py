@@ -192,14 +192,16 @@ class DemoApp(App[None]):
     async def action_new_session(self) -> None:
         if self.client is None:
             return
+        # Clear the old draft before switching: text typed once the new session
+        # is selected belongs to it and must survive the refresh below.
+        field = self.query_one("#message", Input)
+        field.value = ""
         session = await self.client.create(
             title="Session · " + uuid4().hex[:8], settings={"approval": "manual"}
         )
         self.session_id = session.id
         await self._refresh_sessions()
         await self._show_session()
-        field = self.query_one("#message", Input)
-        field.value = ""
         field.focus()
 
     async def _stop_follower(self) -> None:

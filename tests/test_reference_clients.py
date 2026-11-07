@@ -173,6 +173,37 @@ async def test_new_session_button_and_shortcut_create_select_and_persist(tmp_pat
         assert len(reopened.sessions) == 3
 
 
+async def test_text_typed_while_new_session_opens_is_kept(tmp_path):
+    import asyncio
+
+    app = DemoApp(tmp_path, volatile=True)
+    async with app.run_test() as pilot:
+        original = app.session_id
+        field = app.query_one("#message", Input)
+        field.value = "Old draft"
+        selected = asyncio.Event()
+        resume = asyncio.Event()
+        refresh = app._refresh_sessions
+
+        async def held_refresh() -> None:
+            selected.set()
+            await resume.wait()
+            await refresh()
+
+        app._refresh_sessions = held_refresh
+        opening = asyncio.create_task(app.action_new_session())
+        await selected.wait()
+        assert app.session_id != original
+        assert field.value == ""
+        field.value = "Typed for the new session"
+        app._refresh_sessions = refresh
+        resume.set()
+        await opening
+        await pilot._wait_for_screen()
+        assert field.value == "Typed for the new session"
+        assert app.focused is field
+
+
 async def test_new_session_keeps_original_pending_and_routes_input_to_new_session(tmp_path):
     from textual.widgets import ListView
 
