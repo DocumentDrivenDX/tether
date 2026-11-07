@@ -44,7 +44,13 @@ jobs:
         with:
           node-version: "22.22.2"
           cache: npm
-      - run: npm install --global --ignore-scripts npm@11.20.0
+      - name: Install the pinned npm beside the bundled one
+        # Upgrading the bundled npm in place fails on hosted runners
+        # (MODULE_NOT_FOUND: promise-retry), so install into its own prefix.
+        run: |
+          npm install --global --prefix "$RUNNER_TEMP/npm" --ignore-scripts npm@11.20.0
+          echo "$RUNNER_TEMP/npm/bin" >> "$GITHUB_PATH"
+      - run: test "$(npm --version)" = 11.20.0
       - run: npm ci --ignore-scripts
       - name: Build the browser assets the suite serves
         run: npm run build
