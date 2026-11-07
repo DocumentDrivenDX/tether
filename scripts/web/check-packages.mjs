@@ -29,8 +29,9 @@ function captured(program, args, options = {}) {
     throw error;
   }
 }
-// Offline installs read the cache that `npm ci` filled for this checkout; a fixed
-// macOS-only path was empty on fresh hosts and absent on Linux.
+// Consumer installs prefer the cache that `npm ci` filled for this checkout. That
+// cache holds tarballs but not registry metadata for range resolution, so a fresh
+// host may still need the registry; a fixed macOS-only path was absent on Linux.
 const npmCache = process.env.npm_config_cache || captured("npm", ["config", "get", "cache"], { encoding: "utf8" }).trim();
 const npm = (args, cwd) => captured("npm", ["--cache", npmCache, ...args], { cwd, encoding: "utf8" });
 try {
@@ -64,7 +65,7 @@ try {
   const clientOnly = join(scratch, "client-only");
   await mkdir(clientOnly);
   await writeFile(join(clientOnly, "package.json"), JSON.stringify({ name: "tether-client-consumer", version: "0.2.0-dev.0", private: true, type: "module" }));
-  npm(["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", archives[0]], clientOnly);
+  npm(["install", "--prefer-offline", "--ignore-scripts", "--no-audit", "--no-fund", archives[0]], clientOnly);
   const closure = JSON.parse(npm(["ls", "--all", "--json"], clientOnly));
   // @covers US-067-AC1: fresh installed closure and import have no React or ambient credential traffic.
   assert.ok(!JSON.stringify(closure).match(/"(react|react-dom|@tether\/react|@tether\/ui)"/), "framework-free client closure contains React");
@@ -80,7 +81,7 @@ assert.equal(calls, 1);`;
   const combined = join(scratch, "combined");
   await mkdir(combined);
   await writeFile(join(combined, "package.json"), JSON.stringify({ name: "tether-react-consumer", version: "0.2.0-dev.0", private: true, type: "module" }));
-  npm(["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", ...archives, "react@19.3.1", "react-dom@19.3.1", "@types/react@19.3.0"], combined);
+  npm(["install", "--prefer-offline", "--ignore-scripts", "--no-audit", "--no-fund", ...archives, "react@19.3.1", "react-dom@19.3.1", "@types/react@19.3.0"], combined);
   const peers = JSON.parse(npm(["ls", "react", "--all", "--json"], combined));
   assert.equal(peers.dependencies.react.version, "19.3.1");
   const sbom = sanitizedSbom(JSON.parse(npm(["sbom", "--offline", "--sbom-format", "cyclonedx"], combined)));
@@ -112,7 +113,7 @@ import {DefaultMessage} from "@tether/ui";
 const html=renderToString(createElement(DefaultMessage,{message:{role:"assistant",content:"<script>fabricated</script>"}}));
 assert.ok(html.includes("&lt;script&gt;"));assert.ok(!html.includes("<script>"));`);
   captured(process.execPath, ["proof.mjs"], { cwd: combined, stdio: "pipe" });
-  npm(["install", "--save-dev", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "jsdom@30.1.3"], combined);
+  npm(["install", "--save-dev", "--prefer-offline", "--ignore-scripts", "--no-audit", "--no-fund", "jsdom@30.1.3"], combined);
   await writeFile(join(combined, "consumer-view.mjs"), await readFile(join(root, "scripts/web/consumer-view.mjs")));
   // @covers US-069-AC4: execute custom layout/message slots with the installed provider and client.
   // Cold JSDOM import alone measured 26 seconds; allow bounded cold loading,
