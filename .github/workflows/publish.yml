@@ -3,7 +3,7 @@ name: Publish verified release to PyPI
 # Manual only. Uploads the two distribution files of an already published,
 # immutable GitHub release after verifying them against the release manifest and
 # GitHub's reported asset digests. Nothing is built here, and no tag or release
-# event can start this workflow. The `pypi` environment requires reviewer approval.
+# event can start this workflow. The `pypi` environment limits it to `main` and stable-tag refs.
 on:
   workflow_dispatch:
     inputs:

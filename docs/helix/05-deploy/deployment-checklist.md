@@ -24,7 +24,7 @@ ddx:
 - **Component**: `novirhiza-tether` distribution; `tether` import.
 - **Release version**: `v0.1.0` is published as an immutable [GitHub release](https://github.com/DocumentDrivenDX/tether/releases/tag/v0.1.0), at source commit `e0996bd2c7d7453752c3441f99c8a68a97bb1043`. The [final qualification receipt](../03-test/evidence/p0-qualification-20261028.md#final-010-qualification--2026-10-29) records passing source/installed gates and current PyPI status. The recipe below remains the procedure for a future candidate; do not recreate this tag.
 - **Source of truth**: one reviewed main commit, an annotated stable tag at that commit, and one immutable GitHub release holding the exact wheel, source archive, and `release-manifest.json`.
-- **Publication route**: local Python 3.11 qualification and build, immutable GitHub release, then PyPI upload through the manual, reviewer-approved `publish.yml` trusted-publisher workflow (environment `pypi`). No tag or release event triggers any job.
+- **Publication route**: local Python 3.11 qualification and build, immutable GitHub release, then PyPI upload through the manual `publish.yml` trusted-publisher workflow (environment `pypi`). No tag or release event triggers any job.
 
 ## Before Deploy
 
@@ -50,7 +50,7 @@ ddx:
 |-------|---------------|----------------|
 | Local candidate | Qualify the selected commit, create its annotated stable tag locally, build once, check all selected extras, and generate the manifest | Every P0 gate passes and wheel/source archive metadata says `novirhiza-tether` at the tag's version |
 | GitHub release | Push the tag only after automatic tag/release workflows are absent from main; create a draft release with the exact three assets, inspect it, then publish it | The release is immutable, non-prerelease, and `verify-release` accepts fresh downloads and GitHub asset digests |
-| PyPI | Dispatch `publish.yml` with the release tag and approve the `pypi` environment; it re-verifies the published assets and uploads only the verified wheel and source archive | Both published file hashes match the manifest and a clean Python 3.11 install passes the release smoke |
+| PyPI | Dispatch `publish.yml` with the release tag; it re-verifies the published assets and uploads only the verified wheel and source archive | Both published file hashes match the manifest and a clean Python 3.11 install passes the release smoke |
 
 After the P0 decision and workflow-trigger change are complete, the operator uses this sequence from a clean checkout of the selected main commit. Stop on any failed command; use a fresh staging directory for each candidate.
 
@@ -93,7 +93,7 @@ uv run --locked python scripts/verify_release_artifacts.py verify-release \
   --release-json "$verified_stage/release.json" --dist-dir "$verified_stage/dist" \
   --tag "$release_tag" --repository DocumentDrivenDX/tether \
   --source-commit "$source_commit" --package novirhiza-tether
-# Then dispatch .github/workflows/publish.yml with the same tag and approve the `pypi` environment.
+# Then dispatch .github/workflows/publish.yml with the same tag.
 ```
 
 Compare both PyPI file SHA-256 values with `release-manifest.json` and perform the fresh Python 3.11 install smoke before claiming support. Do not put the token in a shell command, transcript, or file in the checkout.
