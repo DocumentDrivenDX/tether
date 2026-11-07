@@ -9,6 +9,7 @@ checked tree.
 | Platform | Python | Result | Groups | Tests passed | Branch coverage | Duration |
 |---|---|---|---|---|---|---|
 | macOS arm64 | 3.11.17 | **pass** (`make check`, exit 0) | 145 | 3,636 | 87% | 699 s |
+| macOS arm64, merged with main at `1915962` (2026-11-07) | 3.11.17 | **pass** (`make check CHECK_BASE=HEAD`, exit 0) | 145 | 3,637 | 87% | 680 s |
 | Linux aarch64, `python:3.11-bookworm` container | 3.11.18 | **incomplete**, see below | — | — | — | — |
 | Linux x86_64 | 3.11 | not run; `Release gate` workflow | — | — | — | — |
 
