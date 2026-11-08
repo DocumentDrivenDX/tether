@@ -18,13 +18,21 @@ before tagging.
 
 | Platform | Ref | Python | Result | Groups | Tests passed | Branch coverage |
 |---|---|---|---|---|---|---|
-| macOS arm64, local | `299117e` | 3.11 | PENDING | — | — | — |
-| Linux x86_64, GitHub-hosted `ubuntu-24.04` ([run](https://github.com/DocumentDrivenDX/tether/actions/runs/42528857029)) | `299117e` | 3.11 | PENDING | — | — | — |
-| Linux aarch64, GitHub-hosted `ubuntu-24.04-arm` ([run](https://github.com/DocumentDrivenDX/tether/actions/runs/42528857029)) | `299117e` | 3.11 | PENDING | — | — | — |
+| macOS arm64, local, load average 20–48 | `299117e` | 3.11.17 | **incomplete**, see below | — | — | — |
+| Linux x86_64, GitHub-hosted `ubuntu-24.04` ([run](https://github.com/DocumentDrivenDX/tether/actions/runs/42528857029)) | `299117e` | 3.11.17 | **pass** (`Release gate`) | 147 | 3,689 | 87% |
+| Linux aarch64, GitHub-hosted `ubuntu-24.04-arm` ([run](https://github.com/DocumentDrivenDX/tether/actions/runs/42528857029)) | `299117e` | 3.11.17 | **pass** (`Release gate`) | 147 | 3,689 | 87% |
 
 `make check` runs lint, format, strict typing, file-size and ceiling checks, layer and
 dependency audits, then the full inventory in bounded groups with the 85% branch floor.
-Browser assets were built first with `npm run build`.
+Browser assets were built first with `npm run build`. The 51 added tests are the gateway
+stream dialect cases from pull request 90 (0.3.1 ran 3,638).
+
+The local macOS run (621 s) failed one timing-sensitive case,
+`tests/test_embedded_lifetime.py::test_cancelled_real_initialization_finishes_before_directory_release`
+(`TimeoutError`), on a host with load average between 20 and 48. That file passed on its own
+right after (20 tests). Pull request 90 saw the same case flake under similar load. The
+release change touches no embedded-PostgreSQL code, so the Linux runs above are the clean
+complete gate for this candidate.
 
 ## Live evidence
 
