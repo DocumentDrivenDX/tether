@@ -121,7 +121,9 @@ def filtered_backend_frames() -> list[dict[str, Any]]:
     ]
 
 
-def _reasoning_chunk(delta: dict[str, Any], usage: dict[str, Any], finish=None) -> dict[str, Any]:
+def _reasoning_chunk(
+    delta: dict[str, Any], usage: dict[str, Any] | None, finish=None
+) -> dict[str, Any]:
     return {
         "id": "fabricated-completion",
         "object": "chat.completion.chunk",
