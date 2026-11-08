@@ -33,6 +33,17 @@ from .wire import (
 )
 
 
+def attributed(error: ModelUnavailable, receipt: ResponseReceipt) -> ModelUnavailable:
+    """The same failure, carrying the gateway's request id and receipt it already sent."""
+    if error.receipt is not None and error.request_id is not None:
+        return error
+    return ModelUnavailable(
+        error.reason,
+        error.request_id or receipt.provider_request_id,
+        error.receipt or receipt,
+    )
+
+
 class CapturedStream(httpx.AsyncByteStream):
     def __init__(
         self,
@@ -64,24 +75,24 @@ class CapturedStream(httpx.AsyncByteStream):
             if not self.completed:
                 await self._complete(self.validator.finish())
         except Exception as error:
-            if self.transport.local_error is None:
-                if isinstance(error, ModelUnavailable) and error.receipt is not None:
-                    self.transport.local_error = error
-                else:
-                    # Keep the observed header id and receipt on stream-validation failures.
-                    reason = (
-                        error.reason
-                        if isinstance(error, ModelUnavailable)
-                        else "transport_error"
-                        if isinstance(error, httpx.TransportError)
-                        else "invalid_response"
-                    )
-                    self.transport.local_error = ModelUnavailable(
-                        reason, self.receipt.provider_request_id, self.receipt
-                    )
+            self._record_failure(error)
             raise httpx.StreamError("invalid_stream") from error
         finally:
             await self.response.aclose()
+
+    def _record_failure(self, error: Exception) -> None:
+        """Keep the first failure, carrying the request id and receipt already observed."""
+        stored = self.transport.local_error
+        if stored is None:
+            if isinstance(error, ModelUnavailable):
+                failure = error
+            elif isinstance(error, httpx.TransportError):
+                failure = ModelUnavailable("transport_error")
+            else:
+                failure = ModelUnavailable("invalid_response")
+            self.transport.local_error = attributed(failure, self.receipt)
+        elif isinstance(stored, ModelUnavailable):
+            self.transport.local_error = attributed(stored, self.receipt)
 
     async def aclose(self) -> None:
         await self.response.aclose()
@@ -248,10 +259,12 @@ class AttemptTransport(httpx.AsyncBaseTransport):
             try:
                 await self._capture(response, identity, str(request.url), recorder)
                 if self.response is None:
-                    raise ModelUnavailable("invalid_response", receipt=receipt)
+                    raise ModelUnavailable("invalid_response", receipt.provider_request_id, receipt)
                 payload = synthetic_stream(self.response, self.wire_model or self.request.model)
                 if len(payload) > self.limits.max_response_bytes:
-                    raise ModelUnavailable("response_too_large", receipt=receipt)
+                    raise ModelUnavailable(
+                        "response_too_large", receipt.provider_request_id, receipt
+                    )
                 return httpx.Response(
                     200,
                     headers={"content-type": "text/event-stream"},
