@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tether-local-otel-embed-example"
-version = "0.3.1"
+version = "0.3.2"
 description = "Independent Tether embedder with a bounded local OTLP/HTTP diagnostics profile"
 readme = "README.md"
 license = "Apache-2.0 OR MIT"
 license-files = ["LICENSE-MIT", "LICENSE-APACHE", "NOTICE"]
 requires-python = ">=3.11"
 dependencies = [
-  "novirhiza-tether==0.3.1",
+  "novirhiza-tether==0.3.2",
   "httpx==0.28.1",
   "opentelemetry-api==1.45.1",
   "opentelemetry-sdk==1.45.1",

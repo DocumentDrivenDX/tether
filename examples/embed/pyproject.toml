@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tether-public-embed-example"
-version = "0.3.1"
+version = "0.3.2"
 description = "Fabricated consumer example using Tether's public client and HTTP API"
 requires-python = ">=3.11"
 dependencies = [
-  "novirhiza-tether==0.3.1",
-  "novirhiza-tether-web-api==0.3.1",
-  "novirhiza-tether-web-ui==0.3.1",
+  "novirhiza-tether==0.3.2",
+  "novirhiza-tether-web-api==0.3.2",
+  "novirhiza-tether-web-ui==0.3.2",
 ]
 
 [project.optional-dependencies]
