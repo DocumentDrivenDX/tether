@@ -1,14 +1,15 @@
 # 0.3.2 candidate qualification (recorded 2026-11-08)
 
 Source: `b1a7d57` (main, merge of pull request 90) plus the 0.3.2 version bump
-`299117e5741bf2840e1ca8f7a1bcdf42f51f7c2d`. Release commit: not yet merged; the tags must point
-at the merge of the release pull request, and that commit needs its own `Release gate` run
-before tagging.
+`299117e5741bf2840e1ca8f7a1bcdf42f51f7c2d`, then main at `666c86d` (merge of pull request 89,
+the refused-stream request-id fix) merged into the release branch. Release commit: the merge
+of the release pull request; the tags must point at it, and it needs its own `Release gate`
+run before tagging.
 
 ## Changes since 0.3.1
 
 - The explicitly selected `databricks-ai-gateway-stream-v1` stream profile (ADR-013,
-  CONTRACT-001), plus request ids kept on stream-validation errors. See the
+  CONTRACT-001), plus request ids kept on refused streams (pull requests 90 and 89). See the
   [release notes](../../../releases/0.3.2.md).
 - No dependency range changed, so the 0.3.1
   [dependency matrix](dependency-matrix-20261106.md) still applies. `uv.lock` changes only the
