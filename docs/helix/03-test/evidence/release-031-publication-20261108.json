@@ -1,0 +1,329 @@
+{
+  "kind": "tether.release-publication-receipt",
+  "version": 1,
+  "cohort": "0.3.1",
+  "source_commit": "ee7810504889ba9286e821b37cd9d12ef8b9ee5e",
+  "releases": [
+    {
+      "package": "novirhiza-tether",
+      "package_version": "0.3.1",
+      "tag": "v0.3.1",
+      "source_commit": "ee7810504889ba9286e821b37cd9d12ef8b9ee5e",
+      "github_release": {
+        "url": "https://github.com/DocumentDrivenDX/tether/releases/tag/v0.3.1",
+        "published": "2026-11-08T00:02:35Z",
+        "immutable": true,
+        "assets": [
+          {
+            "name": "novirhiza_tether-0.3.1-py3-none-any.whl",
+            "sha256": "f59b8281f6d01239a8f4319cb9e7b61ae1b28086d3db43068f540588431b5782",
+            "size": 362851
+          },
+          {
+            "name": "novirhiza_tether-0.3.1.tar.gz",
+            "sha256": "4714d0bef0996887370fef3d7d4211728ee30e870d24d6362ee02f07d7894d55",
+            "size": 1225039
+          },
+          {
+            "name": "release-manifest.json",
+            "sha256": "a95dbed9b064473bb7de427671cca1fdca98db68a0a28749785f3c49ff5bf272",
+            "size": 537
+          }
+        ]
+      },
+      "publish_run": "https://github.com/DocumentDrivenDX/tether/actions/runs/42511863317",
+      "pypi_files": [
+        {
+          "filename": "novirhiza_tether-0.3.1-py3-none-any.whl",
+          "sha256": "f59b8281f6d01239a8f4319cb9e7b61ae1b28086d3db43068f540588431b5782",
+          "upload_time": "2026-11-08T18:49:33.309635Z"
+        },
+        {
+          "filename": "novirhiza_tether-0.3.1.tar.gz",
+          "sha256": "4714d0bef0996887370fef3d7d4211728ee30e870d24d6362ee02f07d7894d55",
+          "upload_time": "2026-11-08T18:49:34.826004Z"
+        }
+      ],
+      "pypi_matches_github_assets": true
+    },
+    {
+      "package": "novirhiza-tether-web-api",
+      "package_version": "0.3.1",
+      "tag": "web-api-v0.3.1",
+      "source_commit": "ee7810504889ba9286e821b37cd9d12ef8b9ee5e",
+      "github_release": {
+        "url": "https://github.com/DocumentDrivenDX/tether/releases/tag/web-api-v0.3.1",
+        "published": "2026-11-08T00:02:40Z",
+        "immutable": true,
+        "assets": [
+          {
+            "name": "novirhiza_tether_web_api-0.3.1-py3-none-any.whl",
+            "sha256": "f842970ff03b874f06ed3df2c65c8fd5fb707ff77c811b351e69184c7c12767b",
+            "size": 34439
+          },
+          {
+            "name": "novirhiza_tether_web_api-0.3.1.tar.gz",
+            "sha256": "89ba51824fe2b9a733e0fa79ef611c0e08eef5958d4b56650071c7db4a6f06d5",
+            "size": 25398
+          },
+          {
+            "name": "release-manifest.json",
+            "sha256": "15a1b05ba57fea876a61c67b1dbfb073efb62d4e66812cc03618e507e68da659",
+            "size": 569
+          }
+        ]
+      },
+      "publish_run": "https://github.com/DocumentDrivenDX/tether/actions/runs/42511927480",
+      "pypi_files": [
+        {
+          "filename": "novirhiza_tether_web_api-0.3.1-py3-none-any.whl",
+          "sha256": "f842970ff03b874f06ed3df2c65c8fd5fb707ff77c811b351e69184c7c12767b",
+          "upload_time": "2026-11-08T18:50:07.871416Z"
+        },
+        {
+          "filename": "novirhiza_tether_web_api-0.3.1.tar.gz",
+          "sha256": "89ba51824fe2b9a733e0fa79ef611c0e08eef5958d4b56650071c7db4a6f06d5",
+          "upload_time": "2026-11-08T18:50:09.025337Z"
+        }
+      ],
+      "pypi_matches_github_assets": true
+    },
+    {
+      "package": "novirhiza-tether-web-ui",
+      "package_version": "0.3.1",
+      "tag": "web-ui-v0.3.1",
+      "source_commit": "ee7810504889ba9286e821b37cd9d12ef8b9ee5e",
+      "github_release": {
+        "url": "https://github.com/DocumentDrivenDX/tether/releases/tag/web-ui-v0.3.1",
+        "published": "2026-11-08T00:02:45Z",
+        "immutable": true,
+        "assets": [
+          {
+            "name": "novirhiza_tether_web_ui-0.3.1-py3-none-any.whl",
+            "sha256": "01de29144ade01565365ccd00916dba8cdf17906c8ae698a01071c56414c9ac4",
+            "size": 144702
+          },
+          {
+            "name": "novirhiza_tether_web_ui-0.3.1.tar.gz",
+            "sha256": "558aec5971e5c30419807a376ba23412fea98c943204bd2ca63fe5d298b665e3",
+            "size": 141783
+          },
+          {
+            "name": "release-manifest.json",
+            "sha256": "48c88fb59b766887eb646ed524239b4455aa83e8e803e4f200e74a37b41a7df9",
+            "size": 565
+          }
+        ]
+      },
+      "publish_run": "https://github.com/DocumentDrivenDX/tether/actions/runs/42511976845",
+      "pypi_files": [
+        {
+          "filename": "novirhiza_tether_web_ui-0.3.1-py3-none-any.whl",
+          "sha256": "01de29144ade01565365ccd00916dba8cdf17906c8ae698a01071c56414c9ac4",
+          "upload_time": "2026-11-08T18:50:47.210668Z"
+        },
+        {
+          "filename": "novirhiza_tether_web_ui-0.3.1.tar.gz",
+          "sha256": "558aec5971e5c30419807a376ba23412fea98c943204bd2ca63fe5d298b665e3",
+          "upload_time": "2026-11-08T18:50:48.615395Z"
+        }
+      ],
+      "pypi_matches_github_assets": true
+    },
+    {
+      "package": "novirhiza-tether-databricks",
+      "package_version": "0.3.1",
+      "tag": "databricks-v0.3.1",
+      "source_commit": "ee7810504889ba9286e821b37cd9d12ef8b9ee5e",
+      "github_release": {
+        "url": "https://github.com/DocumentDrivenDX/tether/releases/tag/databricks-v0.3.1",
+        "published": "2026-11-08T00:02:49Z",
+        "immutable": true,
+        "assets": [
+          {
+            "name": "novirhiza_tether_databricks-0.3.1-py3-none-any.whl",
+            "sha256": "f23c207e0481d97c97e1f12c8e8c357865d42db42865e693bea9f32a68403ceb",
+            "size": 19286
+          },
+          {
+            "name": "novirhiza_tether_databricks-0.3.1.tar.gz",
+            "sha256": "c497ce4df13e66a2d8abb25bea1f128ee4fecbbb4837e99f1aaf573826ae813f",
+            "size": 15125
+          },
+          {
+            "name": "release-manifest.json",
+            "sha256": "9f390520f7d051ff642e46080dc9e94e77066f2d0195ec4bcad5c706acc73265",
+            "size": 581
+          }
+        ]
+      },
+      "publish_run": "https://github.com/DocumentDrivenDX/tether/actions/runs/42512043400",
+      "pypi_files": [
+        {
+          "filename": "novirhiza_tether_databricks-0.3.1-py3-none-any.whl",
+          "sha256": "f23c207e0481d97c97e1f12c8e8c357865d42db42865e693bea9f32a68403ceb",
+          "upload_time": "2026-11-08T18:51:35.466100Z"
+        },
+        {
+          "filename": "novirhiza_tether_databricks-0.3.1.tar.gz",
+          "sha256": "c497ce4df13e66a2d8abb25bea1f128ee4fecbbb4837e99f1aaf573826ae813f",
+          "upload_time": "2026-11-08T18:51:36.811860Z"
+        }
+      ],
+      "pypi_matches_github_assets": true
+    }
+  ],
+  "source_qualification": "release-031-qualification-20261106.md",
+  "release_gates": [
+    {
+      "ref": "ee7810504889ba9286e821b37cd9d12ef8b9ee5e",
+      "run": "https://github.com/DocumentDrivenDX/tether/actions/runs/42426485753",
+      "published_version": null,
+      "conclusion": "success"
+    },
+    {
+      "ref": "v0.3.1",
+      "run": "https://github.com/DocumentDrivenDX/tether/actions/runs/42512116775",
+      "published_version": "0.3.1",
+      "conclusion": "success"
+    }
+  ],
+  "index_installs": [
+    {
+      "kind": "tether.index-install-smoke",
+      "version": 1,
+      "package_version": "0.3.1",
+      "index": "https://pypi.org/simple",
+      "platform": "Linux x86_64",
+      "python_request": "3.11",
+      "published_files": [
+        {
+          "filename": "novirhiza_tether-0.3.1-py3-none-any.whl",
+          "sha256": "f59b8281f6d01239a8f4319cb9e7b61ae1b28086d3db43068f540588431b5782",
+          "upload_time": "2026-11-08T18:49:33.309635Z"
+        },
+        {
+          "filename": "novirhiza_tether-0.3.1.tar.gz",
+          "sha256": "4714d0bef0996887370fef3d7d4211728ee30e870d24d6362ee02f07d7894d55",
+          "upload_time": "2026-11-08T18:49:34.826004Z"
+        }
+      ],
+      "profiles": [
+        {
+          "extra": "base",
+          "requirement": "novirhiza-tether==0.3.1",
+          "installed": {
+            "novirhiza-tether": "0.3.1",
+            "pydantic": "2.14.3",
+            "pydantic-ai-slim": "2.62.0",
+            "anyio": "4.16.0"
+          }
+        },
+        {
+          "extra": "postgres",
+          "requirement": "novirhiza-tether[postgres]==0.3.1",
+          "installed": {
+            "novirhiza-tether": "0.3.1",
+            "pydantic": "2.14.3",
+            "pydantic-ai-slim": "2.62.0",
+            "anyio": "4.16.0",
+            "psycopg": "3.3.8"
+          }
+        },
+        {
+          "extra": "openai",
+          "requirement": "novirhiza-tether[openai]==0.3.1",
+          "installed": {
+            "novirhiza-tether": "0.3.1",
+            "pydantic": "2.14.3",
+            "pydantic-ai-slim": "2.62.0",
+            "anyio": "4.16.0",
+            "openai": "3.37.0"
+          }
+        },
+        {
+          "extra": "tui",
+          "requirement": "novirhiza-tether[tui]==0.3.1",
+          "installed": {
+            "novirhiza-tether": "0.3.1",
+            "pydantic": "2.14.3",
+            "pydantic-ai-slim": "2.62.0",
+            "anyio": "4.16.0",
+            "textual": "8.2.8"
+          }
+        }
+      ],
+      "started": "2026-11-08T19:07:41.614344+00:00",
+      "finished": "2026-11-08T19:07:51.335087+00:00",
+      "environment": "GitHub-hosted ubuntu-24.04, Python 3.11.17, Release gate run 42512116775"
+    },
+    {
+      "kind": "tether.index-install-smoke",
+      "version": 1,
+      "package_version": "0.3.1",
+      "index": "https://pypi.org/simple",
+      "platform": "Linux aarch64",
+      "python_request": "3.11",
+      "published_files": [
+        {
+          "filename": "novirhiza_tether-0.3.1-py3-none-any.whl",
+          "sha256": "f59b8281f6d01239a8f4319cb9e7b61ae1b28086d3db43068f540588431b5782",
+          "upload_time": "2026-11-08T18:49:33.309635Z"
+        },
+        {
+          "filename": "novirhiza_tether-0.3.1.tar.gz",
+          "sha256": "4714d0bef0996887370fef3d7d4211728ee30e870d24d6362ee02f07d7894d55",
+          "upload_time": "2026-11-08T18:49:34.826004Z"
+        }
+      ],
+      "profiles": [
+        {
+          "extra": "base",
+          "requirement": "novirhiza-tether==0.3.1",
+          "installed": {
+            "novirhiza-tether": "0.3.1",
+            "pydantic": "2.14.3",
+            "pydantic-ai-slim": "2.62.0",
+            "anyio": "4.16.0"
+          }
+        },
+        {
+          "extra": "postgres",
+          "requirement": "novirhiza-tether[postgres]==0.3.1",
+          "installed": {
+            "novirhiza-tether": "0.3.1",
+            "pydantic": "2.14.3",
+            "pydantic-ai-slim": "2.62.0",
+            "anyio": "4.16.0",
+            "psycopg": "3.3.8"
+          }
+        },
+        {
+          "extra": "openai",
+          "requirement": "novirhiza-tether[openai]==0.3.1",
+          "installed": {
+            "novirhiza-tether": "0.3.1",
+            "pydantic": "2.14.3",
+            "pydantic-ai-slim": "2.62.0",
+            "anyio": "4.16.0",
+            "openai": "3.37.0"
+          }
+        },
+        {
+          "extra": "tui",
+          "requirement": "novirhiza-tether[tui]==0.3.1",
+          "installed": {
+            "novirhiza-tether": "0.3.1",
+            "pydantic": "2.14.3",
+            "pydantic-ai-slim": "2.62.0",
+            "anyio": "4.16.0",
+            "textual": "8.2.8"
+          }
+        }
+      ],
+      "started": "2026-11-08T19:02:10.192650+00:00",
+      "finished": "2026-11-08T19:02:16.335606+00:00",
+      "environment": "GitHub-hosted ubuntu-24.04-arm, Python 3.11.17, Release gate run 42512116775"
+    }
+  ]
+}
