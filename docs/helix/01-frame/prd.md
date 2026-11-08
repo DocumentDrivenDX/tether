@@ -5,7 +5,7 @@ ddx:
   activity: frame
   status: draft
   owner: Erik LaBianca
-  updated: 2026-11-06
+  updated: 2026-11-08
   authoring:
     home: repo
   links:
@@ -561,17 +561,24 @@ From 0.3.1 the base metadata publishes ranges that passed the complete suite at 
 - CI service and packaging automation are implementation/deployment choices. Routine pull-request CI may run a smaller gate to conserve hosted capacity. The complete required conformance, acceptance, installed-profile and artifact gates must run on the selected release source before tagging; the execution route does not change the behavioral requirements.
 - Python 3.11 is the recorded compatibility target; the implementation must qualify its selected dependencies and interpreter matrix. A consumer requiring another floor triggers an explicit compatibility change.
 
+### Consumer decisions recorded 2026-11-08
+
+Erik LaBianca accepted these proposed defaults on 2026-11-08, answering consumer review request R3-4. Each holds for the 0.3.x line; a later release changes one only through a new decision recorded here.
+
+| Decision | Recorded answer | Affected action |
+|---|---|---|
+| Last-turn replacement | No retraction of a committed turn in 0.3.x; corrections are appended as new turns. Immutable retraction that refuses unresolved effects remains a candidate for a later release | A consumer's replace-last-turn control becomes an appended correction |
+| Existing-session import | No import. An application finishes existing sessions on its previous runtime or keeps them read-only there; no transcript is loaded as a Tether session without replay | A consumer keeps its previous read path for historical sessions during cutover |
+| Cross-process live text | A follower in another process receives committed entries only, when their step commits; no `LISTEN/NOTIFY` or other cross-process live-text transport in 0.3.x. A client that reconnects mid-stream sees the last committed entry, then the turn's result when it commits | A multi-worker consumer routes live viewers to the owning worker or accepts step granularity |
+| Synchronous callers | Bridging a synchronous caller to the event loop is the application's job (for example an anyio blocking portal it owns). Tether ships no blocking facade or `run_sync` helper (ADR-001); the embedding guide shows the pattern | A synchronous consumer owns its portal and its lifetime |
+| Batch approval for cutover | Not required; approvals are answered one at a time | None for cutover; batch approval stays a nonblocking enhancement |
+
 ### Consumer decisions awaiting Erik LaBianca
 
-The supplied consumer proposal labels these choices as assumptions. They remain open; none is silently accepted by this plan or a successful 0.1 release. Only dependent implementation/integration work waits for the relevant choice.
+The supplied consumer proposal labels these choices as assumptions. They remain open; none is silently accepted by this plan or a release. Only dependent implementation/integration work waits for the relevant choice.
 
 | Decision | Proposed default from consumer request | Owner / state |
 |---|---|---|
-| Last-turn replacement | Proposed 2026-11-06: no retraction of a committed turn in 0.3.x; corrections are appended. Immutable retraction that refuses unresolved effects remains the candidate for a later release | Erik LaBianca — open |
-| Batch approval required for cutover | No; serial answers | Erik LaBianca — open |
-| Existing-session import required for cutover | Proposed 2026-11-06: no import. An application finishes existing sessions on its previous runtime or starts new ones; no transcript is loaded as a Tether session without replay | Erik LaBianca — open |
-| Cross-process live text | Proposed 2026-11-06: a follower in another process receives committed entries only, when their step commits; no `LISTEN/NOTIFY` or other cross-process live-text transport in 0.3.x. A client that reconnects mid-stream sees the last committed entry, then the turn's result when it commits | Erik LaBianca — open |
-| Synchronous callers | Proposed 2026-11-06: bridging a synchronous caller to the event loop is the application's job (for example an anyio blocking portal it owns). Tether ships no blocking facade or `run_sync` helper (ADR-001); documentation may show the pattern | Erik LaBianca — open |
 | Application PostgreSQL settlement profile | Shared transaction when the verified root is shared | Erik LaBianca — open |
 | Original-transcript versus exchange-payload read permission | Keep two actions, matching the current implementation | Erik LaBianca — open; current protections remain enforced |
 | Ongoing release channel and signing authority | PyPI through the existing local publication route; signing authority unspecified | Erik LaBianca — open; the separately authorized 0.1 publication does not establish a signing policy |
