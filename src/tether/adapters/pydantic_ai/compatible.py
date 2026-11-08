@@ -33,6 +33,7 @@ from .estimator import OpenAIWireEstimator
 from .native import request_native, request_native_stream, validate_payload
 from .tokenizer import TokenizerProfile
 from .transport import AttemptTransport
+from .wire import STREAM_PROFILES, STRICT_STREAM_PROFILE
 
 
 def retry_delay(header: str | None, cap: float, attempt: int) -> float:
@@ -64,6 +65,7 @@ class OpenAIAdapter:
         application_credential: Credential | None = None,
         supports_parallel_tool_calls: bool = True,
         request_tags_header: str = "X-Tether-Request-Tags",
+        stream_profile: str = STRICT_STREAM_PROFILE,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         parsed = urlsplit(base_url)
@@ -89,6 +91,9 @@ class OpenAIAdapter:
             "Databricks-Ai-Gateway-Request-Tags",
         }:
             raise ValueError("unsupported_request_tags_header")
+        if stream_profile not in STREAM_PROFILES:
+            raise ValueError("unsupported_stream_profile")
+        self._stream_profile = stream_profile
         self._supports_parallel_tool_calls = supports_parallel_tool_calls
         self._request_tags_header = request_tags_header
         self._base_url = base_url
@@ -184,6 +189,7 @@ class OpenAIAdapter:
                         self._limits,
                         self._application_credential,
                         request_tags_header=self._request_tags_header,
+                        stream_profile=self._stream_profile,
                     )
                     emitted = False
                     try:
@@ -302,6 +308,7 @@ class OpenAIAdapter:
                 self._limits,
                 self._application_credential,
                 request_tags_header=self._request_tags_header,
+                stream_profile=self._stream_profile,
             )
             try:
                 response = await self._once(request, boundary)

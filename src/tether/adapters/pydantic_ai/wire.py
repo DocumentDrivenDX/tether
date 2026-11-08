@@ -17,6 +17,12 @@ from tether.types import (
     ToolSpec,
 )
 
+from .gateway import GatewayStreamDialect
+
+STRICT_STREAM_PROFILE = "openai-chat-text-tools-v1"
+GATEWAY_STREAM_PROFILE = "databricks-ai-gateway-stream-v1"
+STREAM_PROFILES = frozenset({STRICT_STREAM_PROFILE, GATEWAY_STREAM_PROFILE})
+
 
 def usage_from_wire(value: object) -> TokenUsage | None:
     if value is None:
@@ -135,10 +141,24 @@ def validate_stream_usage(value: JsonValue) -> None:
 
 
 class StreamingWireValidator:
-    """Validate bounded OpenAI-compatible SSE frames before the SDK sees them."""
+    """Validate bounded OpenAI-compatible SSE frames before the SDK sees them.
 
-    def __init__(self, tools: tuple[ToolSpec, ...], limits: ModelExecutionLimits) -> None:
+    The strict profile forwards the original bytes unchanged. An explicitly selected dialect
+    profile forwards only normalized, re-validated strict-shape frames.
+    """
+
+    def __init__(
+        self,
+        tools: tuple[ToolSpec, ...],
+        limits: ModelExecutionLimits,
+        *,
+        profile: str = STRICT_STREAM_PROFILE,
+    ) -> None:
+        if profile not in STREAM_PROFILES:
+            raise ValueError("unsupported_stream_profile")
         self.tools, self.limits = tools, limits
+        self.dialect = GatewayStreamDialect() if profile == GATEWAY_STREAM_PROFILE else None
+        self.forward = bytearray()
         self.pending = bytearray()
         self.line = bytearray()
         self.data_lines: list[bytes] = []
@@ -153,7 +173,8 @@ class StreamingWireValidator:
         self.done = False
         self.result: ModelResponse | None = None
 
-    def feed(self, chunk: bytes) -> None:
+    def feed(self, chunk: bytes) -> bytes:
+        """Consume raw bytes; return the bytes the SDK may parse."""
         if self.done and chunk.strip():
             raise ModelUnavailable("invalid_response")
         self.bytes_seen += len(chunk)
@@ -176,6 +197,11 @@ class StreamingWireValidator:
                 self.line.append(byte)
                 if len(self.line) > self.limits.max_response_bytes:
                     raise ModelUnavailable("response_too_large")
+        if self.dialect is None:
+            return chunk
+        forward = bytes(self.forward)
+        self.forward.clear()
+        return forward
 
     def _event(self) -> None:
         if not self.data_lines:
@@ -187,13 +213,22 @@ class StreamingWireValidator:
         if data == b"[DONE]":
             if self.finish_reason is None:
                 raise ModelUnavailable("invalid_response")
+            if self.dialect is not None:
+                self.dialect.finish(self.finish_reason)
             self.result = self._finish()
             self.done = True
+            self.forward.extend(b"data: [DONE]\n\n")
             return
         try:
             value: JsonValue = json.loads(data, object_pairs_hook=json_object)
             canonical(value)
-            self._chunk(value)
+            if self.dialect is None:
+                self._chunk(value)
+                return
+            normalized = self.dialect.chunk(value)
+            if normalized is not None:
+                self._chunk(normalized)
+                self.forward.extend(b"data: " + canonical(normalized) + b"\n\n")
         except ModelUnavailable:
             raise
         except (ValueError, TypeError, UnicodeError, AttributeError):

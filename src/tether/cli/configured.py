@@ -77,6 +77,9 @@ async def configured_model(
             request_tags_header="Databricks-Ai-Gateway-Request-Tags"
             if profile.databricks_profile
             else "X-Tether-Request-Tags",
+            stream_profile="databricks-ai-gateway-stream-v1"
+            if profile.databricks_profile
+            else "openai-chat-text-tools-v1",
         )
     )
     context = ContextConfig(
