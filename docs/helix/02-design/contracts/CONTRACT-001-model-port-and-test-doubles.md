@@ -233,8 +233,9 @@ Model-port version 3 adds optional claimed physical identities to text frames an
 nonempty-delta/terminal equality rule. Cassette layout and matching remain version 1; physical
 identities are regenerated for replay, not recorded as matching authority. Existing inconsistent
 experimental fixtures must be regenerated rather than silently repaired. The selected native
-adapter remains nonstreaming and emits one whole-text delta bound to the successful transport
-attempt, including after a retry before any text. Live disclosure additionally requires Engine-owned
+adapter only streams. It binds every text delta to the successful transport attempt, including
+after a retry before any text. A server that answers a streaming request with one JSON body gets
+strict body validation and becomes one whole-text delta; there is no separate nonstreaming call. Live disclosure additionally requires Engine-owned
 proof of successful start and current session access; these frame claims alone establish neither.
 
 
