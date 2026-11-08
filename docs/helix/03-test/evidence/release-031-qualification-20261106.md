@@ -1,8 +1,8 @@
 # 0.3.1 candidate qualification (recorded 2026-11-06)
 
-Source: `5a4c0b5` (main, 0.3.0 cohort) plus the uncommitted 0.3.1 changes. Record the
-release commit here when it exists; the tag must point at a commit whose tree matches the
-checked tree.
+Source: `5a4c0b5` (main, 0.3.0 cohort) plus the uncommitted 0.3.1 changes. Release commit:
+`ee7810504889ba9286e821b37cd9d12ef8b9ee5e` (merge of pull request 86); all four 0.3.1 tags
+point at it. Publication: [release-031-publication-20261108.md](release-031-publication-20261108.md).
 
 ## Complete gate
 
@@ -11,7 +11,9 @@ checked tree.
 | macOS arm64 | 3.11.17 | **pass** (`make check`, exit 0) | 145 | 3,636 | 87% | 699 s |
 | macOS arm64, merged with main at `1915962` (2026-11-07) | 3.11.17 | **pass** (`make check CHECK_BASE=HEAD`, exit 0) | 145 | 3,637 | 87% | 680 s |
 | Linux aarch64, `python:3.11-bookworm` container | 3.11.18 | **incomplete**, see below | — | — | — | — |
-| Linux x86_64 | 3.11 | not run; `Release gate` workflow | — | — | — | — |
+| macOS arm64, clean checkout of release commit `ee78105` (2026-11-07) | 3.11.17 | **pass** (`make check CHECK_BASE=HEAD`, exit 0) | 145 | 3,638 | 87% | — |
+| Linux x86_64, GitHub-hosted `ubuntu-24.04`, `ee78105` ([run](https://github.com/DocumentDrivenDX/tether/actions/runs/42426485753)) | 3.11.17 | **pass** (`Release gate`) | 145 | 3,638 | 87% | 13 min job |
+| Linux aarch64, GitHub-hosted `ubuntu-24.04-arm`, `ee78105` ([run](https://github.com/DocumentDrivenDX/tether/actions/runs/42426485753)) | 3.11.17 | **pass** (`Release gate`) | 145 | 3,638 | 87% | 15 min job |
 
 `make check` ran lint, format, strict typing, file-size and ceiling checks, layer and dependency
 audits, then the full inventory in bounded groups with the 85% branch floor. Browser assets
@@ -35,8 +37,8 @@ finished the complete suite.
 
 GitHub-hosted Ubuntu runners execute as a non-root user with a reaping init, which is what the
 `Release gate` workflow (`.github/workflows/release-gate.yml`) uses for Linux x86_64 and arm64.
-A Linux pass from that workflow, or from a non-root container run with `--init`, is still
-required before Linux support is claimed.
+That workflow passed on both Linux architectures for the release commit (rows above), which
+satisfies the Linux requirement.
 
 ## Dependency ranges
 
@@ -47,8 +49,9 @@ Bash-tool fix and its four new tests were added. The fix touches only the refere
 ## Fresh installs
 
 Published 0.2.0 base and extras installs from PyPI pass on macOS arm64, Linux aarch64 and Linux
-x86_64 ([release-020-publication-20261106.md](release-020-publication-20261106.md)). The same
-check for 0.3.1 runs after upload: dispatch `Release gate` with `published_version: 0.3.1`.
+x86_64 ([release-020-publication-20261106.md](release-020-publication-20261106.md)). For 0.3.1,
+`Release gate` with `published_version: 0.3.1` installed all four profiles from PyPI on Linux
+x86_64 and aarch64; see the [publication receipt](release-031-publication-20261108.md).
 
 ## Not covered
 
