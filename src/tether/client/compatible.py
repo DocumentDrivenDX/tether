@@ -17,6 +17,9 @@ class CompatibleModelSettings:
     output_limit_field: Literal["max_tokens", "max_completion_tokens"]
     supports_parallel_tool_calls: bool = True
     request_tags_header: str = "X-Tether-Request-Tags"
+    stream_profile: Literal["openai-chat-text-tools-v1", "databricks-ai-gateway-stream-v1"] = (
+        "openai-chat-text-tools-v1"
+    )
 
 
 class CompatibleModel:
@@ -36,6 +39,7 @@ class CompatibleModel:
             output_limit_field=settings.output_limit_field,
             supports_parallel_tool_calls=settings.supports_parallel_tool_calls,
             request_tags_header=settings.request_tags_header,
+            stream_profile=settings.stream_profile,
         )
 
     async def stream(self, request: ModelRequest) -> AsyncIterator[StreamItem]:
