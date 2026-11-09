@@ -108,25 +108,7 @@ def test_retry_delay_honors_numeric_and_http_date_headers() -> None:
     assert 0 <= retry_delay(None, 0.01, 0) <= 0.01
 
 
-async def test_retry_path_recovers_after_transient_failure(
-    model_request: ModelRequest, limits: ModelExecutionLimits
-) -> None:
-    statuses = iter([503, 200])
-
-    def handler(_: httpx.Request) -> httpx.Response:
-        status = next(statuses)
-        return httpx.Response(status, json=_wire() if status == 200 else {"e": 1})
-
-    model = _model(limits, handler)
-    try:
-        response, identity = await model._retry(model_request)
-    finally:
-        await model.aclose()
-    assert response.content == "Fabricated answer."
-    assert identity is not None
-
-
-async def test_retry_path_refuses_permanent_and_exhausted_failures(
+async def test_stream_does_not_retry_a_permanent_status(
     model_request: ModelRequest, limits: ModelExecutionLimits
 ) -> None:
     calls: list[int] = []
@@ -138,24 +120,10 @@ async def test_retry_path_refuses_permanent_and_exhausted_failures(
     model = _model(limits, handler)
     try:
         with pytest.raises(ModelUnavailable, match="http 400"):
-            await model._retry(model_request)
-        assert len(calls) == 1
+            await complete(model, model_request)
     finally:
         await model.aclose()
-
-    calls.clear()
-
-    def always_unavailable(_: httpx.Request) -> httpx.Response:
-        calls.append(1)
-        return httpx.Response(503, json={"e": 1})
-
-    model = _model(limits, always_unavailable)
-    try:
-        with pytest.raises(ModelUnavailable, match="http 503"):
-            await model._retry(model_request)
-    finally:
-        await model.aclose()
-    assert len(calls) == limits.max_attempts
+    assert len(calls) == 1
 
 
 async def test_unknown_finish_reason_is_returned_as_incomplete_evidence(

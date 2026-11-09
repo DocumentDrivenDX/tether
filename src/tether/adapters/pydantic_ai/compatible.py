@@ -1,4 +1,4 @@
-"""Explicit nonstreaming compatible profile using the native Pydantic AI model."""
+"""Explicit streaming compatible profile using the native Pydantic AI model."""
 
 from __future__ import annotations
 
@@ -13,24 +13,21 @@ from urllib.parse import urlsplit
 
 import httpx2 as httpx
 from openai import APIConnectionError
-from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.messages import PartDeltaEvent, PartStartEvent, TextPart, TextPartDelta
 
 from tether.models.canonical import copy_request
 from tether.runtime.pydantic_ai.messages import from_sdk_response
 from tether.types import (
-    AttemptIdentity,
     Credential,
     ModelExecutionLimits,
     ModelRequest,
-    ModelResponse,
     ModelUnavailable,
     StreamItem,
     TextDelta,
 )
 
 from .estimator import OpenAIWireEstimator
-from .native import request_native, request_native_stream, validate_payload
+from .native import request_native_stream, validate_payload
 from .tokenizer import TokenizerProfile
 from .transport import AttemptTransport
 from .wire import STREAM_PROFILES, STRICT_STREAM_PROFILE
@@ -127,51 +124,6 @@ class OpenAIAdapter:
             profile=profile,
             vocabulary=vocabulary,
         )
-
-    async def _once(self, request: ModelRequest, boundary: AttemptTransport) -> ModelResponse:
-        error: Exception | None = None
-        normalized: ModelResponse | None = None
-        try:
-            response = await request_native(
-                request,
-                base_url=self._base_url,
-                model_name=self._tiers[request.model],
-                output_limit_field=self._output_limit_field,
-                supports_parallel_tool_calls=self._supports_parallel_tool_calls,
-                transport=boundary,
-            )
-            normalized = from_sdk_response(
-                response, boundary.response.usage if boundary.response else None
-            )
-        except Exception as failure:
-            error = failure
-        if boundary.local_error is not None:
-            raise boundary.local_error
-        if isinstance(error, ModelUnavailable):
-            raise error
-        if (
-            isinstance(error, UnexpectedModelBehavior)
-            and boundary.response is not None
-            and boundary.response.finish_reason == "unknown"
-        ):
-            # A validated observed unknown is incomplete evidence, never SDK execution authority.
-            return boundary.response
-        if error is not None:
-            reason = (
-                "transport_error" if isinstance(error, APIConnectionError) else "invalid_response"
-            )
-            raise ModelUnavailable(reason, receipt=boundary.receipt) from None
-        observed = boundary.response
-        if observed is None or normalized is None:
-            raise ModelUnavailable("invalid_response")
-        # A missing wire reason remains unknown even if the SDK defaults it to stop.
-        finish_matches = observed.finish_reason in {"unknown", normalized.finish_reason}
-        if (observed.content, observed.tool_calls) != (
-            normalized.content,
-            normalized.tool_calls,
-        ) or not finish_matches:
-            raise ModelUnavailable("sdk_projection_changed")
-        return observed
 
     async def stream(self, request: ModelRequest) -> AsyncIterator[StreamItem]:
         request = copy_request(request)
@@ -299,37 +251,3 @@ class OpenAIAdapter:
         ) != (response.content, response.tool_calls, response.finish_reason):
             raise ModelUnavailable("sdk_projection_changed")
         yield response
-
-    async def _retry(self, request: ModelRequest) -> tuple[ModelResponse, AttemptIdentity]:
-        for attempt in range(self._limits.max_attempts):
-            boundary = AttemptTransport(
-                self._transport,
-                request,
-                self._limits,
-                self._application_credential,
-                request_tags_header=self._request_tags_header,
-                stream_profile=self._stream_profile,
-            )
-            try:
-                response = await self._once(request, boundary)
-                if boundary.identity is None:
-                    raise ModelUnavailable("invalid_response")
-                return response, boundary.identity
-            except ModelUnavailable as error:
-                if (
-                    error.reason
-                    not in {
-                        "transport_error",
-                        "http 429",
-                        "http 500",
-                        "http 502",
-                        "http 503",
-                        "http 504",
-                    }
-                    or attempt + 1 == self._limits.max_attempts
-                ):
-                    raise
-                await asyncio.sleep(
-                    retry_delay(boundary.retry_after, self._limits.max_retry_delay_seconds, attempt)
-                )
-        raise ModelUnavailable("attempts_exhausted")
