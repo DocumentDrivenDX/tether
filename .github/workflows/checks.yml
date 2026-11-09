@@ -1,12 +1,33 @@
 name: Checks
-on: [pull_request]
+
+# PR tier: `check` (ruff, pyright, layers, ceilings, the five fast pytest modules) on one
+# ubuntu runner and one python. Heavy tier (`web`, `full`): workflow_dispatch, weekly, and PRs
+# labelled `ci:full`. Release checking stays in release-gate.yml.
+#
+# Evidence gate (alternative to running the heavy tier in CI):
+#   1. commit your change, run `scripts/verify-full.sh` locally;
+#   2. commit .ci/evidence/full-suite.json as the LAST commit (excluded from the content hash);
+#   3. `evidence-gate` recomputes the hash on the PR head and passes on a match.
+# It also passes for PRs that only touch docs/markdown/.github, or when the PR carries
+# `ci:full` and the `web` and `full` jobs are green. Release workflows ignore evidence.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+  schedule:
+    - cron: '31 5 * * 1'
 concurrency:
-  group: checks-pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
   check:
+    if: github.event_name != 'schedule' && github.event.action != 'labeled'
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -32,8 +53,45 @@ jobs:
           fi
           make pr-check CHECK_BASE="$BASE_SHA"
 
-  web:
+  full:
+    # Heavy tier: the complete `make check` (what release-gate runs on a candidate).
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:full'))
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.3"
+          python-version: "3.11"
+          enable-cache: true
+      - run: uv sync --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Put native PostgreSQL tools on PATH
+        run: |
+          if ! ls -d /usr/lib/postgresql/*/bin >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql
+          fi
+          ls -d /usr/lib/postgresql/*/bin | sort -V | tail -n 1 >> "$GITHUB_PATH"
+      - run: npm run build
+      - run: make check
+
+  web:
+    # Heavy tier: browsers + PostgreSQL + the web suites.
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:full'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,3 +121,38 @@ jobs:
           fi
           ls -d /usr/lib/postgresql/*/bin | sort -V | tail -n 1 >> "$GITHUB_PATH"
       - run: make web-check
+
+  evidence-gate:
+    needs: [web, full]
+    if: >-
+      always() && github.event_name == 'pull_request' &&
+      (github.event.action != 'labeled' || github.event.label.name == 'ci:full')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Evidence gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          light='^(docs/|\.github/|LICENSE|NOTICE)|\.md$'
+          if [ "$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename' | grep -Evc "$light" || true)" = 0 ]; then
+            echo "pass (c): no paths covered by the heavy tier"; exit 0
+          fi
+          h=$(git ls-files -z -- . ':!.ci/evidence' | while IFS= read -r -d '' f; do [ -f "$f" ] || continue; printf '%s\0' "$f"; cat -- "$f"; done | sha256sum | cut -d' ' -f1)
+          if [ -f .ci/evidence/full-suite.json ] && [ "$(jq -r .content_hash .ci/evidence/full-suite.json)" = "$h" ]; then
+            echo "pass (a): evidence matches $h"; exit 0
+          fi
+          if echo "$LABELS" | jq -e 'index("ci:full")' >/dev/null && [ "$RESULTS" = "success success" ]; then
+            echo "pass (b): ci:full label and heavy suite green"; exit 0
+          fi
+          echo "::error::No valid evidence for $h. Run scripts/verify-full.sh locally and commit .ci/evidence/full-suite.json last, or add the ci:full label."
+          exit 1
