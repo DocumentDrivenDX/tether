@@ -20,7 +20,7 @@ does not create a host, choose a database, or decide how a user authenticates.
 
 ## Install
 
-The API adapter and client facade shown here are `0.3.1`
+The API adapter and client facade shown here are `0.3.2`
 workspace artifacts, with an exact internal Python dependency cohort. Published
 core `0.2.0` has an earlier client facade and is refused by this candidate API.
 In this checkout, `uv sync --frozen` uses the local packages. The registry command

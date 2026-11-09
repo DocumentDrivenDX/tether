@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "novirhiza-tether"
-version = "0.3.1"
+version = "0.3.2"
 description = "An embedded Python agent harness built on Pydantic AI Agent"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -59,9 +59,9 @@ dev = [
   "ruff>=0.12,<1",
   "fastapi==0.162.0",
   "httpx==0.28.1",
-  "novirhiza-tether-web-api==0.3.1",
-  "novirhiza-tether-web-ui==0.3.1",
-  "novirhiza-tether-databricks==0.3.1",
+  "novirhiza-tether-web-api==0.3.2",
+  "novirhiza-tether-web-ui==0.3.2",
+  "novirhiza-tether-databricks==0.3.2",
   "hypercorn==0.18.0",
   "databricks-sdk>=0.89.0,<1",
   "defusedxml>=0.7,<1",

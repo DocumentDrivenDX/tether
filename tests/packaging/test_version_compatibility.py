@@ -13,7 +13,7 @@ from process import Result
         (0, "", False),
         (1, "DNS network unavailable", False),
         (1, "No solution found: fastapi missing", False),
-        (1, "No solution found novirhiza-tether==0.3.1 requirements are unsatisfiable", True),
+        (1, "No solution found novirhiza-tether==0.3.2 requirements are unsatisfiable", True),
     ],
 )
 def test_only_expected_old_core_constraint_refusal_is_evidence(
@@ -79,7 +79,7 @@ def test_published_stable_core_failure_cannot_inherit_the_older_core_pass(tmp_pa
             return Result(
                 1,
                 "",
-                "No solution found novirhiza-tether==0.3.1 requirements are unsatisfiable",
+                "No solution found novirhiza-tether==0.3.2 requirements are unsatisfiable",
             )
         return Result(1, "", "DNS network unavailable")
 
@@ -134,7 +134,7 @@ def test_internal_candidate_dependencies_require_the_exact_tested_cohort(project
 
     root = Path(__file__).resolve().parents[2]
     metadata = tomllib.loads((root / project).read_text())
-    assert metadata["project"]["version"] == "0.3.1"
+    assert metadata["project"]["version"] == "0.3.2"
     dependencies = list(metadata["project"].get("dependencies", []))
     for values in metadata["project"].get("optional-dependencies", {}).values():
         dependencies.extend(values)
@@ -143,4 +143,4 @@ def test_internal_candidate_dependencies_require_the_exact_tested_cohort(project
     for value in dependencies:
         requirement = Requirement(value)
         if requirement.name.startswith("novirhiza-tether"):
-            assert str(requirement.specifier) == "==0.3.1"
+            assert str(requirement.specifier) == "==0.3.2"

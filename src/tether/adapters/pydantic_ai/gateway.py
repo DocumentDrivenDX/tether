@@ -2,10 +2,13 @@
 
 Every gateway-specific field is checked against a closed allow-list and then removed, so the
 strict chunk validator and the SDK only ever see the `openai-chat-text-tools-v1` chunk shape.
-Unknown fields, unknown filter structure and unknown content parts still refuse.
+Unknown fields, unknown filter structure and unknown content parts still refuse. Top-level
+gateway cache counts move to the nested OpenAI usage fields.
 """
 
 from __future__ import annotations
+
+from typing import TypeGuard
 
 from pydantic import JsonValue
 
@@ -21,13 +24,18 @@ GATEWAY_CHOICE_KEYS = frozenset({"logprobs", "content_filter_results", "content_
 DELTA_KEYS = frozenset({"role", "content", "tool_calls"})
 FILTER_ENTRY_KEYS = frozenset({"filtered", "severity", "detected"})
 SUMMARY_KEYS = frozenset({"type", "text", "signature"})
+CACHE_COUNTS = (
+    ("cache_read_input_tokens", "cached_tokens"),
+    ("cache_creation_input_tokens", "cache_write_tokens"),
+)
+CACHE_CREATION_KEYS = frozenset({"ephemeral_5m_input_tokens", "ephemeral_1h_input_tokens"})
 
 
 def _unsupported() -> ModelUnavailable:
     return ModelUnavailable("unsupported_content")
 
 
-def _count(value: JsonValue) -> bool:
+def _count(value: JsonValue) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
@@ -95,6 +103,52 @@ def gateway_metadata(value: dict[str, JsonValue]) -> None:
         raise _unsupported()
 
 
+def _cache_creation(usage: dict[str, JsonValue]) -> None:
+    detail = usage.pop("cache_creation", None)
+    if detail is None:
+        return
+    if (
+        not isinstance(detail, dict)
+        or set(detail) - CACHE_CREATION_KEYS
+        or not all(_count(item) for item in detail.values())
+    ):
+        raise _unsupported()
+    total = usage.get("cache_creation_input_tokens")
+    if total is not None and total != sum(item for item in detail.values() if _count(item)):
+        raise ModelUnavailable("invalid_response")
+
+
+def gateway_usage(value: JsonValue) -> JsonValue:
+    """Move top-level cache counts to the nested OpenAI fields; drop the retention breakdown.
+
+    Live evidence shows both cache counts are subsets of `prompt_tokens`, matching the nested
+    `cached_tokens` semantics (ADR-013), so their sum may not exceed it.
+    """
+    if not isinstance(value, dict):
+        return value
+    usage = dict(value)
+    _cache_creation(usage)
+    details = usage.get("prompt_tokens_details")
+    nested = dict(details) if isinstance(details, dict) else None
+    for flat, field in CACHE_COUNTS:
+        count = usage.pop(flat, None)
+        if count is None:
+            continue
+        if nested is None and details is not None:
+            raise ModelUnavailable("invalid_response")
+        nested = {} if nested is None else nested
+        if not _count(count) or nested.get(field, count) != count:
+            raise ModelUnavailable("invalid_response")
+        nested[field] = count
+    if nested is not None:
+        usage["prompt_tokens_details"] = nested
+        cached = [item for item in (nested.get(f) for _, f in CACHE_COUNTS) if _count(item)]
+        prompt = usage.get("prompt_tokens")
+        if _count(prompt) and sum(cached) > prompt:
+            raise ModelUnavailable("invalid_response")
+    return usage
+
+
 class GatewayStreamDialect:
     """Normalize one stream's gateway chunks to the strict chunk shape, or refuse."""
 
@@ -116,6 +170,8 @@ class GatewayStreamDialect:
         choices = value.get("choices")
         if isinstance(choices, list):
             normalized["choices"] = [self._choice(choice) for choice in choices]
+        if "usage" in value:
+            normalized["usage"] = gateway_usage(value["usage"])
         return normalized
 
     def finish(self, finish_reason: str | None) -> None:

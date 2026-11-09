@@ -14,7 +14,7 @@ protocol.
 
 ## Install the core
 
-This guide targets the `0.3.1` release. Published core `0.2.0`
+This guide targets the `0.3.2` release. Published core `0.2.0`
 has an earlier client facade without `ClientHost`; it cannot replace this
 candidate. Candidate Python interface packages require the exact core cohort.
 In the checkout, `uv sync --frozen` resolves that workspace source. The registry
@@ -119,7 +119,7 @@ set; the reference terminal client allows 1 MiB responses. Measure your own
 largest responses and tool arguments before choosing values.
 
 The default values are versioned by `MODEL_EXECUTION_DEFAULTS_VERSION` and
-`CLIENT_DEFAULTS_VERSION` (both 1 in 0.3.1). A release that changes a default
+`CLIENT_DEFAULTS_VERSION` (both 1 in 0.3.2). A release that changes a default
 bumps the matching version and names the change in its release notes; defaults
 never change silently.
 
