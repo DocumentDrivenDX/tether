@@ -5,7 +5,7 @@ ddx:
   activity: design
   status: draft
   owner: Erik LaBianca
-  updated: 2026-10-29
+  updated: 2026-11-08
   authoring:
     home: repo
   links:
@@ -114,6 +114,7 @@ async def checked_stream(port: ModelPort, request: ModelRequest, *, max_text_byt
 | Concurrency | An adapter MUST be safe to call from many tasks at once. Caller mode uses only that request's credential; application mode uses only the explicitly configured application identity; anonymous mode sends no authorization. No mode inherits identity from another task. |
 | Credential | Caller mode reads credential.authorization() once per physical attempt, never caches it across attempts, and refuses missing/empty/expired credentials before egress without application fallback. Application/anonymous modes are explicit request selections; passing a caller credential in either is identity_mode_conflict rather than silent credential substitution. Adapter construction validates the selected application credential mechanism. No credential is logged, persisted or included in an error reason. |
 | Retries | An adapter MUST NOT retry in more than one layer; the layer that retries owns the policy. |
+| Stream profile | The compatible adapter's stream profile is an explicit selection; the default `openai-chat-text-tools-v1` refuses any field outside its chunk shape and forwards original bytes. A dialect profile (`databricks-ai-gateway-stream-v1`, ADR-013) MUST check each extra field against a closed allow-list, MUST forward only normalized frames that the strict validator re-checks, and MUST NOT turn dropped non-text parts into text, deltas or usage. It MAY map a provider's cache counts to `cache_read_tokens`/`cache_write_tokens` only after their semantics are qualified as subcounts of the input total, and MUST refuse counts that exceed it or conflict. Unknown fields refuse under every profile. The receipt's `schema_profile` names the selected profile. A stream-validation failure carries the observed header request id and receipt. |
 | Terminal outcome | The adapter normalizes only documented wire terminal reasons to `finish_reason`; missing/unrecognized reasons are `unknown`. A stream without a terminal response is `ModelUnavailable("incomplete_stream")`. Only `stop` without calls or `tool_calls` with complete valid calls permits continuation/final success. Truncated, filtered, unknown or structurally inconsistent outcomes MUST NOT dispatch a call or be labelled final success. A structurally valid bounded `length`, `filtered` or `unknown` response remains an observed terminal for CONTRACT-002 incomplete-text persistence; it is not a transport outage. Structural inconsistency, invalid arguments and byte-limit failures remain explicit failures. A native SDK default cannot promote a missing/unrecognized wire reason from `unknown` to `stop`; exact SDK text/call projection parity is required when SDK normalization succeeds. If the public SDK rejects an unrecognized reason, a complete bounded response that passed Tether wire validation and successful recorder observation MAY be returned unchanged only as non-executable `unknown` evidence, after every local transport/recorder error has propagated. This validated unknown-terminal fallback makes no SDK projection-parity claim and MUST NOT rewrite captured bytes, retry, dispatch calls or expose SDK diagnostics. |
 | Wire integrity | Invalid JSON arguments, duplicate/ambiguous call ids in one reply, invalid names or incomplete calls MUST be rejected, never repaired into executable arguments. Provider-specific history formatting may add clearly synthetic non-executable separators; it MUST preserve the original log, invocation identity and effect status. |
 | Bounds | `max_output_tokens` is mapped to the configured endpoint output-limit field. A conflicting reserved value in `extra` is `ModelUnavailable("parameter_conflict")`. Oversized/unmeasurable input is rejected by CONTRACT-004 before transport; the adapter caps response bytes and tool argument bytes by explicit settings before materialization. |
@@ -232,8 +233,9 @@ Model-port version 3 adds optional claimed physical identities to text frames an
 nonempty-delta/terminal equality rule. Cassette layout and matching remain version 1; physical
 identities are regenerated for replay, not recorded as matching authority. Existing inconsistent
 experimental fixtures must be regenerated rather than silently repaired. The selected native
-adapter remains nonstreaming and emits one whole-text delta bound to the successful transport
-attempt, including after a retry before any text. Live disclosure additionally requires Engine-owned
+adapter only streams. It binds every text delta to the successful transport attempt, including
+after a retry before any text. A server that answers a streaming request with one JSON body gets
+strict body validation and becomes one whole-text delta; there is no separate nonstreaming call. Live disclosure additionally requires Engine-owned
 proof of successful start and current session access; these frame claims alone establish neither.
 
 

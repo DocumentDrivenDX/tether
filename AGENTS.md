@@ -328,5 +328,5 @@ a successful start. Snapshot request/identity scalars independently of mutable p
 Runtime uses explicit text byte caps with cancellation-responsive incremental UTF-8 accounting.
 Scripted explicit fragments emit once; replay regenerates physical identities and refuses inconsistent
 successful cassette text at load without changing cassette-v1 matching. The selected native adapter
-remains nonstreaming and binds its whole-text delta to its explicit successful transport attempt.
+only streams and binds each text delta to its explicit successful transport attempt.
 Do not infer current-policy live disclosure or broker support from frame conformance.

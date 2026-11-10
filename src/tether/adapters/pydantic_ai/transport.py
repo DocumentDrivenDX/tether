@@ -24,7 +24,24 @@ from tether.types import (
 )
 
 from .native import NATIVE_CODEC
-from .wire import StreamingWireValidator, observed_usage, validate_wire
+from .wire import (
+    STREAM_PROFILES,
+    STRICT_STREAM_PROFILE,
+    StreamingWireValidator,
+    observed_usage,
+    validate_wire,
+)
+
+
+def attributed(error: ModelUnavailable, receipt: ResponseReceipt) -> ModelUnavailable:
+    """The same failure, carrying the gateway's request id and receipt it already sent."""
+    if error.receipt is not None and error.request_id is not None:
+        return error
+    return ModelUnavailable(
+        error.reason,
+        error.request_id or receipt.provider_request_id,
+        error.receipt or receipt,
+    )
 
 
 class CapturedStream(httpx.AsyncByteStream):
@@ -49,24 +66,33 @@ class CapturedStream(httpx.AsyncByteStream):
             return
         try:
             async for chunk in self.response.aiter_bytes():
-                self.validator.feed(chunk)
+                forward = self.validator.feed(chunk)
                 self.data.extend(chunk)
                 if self.validator.result is not None and not self.completed:
                     await self._complete(self.validator.result)
-                yield chunk
+                if forward:
+                    yield forward
             if not self.completed:
                 await self._complete(self.validator.finish())
         except Exception as error:
-            if self.transport.local_error is None:
-                if isinstance(error, ModelUnavailable):
-                    self.transport.local_error = error
-                elif isinstance(error, httpx.TransportError):
-                    self.transport.local_error = ModelUnavailable("transport_error")
-                else:
-                    self.transport.local_error = ModelUnavailable("invalid_response")
+            self._record_failure(error)
             raise httpx.StreamError("invalid_stream") from error
         finally:
             await self.response.aclose()
+
+    def _record_failure(self, error: Exception) -> None:
+        """Keep the first failure, carrying the request id and receipt already observed."""
+        stored = self.transport.local_error
+        if stored is None:
+            if isinstance(error, ModelUnavailable):
+                failure = error
+            elif isinstance(error, httpx.TransportError):
+                failure = ModelUnavailable("transport_error")
+            else:
+                failure = ModelUnavailable("invalid_response")
+            self.transport.local_error = attributed(failure, self.receipt)
+        elif isinstance(stored, ModelUnavailable):
+            self.transport.local_error = attributed(stored, self.receipt)
 
     async def aclose(self) -> None:
         await self.response.aclose()
@@ -98,8 +124,12 @@ class AttemptTransport(httpx.AsyncBaseTransport):
         application_credential: Credential | None,
         *,
         request_tags_header: str = "X-Tether-Request-Tags",
+        stream_profile: str = STRICT_STREAM_PROFILE,
     ) -> None:
+        if stream_profile not in STREAM_PROFILES:
+            raise ValueError("unsupported_stream_profile")
         self.request_tags_header = request_tags_header
+        self.stream_profile = stream_profile
         self.inner = inner
         self.request = request
         self.limits = limits
@@ -211,7 +241,7 @@ class AttemptTransport(httpx.AsyncBaseTransport):
         receipt = ResponseReceipt(
             provider="openai-compatible",
             endpoint=str(request.url),
-            schema_profile="openai-chat-text-tools-v1",
+            schema_profile=self.stream_profile,
             provider_request_id=response.headers.get("x-request-id"),
             request_id_source=("header" if response.headers.get("x-request-id") else "none"),
         )
@@ -222,15 +252,19 @@ class AttemptTransport(httpx.AsyncBaseTransport):
             "identity",
         }:
             await response.aclose()
-            raise ModelUnavailable("unsupported_content_encoding", receipt=receipt)
+            raise ModelUnavailable(
+                "unsupported_content_encoding", receipt.provider_request_id, receipt
+            )
         if "text/event-stream" not in response.headers.get("content-type", "").lower():
             try:
                 await self._capture(response, identity, str(request.url), recorder)
                 if self.response is None:
-                    raise ModelUnavailable("invalid_response", receipt=receipt)
+                    raise ModelUnavailable("invalid_response", receipt.provider_request_id, receipt)
                 payload = synthetic_stream(self.response, self.wire_model or self.request.model)
                 if len(payload) > self.limits.max_response_bytes:
-                    raise ModelUnavailable("response_too_large", receipt=receipt)
+                    raise ModelUnavailable(
+                        "response_too_large", receipt.provider_request_id, receipt
+                    )
                 return httpx.Response(
                     200,
                     headers={"content-type": "text/event-stream"},
@@ -246,7 +280,7 @@ class AttemptTransport(httpx.AsyncBaseTransport):
         stream = CapturedStream(
             response,
             self,
-            StreamingWireValidator(self.request.tools, self.limits),
+            StreamingWireValidator(self.request.tools, self.limits, profile=self.stream_profile),
             identity,
             receipt,
             recorder,

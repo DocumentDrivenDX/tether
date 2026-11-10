@@ -159,3 +159,65 @@ async def test_gateway_error_reports_status_and_request_id_without_body(model_re
     assert marker not in str(error)
     assert marker not in repr(error)
     assert marker not in error.receipt.model_dump_json()
+
+
+def _sse(*frames: dict) -> bytes:
+    body = b"".join(b"data: " + json.dumps(frame).encode() + b"\n\n" for frame in frames)
+    return body + b"data: [DONE]\n\n"
+
+
+def _chunk(delta: dict) -> dict:
+    return {
+        "id": "fabricated-stream",
+        "object": "chat.completion.chunk",
+        "created": 1,
+        "model": "fabricated-endpoint",
+        "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
+    }
+
+
+FILTER_PREAMBLE = {"id": "", "object": "", "created": 0, "model": "", "choices": []}
+REASONING_PARTS = _chunk({"role": "assistant", "content": [{"type": "reasoning", "summary": []}]})
+PARTIAL = json.dumps(_chunk({"role": "assistant", "content": "Part"})).encode()
+CUT_OFF = b"data: " + PARTIAL + b"\n\n"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [_sse(FILTER_PREAMBLE), _sse(REASONING_PARTS), CUT_OFF],
+    ids=["filter-preamble", "reasoning-parts", "cut-off"],
+)
+async def test_refused_stream_still_reports_the_gateway_request_id(model_request, limits, body):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream", "x-request-id": "fabricated-stream-id"},
+            content=body,
+        )
+
+    model = gateway(limits, handler)
+    request = caller_request(model_request, "user-a", trace_for(0))
+    with pytest.raises(ModelUnavailable) as raised:
+        async for _ in model.stream(request):
+            pass
+    error = raised.value
+    assert error.request_id == "fabricated-stream-id"
+    assert error.receipt is not None
+    assert error.receipt.provider_request_id == "fabricated-stream-id"
+
+
+async def test_refused_buffered_stream_reply_still_reports_the_gateway_request_id(
+    model_request, limits
+):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"unexpected": True}, headers={"x-request-id": "fabricated-buffered-id"}
+        )
+
+    model = gateway(limits, handler)
+    request = caller_request(model_request, "user-a", trace_for(0))
+    with pytest.raises(ModelUnavailable) as raised:
+        async for _ in model.stream(request):
+            pass
+    assert raised.value.request_id == "fabricated-buffered-id"
+    assert raised.value.receipt is not None
