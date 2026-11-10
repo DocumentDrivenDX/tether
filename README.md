@@ -14,13 +14,17 @@ Tether's policy, validation, approval and commit gates. Model doubles and shared
 available. Local JSONL journal/history and pending-approval restart reconstruction are implemented;
 Owner-bound Client metadata, history, call-detail and verified pending reads are available through an async `Tether` context with explicit `ClientLimits`. Bounded persisted follow/replay is also available. Task-owned `send`, shielded result handles, canonical request retries, current-source result reads, lease heartbeats and explicit cancellation are implemented. Explicit durable resume is implemented for the qualified local profile. Optional PostgreSQL18 session storage and independent content history are implemented for the qualified database profile. See the [build plan](docs/helix/02-design/solution-designs/SD-001-tether-library-design-and-build-plan.md).
 
-For 0.3.1 the complete release gate (`make check`) passed on macOS arm64, Linux x86_64 and
-Linux aarch64, each with Python 3.11.17, the locked dependency versions, local POSIX JSONL
-storage and PostgreSQL 18, including the optional embedded helper. Those three are the
-qualified platforms; Linux runs as a non-root user under a reaping init process, as on
-GitHub-hosted runners. Base, `postgres`, `openai` and `tui` installs of published 0.3.1 from
-PyPI pass on Linux x86_64 and aarch64
-([receipt](docs/helix/03-test/evidence/release-031-publication-20261108.md)). Published base
+For 0.3.2 the complete release gate (`make check`) passed on Linux x86_64 and Linux aarch64,
+each with Python 3.11.17, the locked dependency versions, local POSIX JSONL storage and
+PostgreSQL 18, including the optional embedded helper
+([qualification](docs/helix/03-test/evidence/release-032-qualification-20261108.md)). Linux
+runs as a non-root user under a reaping init process, as on GitHub-hosted runners. macOS arm64
+passed the complete gate for 0.3.1
+([qualification](docs/helix/03-test/evidence/release-031-qualification-20261106.md)); its 0.3.2
+run is incomplete, with one timing-sensitive embedded-PostgreSQL case failing under heavy host
+load. Base, `postgres`, `openai` and `tui` installs of published 0.3.2 from PyPI pass on Linux
+x86_64 and aarch64, and all four packages install together from PyPI on macOS arm64
+([receipt](docs/helix/03-test/evidence/release-032-publication-20261108.md)). Published base
 dependency ranges and the versions that passed at each end are in the
 [dependency matrix](docs/helix/03-test/evidence/dependency-matrix-20261106.md). Live
 compatible-model evidence covers the recorded local DS4/Qwen text/function-tool profile,
