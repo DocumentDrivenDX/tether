@@ -1929,3 +1929,1517 @@ database credential-mint thread also needs a scoped cancellation-ownership
 control: PostgreSQL admitted I/O shields its operation, while direct provider
 cancellation is a distinct boundary. SDK configuration alone proves neither
 physical completion nor live qualification.
+
+## 2026-11-09 source reconciliation and bounded test review
+
+The checkout resumed clean after a fast-forward from `b1a7d57` to
+`00c7a9be29bab0c0299f692db7e788a92c23fcba` on `origin/main`.
+IP-002 remains the sole tracker; its plan SHA-256 at this checkpoint is
+`00ed225aee462300751a8ec3bf4ff686448fced6d9fada6b82a8a25631d778c1`.
+The [0.3.2 publication receipt](../../03-test/evidence/release-032-publication-20261108.md)
+records release commit `236c569`, its named Linux complete gates and public
+package installs. Those observations do not qualify the resumed source cohort
+or close Source29's installed, browser, selected-profile, performance or manual
+acceptance gates. The upstream CI change moves heavy checks to explicit,
+scheduled or labeled execution, with an alternative local evidence gate; final
+IP-002 reconciliation must verify the required aggregate against current inputs.
+
+The preceding nested-installed-runner pending statement is superseded by source
+inspection. `scripts/package_command_owner.py` (`72d7a4fe`) explicitly selects
+standalone owned groups or inherited supervision, both without nested command
+deadlines. `scripts/check_web_packages.py` (`99f0230f`) supplies the validated
+whole-job watchdog or explicit external owner. Root observed a fresh 20-case pass
+of `tests/packaging/test_package_pipeline_controls.py` with `--no-cov`, including
+policy selection and incomplete-receipt preservation. Its temporary fixture
+directory is `/private/tmp/tether-origin-update-package-policy-20261109-01`;
+no separate log was saved. These controller tests do not execute an installed
+package matrix.
+
+Sol accepted the bounded executor/storage/Bash test family after source review
+and Root-observed focused verification:
+
+| Reviewed path / SHA-256 prefix | Preserved behavior and coordination |
+| --- | --- |
+| `tests/test_execution_review.py` / `6c159bf2` | Entry races actual operation termination; held workers release in cleanup and retain their futures. Worker exclusion, cancellation and unknown-effect assertions remain. |
+| `tests/test_storage_faults.py` / `c4a498e2` | Writer entry and close use state witnesses; cleanup releases and settles actual work. Configured storage shutdown refusal, root locking, uncertain writes and recovery assertions remain. |
+| `tests/test_common_tools.py` / `17d3409e` | Fresh captured process groups receive cleanup signals before owner settlement, without a signal-zero preflight. Actual reap and strict group-absence proof remain. Permission refusal never establishes absence. Bash's configured timeout remains. |
+
+The current three-file cohort passed 68 cases with `--no-cov` and unique
+`20261109-01` isolation. Separate preliminary observations passed two mocked
+signal controls and one native cleanup control; those are not additional cases
+to add to the 68-case cohort. The native control verifies final process-group
+absence. No stale process identifiers were signaled. Ruff check/format and
+Pyright for the three files passed; global file-size and ceiling checks against
+HEAD also passed. Native execution used the authorized filesystem/process
+boundary needed by the fixture, without cloud or secret access.
+
+Evidence provenance is Root's observed tool results: session `88958` ended
+zero with 68 passing cases; session `39542` ended zero with two passing controls;
+native chunk `c33d5e` ended zero with one passing control. No standalone log or
+machine-readable receipt was captured. The corresponding fixture directories
+are `/private/tmp/tether-origin-update-executor-storage-tools-20261109-01`,
+`/private/tmp/tether-origin-update-bash-controls-20261109-01` and
+`/private/tmp/tether-origin-update-bash-native-20261109-01`; these are temporary
+test directories, not receipts. This focused acceptance does not close the
+timing inventory or any complete Source29 gate, and no task box changes here.
+
+The next bounded telemetry design covers `tests/test_engine_telemetry.py`,
+`tests/test_retrieval_durability.py` and `tests/test_telemetry_ports.py` under the
+existing WP-01/WP-34 timing correction. Replace incidental result/entry/cleanup
+wait limits with actual operation/delivery witnesses and retained cleanup.
+Sink entry must observe delivery ownership rather than race an already completed
+successful turn. Preserve the configured telemetry delivery/shutdown deadlines,
+incomplete close, root reopening and actual observer drainage assertions.
+Remove held-thread release/entry limits while retaining actual worker completion.
+For concurrent audit encoding, retain two simultaneous event loops, abort the
+barrier if a peer terminates before arrival, and join all workers on every exit.
+Keep invalid public conformance-timeout validation unchanged. Luna prepares the
+implementation and focused controls; Sol reviews the result before acceptance.
+
+The example credential-mint cancellation boundary and installed React consumer
+state/cleanup witnesses are separate active candidates awaiting their own proof
+and review. No new full qualification, selected live run, performance workload,
+publication or final resource cleanup is established by this checkpoint.
+
+The installed React consumer harness subsequently passed bounded source review
+at `scripts/web/consumer-view.mjs` (`26bcd82b`) and
+`scripts/web/check-packages.mjs` (`419638bb`). The consumer requires the exact
+custom layout/message and a real feed-reader demand witness. A zero stream
+high-water mark prevents automatic queue filling from satisfying that witness.
+Completed React `act` turns drive state observation without an elapsed deadline;
+producer and React terminal failures end the wait. Cleanup releases held history
+and stream gates before unmount, verifies all opened feed signals aborted, and
+retains primary failures alongside cleanup failures. Natural child exit remains
+under the enclosing functional command owner.
+
+The package driver now explicitly requires baseline, delayed history/feed and
+exact failed-fetch modes before emitting its unchanged receipt identities.
+Luna observed all three consumer modes and both `node --check` syntax checks
+exit zero on the reviewed bytes, using Node `v22.22.2` at
+`/private/tmp/tether-npm-cache/_npx/5705de4b80ce9477/node_modules/node/node_modules/node-bin-darwin-arm64/bin/node`.
+From the repository root, the checks selected `scripts/web/consumer-view.mjs`
+and `scripts/web/check-packages.mjs`; the runtime commands selected the consumer
+with its default baseline and explicit `TETHER_CONSUMER_VIEW_CONTROL=delayed`
+and `TETHER_CONSUMER_VIEW_CONTROL=failed-fetch`. No React `act` warnings were
+observed. `git diff --check` also passed. No separate log was saved.
+
+These are focused executions against the existing workspace package resolution.
+They do not build or install fresh npm archives or qualify an installed matrix.
+The earlier direct Node 26 observation remains separate. Source29's complete
+functional, installed, browser, selected-profile and acceptance proof stays open;
+this harness review changes no task box or process-owner allowlist identity.
+
+The example database credential-mint boundary subsequently passed bounded
+review at `examples/databricks-app/src/tether_databricks_example/postgres.py`
+(`71296f26`) and `examples/databricks-app/tests/test_postgres_diagnostics.py`
+(`2fbaafaf`). Direct provider cancellation now retains the SDK mint task until
+its physical thread exits, including repeated caller cancellation. The original
+caller cancellation takes precedence over late mint success or failure; canceled
+minting cannot proceed to connection acquisition. Existing closed diagnostic
+categories and user/infrastructure principal selection remain unchanged.
+
+The controls hold the actual mint thread, witness both cancellations, release
+it in cleanup, and synchronously require physical completion before provider
+return. Entry and cancellation witnesses race the actual source task; retained
+waiter cleanup cannot strand work if an operation fails before entry. A
+not-started mint does not replace that primary failure with a false thread-exit
+assertion. No fixture progress timeout or extra thread waiting on a thread event
+is introduced.
+
+Luna observed 14 passing cases with
+`./.venv/bin/python -m pytest --no-cov -q --basetemp=/private/tmp/tether-provider-mint-ownership-final4-20261109 examples/databricks-app/tests/test_postgres_diagnostics.py examples/databricks-app/tests/test_reference_example.py`.
+Ruff check, Ruff format check, targeted Pyright and `git diff --check` passed
+on the reviewed bytes. Root also observed global file-size and ceiling checks
+against HEAD pass after the provider and consumer corrections. The temporary test directory is not a receipt; no
+standalone pytest log was saved. These fabricated boundary controls perform
+no live credential mint or database operation and establish no new SQL profile,
+Apps qualification or complete Source29 pass.
+Any later selected live run must bind the changed example source and candidate
+bundle, redeploy when required by that diff, and qualify those actual bytes;
+Source28 observations cannot automatically qualify the changed provider.
+
+The next A scope is the three-file context lifetime family:
+`tests/test_agent_context_gates.py`, `tests/test_agent_summary_lifetime.py` and
+`tests/test_wire_estimator_lifetime.py`. Root authorized its bounded
+implementation after this provider checkpoint. Luna proposes the path/use
+changes before editing; Sol reviews them. Preserve genuine context and public
+conformance deadlines while arming timeout behavior after the target entry
+witness, replace incidental observation limits with retained state/terminal
+coordination, and retain actual thread/model/factory ownership. Repeated
+cancellation and queued admission require explicit witnesses. No broader
+PostgreSQL change or full qualification is allocated to this tranche.
+
+The context lifetime tranche subsequently passed bounded review on these bytes:
+
+| Reviewed path | SHA-256 prefix |
+| --- | --- |
+| `tests/test_agent_context_gates.py` | `f292c1f7` |
+| `tests/test_agent_summary_lifetime.py` | `a5af87b5` |
+| `tests/test_wire_estimator_lifetime.py` | `13b02371` |
+| `tests/context_lifetime_controls.py` | `22316917` |
+
+Test-local module facades freeze ContextStep's logical preparation clock during
+setup without changing the real event loop. Real captured timers are armed after
+the target hydration, count, summary or strategy entry. Summary timeout follows
+ContextStep's actual guard, not the separate auxiliary-operation path; its
+configured duration and expired-timer assertion remain. Final physical admission
+advances the logical deadline after the held policy entry and requires refusal
+without model egress. Queued admission and repeated cancellation use explicit
+witnesses while preserving capacity, primary cancellation, worker exclusion,
+factory retention and absence of late compaction assertions.
+
+Cleanup cancels the indefinitely held hydration run when necessary, releases
+held work first, and retains actual task/worker settlement. Conformance factory
+closure waits run inside retained cleanup tasks. Two new discovered cases in
+`tests/test_wire_estimator_lifetime.py` cover primary failure before entry with
+observer drainage and repeated cancellation retaining every owned settlement
+task. They are included in the focused three-file cohort, not a separate proof
+count to add afterward.
+
+Luna observed 37 passing cases with
+`./.venv/bin/python -m pytest --no-cov -q --basetemp=/private/tmp/tether-context-lifetime-final-20261109 tests/test_agent_context_gates.py tests/test_agent_summary_lifetime.py tests/test_wire_estimator_lifetime.py`.
+Ruff check/format, targeted Pyright, file-size checks, ceilings against HEAD and
+`git diff --check` passed. The temporary fixture directory is not a receipt.
+Earlier 35-case observations remain separate from this corrected 37-case
+candidate. These focused clock and lifetime controls do not qualify the complete
+Source29 inventory or close its installed, browser, live or performance gates.
+
+The telemetry follow-up subsequently passed bounded review at
+`tests/test_engine_telemetry.py` (`d71ec33d`),
+`tests/test_retrieval_durability.py` (`f47b9e3d`) and
+`tests/test_telemetry_ports.py` (`9dd0497a`). Sink entry follows the actual
+delivery task and state changes, including runner termination and drainage
+without entry. Completed turns do not stand in for delivery ownership. App
+entry and session creation are protected by teardown; one retained cleanup
+task releases the sink and settles application, observer and storage ownership.
+Configured delivery/shutdown deadlines and root-reopening assertions remain.
+
+The held tracer worker uses state entry and retained physical settlement.
+Its new negative control witnesses two cancellations caught by an async shield
+wrapper, races acknowledgments against caller termination, and requires both
+caller and worker to remain pending before release. The delivery control checks
+terminal-before-entry failure. Concurrent audit encoding retains two actual
+threads, a witnessed two-party barrier, and abort/join handling for early peer
+termination or partial submission. Public invalid-timeout controls are unchanged.
+
+Luna observed 51 passing cases with
+`UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-telemetry-20261109 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-telemetry-final-20261109-h tests/test_engine_telemetry.py tests/test_retrieval_durability.py tests/test_telemetry_ports.py`.
+Ruff check/format, targeted Pyright, ceilings against HEAD and
+`git diff --check` passed on those reviewed bytes. Earlier four-case probes,
+unchanged timeout-validation probes and intermediate 51-case observations remain
+separate. The temporary fixture directory is not an installed-artifact or full
+gate receipt. No dependency installation, cloud collector, live qualification,
+performance measurement or complete Source29 gate ran in this tranche.
+
+The public resource lifetime tranche subsequently passed bounded review:
+
+| Reviewed path | SHA-256 prefix |
+| --- | --- |
+| `tests/test_owned_jsonl_shutdown.py` | `4b6548df` |
+| `tests/test_public_host_ownership.py` | `2ab16080` |
+| `tests/test_postgres_resource_shutdown.py` | `1b2277b8` |
+| `tests/resource_lifetime_controls.py` | `0a7c3f4c` |
+
+Entry witnesses race their actual create, turn, refresh, connection or executor
+owner. Canceled public `wait_closed` observers do not cancel physical cleanup.
+Retained teardown releases held work first, settles admitted tasks, initiates
+close when needed and waits for actual drain. JSONL reopen, preserved session
+identity, borrowed PostgreSQL pool usability and physical-worker assertions
+remain. The borrowed TUI closes while its shared runtime continues accepted
+work; its omitted screen deadline follows the outer functional owner.
+Configured I/O and shutdown values retain their original meanings.
+
+Two new controls in `tests/test_owned_jsonl_shutdown.py` prove that close failure
+still waits for physical drain while preserving the primary exception, and that
+cancellation before publishing a close observer retains that observer through a
+second acknowledged cancellation until release. They are part of the final
+seven-case cohort.
+
+Luna observed seven passing cases with
+`XDG_RUNTIME_DIR=/private/tmp/tether-runtime-20261109 ./.venv/bin/python -m pytest --no-cov -q --basetemp=/private/tmp/tether-lifetime3-final5-20261109 tests/test_owned_jsonl_shutdown.py tests/test_public_host_ownership.py tests/test_postgres_resource_shutdown.py`.
+Ruff check/format, targeted Pyright, global file-size checks, ceilings against
+HEAD and `git diff --check` passed. The earlier five-case observation remains
+separate. An initial sandbox refusal involved pgserver process inspection and
+its runtime lock; the successful focused run used the authorized native fixture
+boundary. The temporary directories are not receipts. This proves the selected
+local test behavior, not a new deployment, live database profile or full gate.
+
+Shared PostgreSQL fixture acquisition/connect limits, embedded lifetime,
+PostgreSQL process/lease/indexed families and the remaining path/use inventory
+retain their separate allocations. No task checkbox or Source29 qualification
+claim changes through this bounded acceptance.
+
+## 2026-11-09 owner decision: nonblocking performance qualification
+
+The owner stated, “I don't think this gate should be a blocker.” Sol propagated
+that decision through PRD NFR-7, CONTRACT-007, TD-068, TP-001, TP-002,
+STP-001, IP-002 and the release/runbook disposition. Actual controlled
+performance qualification is optional and nonblocking for implementation,
+interface acceptance and release. All 41 ACs and 45 task IDs remain required;
+WP-36 closes on the isolated workflow plus deterministic admission, rejection,
+separation, privacy and cleanup controls, not on actual benchmark PASS.
+
+Optional measurements retain their actual unrun, deferred, incomplete, failed
+or qualified status. The six-profile/54-metric scope, known-hardware isolation,
+measurement refusal rules and strict referenced qualified-ratchet joins remain.
+Apps latency remains observational. Source27 numeric baselines, source28 failures
+and deferred observations remain unchanged. Functional/security/lifecycle proof,
+genuine caller deadlines and selected live expiry/recovery requirements remain
+blocking within their existing scope.
+
+Code alignment is pending a separately assigned bounded Luna tranche after the
+active implementation checkpoints. `scripts/web_closure.py` still derives a
+mandatory metric union from WP-36 completion. Remove that dependency while
+retaining required workflow/control evidence, strict functional receipts and
+complete referenced qualified performance sets. The allocated closure tests must
+accept workflow-only WP-36 proof with no benchmark nodes and still reject missing
+functional proof, malformed admission joins and partial qualified ratchets.
+This policy propagation is not a closure-validator pass, measurement run,
+checkbox completion or release qualification.
+
+The installed HELIX 0.21.0 validator passed all eight changed governing
+artifacts with zero blocking findings. TP-001 retains one pre-existing
+`delivery_history` warning, confirmed against HEAD; the other seven had no
+findings. Validation used Python 3.11 and cached PyYAML 6.0.3 without installing
+a dependency. Frontmatter and existing relative links were preserved. The
+structural closure audit passed seven requirement edges, 41 AC rows and 45
+primary tasks with no errors; this was inventory-only, not runtime acceptance.
+`git diff --check` passed. Historical performance evidence files were untouched.
+
+The compatible-loopback/live-disclosure tranche subsequently passed bounded
+review at `tests/test_compatible_loopback.py` (`4ea72db7`),
+`tests/test_live_disclosure_public_lifetime.py` (`3cd31154`),
+`tests/test_live_disclosure.py` (`a147fbb0`) and
+`tests/loopback_lifetime_controls.py` (`43938f1a`). State waits observe actual
+turn, follower, reader or peer-handler ownership; failures before entry settle
+their observers and held work. Async context entry self-cleans on failure, and
+exit preserves the actual primary exception alongside cleanup failures.
+Current READ_SESSION, started-attempt, contiguous-offset, sealed-phase and
+reconnect assertions remain. The four deliberate cooperative fanout checkpoints
+and exact batch/generation assertions are unchanged.
+
+The native model deadline retains its selected one-second duration, armed after
+an actual first delta on the held socket, and asserts the real timer expired.
+Retry cancellation retains the actual 30-second retry-delay selection without
+waiting for that delay to finish. Socket EOF is observed before teardown closes
+peer writers. The loopback owner closes listener admission first, drains its
+registered operations, writers and handlers, then awaits listener closure.
+This ordering addresses the documented newer-Python listener-close semantics;
+it is not a claim of an executed Python 3.12+ matrix.
+
+The two new controls use a real local connection: exact handler failure is
+surfaced before cleanup, and repeated caller cancellation leaves the real
+retainer, handler and writer owned until explicit release. All passing socket
+paths witness callback registration before teardown through handler-produced
+responses, deltas, request facts, the handler failure or explicit entry. This
+proof is bounded to those registered connections. It does not establish closure
+of arbitrary pending or future accept callbacks on Python 3.11, and no general
+server supervisor qualification is claimed.
+
+Luna observed 36 passing cases with
+`UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-telemetry-20261109 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-b3-final-20261109-b tests/test_compatible_loopback.py tests/test_live_disclosure_public_lifetime.py tests/test_live_disclosure.py`.
+Runtime was Python 3.11.17 with pytest 9.1.1. Ruff check/format, targeted Pyright,
+file-size checks, ceilings against HEAD and `git diff --check` passed. Local
+socket execution used the authorized fixture boundary after sandbox refusal of
+loopback bind. No standalone log or receipt was generated; provenance is the
+command and observed stdout in this session. Earlier 34/36-case candidates stay
+separate. No dependency installation, full gate, selected live qualification or
+measurement workload ran through this bounded acceptance.
+
+The nonblocking performance closure correction subsequently passed bounded
+review at `scripts/web_closure.py` (`c3f7dceb`) and
+`tests/packaging/test_acceptance_closure.py` (`aa12d36a`). WP-36 completion no
+longer creates a mandatory metric-union requirement. All required task/AC proof,
+unchecked-task rejection and receipt/source/admission checks remain. Referenced
+qualified ratchet nodes still require the exact 54-node union. A source-bound
+workflow-control receipt without benchmark nodes is accepted; an individually
+valid but incomplete qualified metric set is refused.
+
+Luna observed 24 passing closure tests with
+`UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-telemetry-20261109 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-wp36-closure-20261109-b tests/packaging/test_acceptance_closure.py`.
+Ruff check/format, targeted Pyright, file-size and `git diff --check` passed.
+The global ceiling check remained nonzero for concurrent PostgreSQL A3 shape
+suppressions outside these two files; those require their own correction and
+verification, not an exemption. No standalone log, benchmark workload or full
+gate was produced. This implements the owner decision's closure behavior; it
+does not qualify the current full source cohort or turn optional measurements
+into PASS. The earlier 24-case candidate precedes the explicit workflow fixture
+and remains a separate observation.
+
+Root subsequently observed both global file-size and ceiling checks against
+HEAD exit zero after the concurrent A3 refactoring removed its suppressions.
+This resolves that specific shape-check uncertainty while preserving the earlier
+nonzero observation. It is not a complete quality gate or A3 acceptance claim.
+
+The residual TUI/replay/public-conformance tranche passed bounded review at
+`tests/test_tui_streaming.py` (`a32435cb`),
+`tests/test_session_reads.py` (`64f4618f`) and
+`tests/test_public_port_conformance.py` (`30366b4e`). The inflight refresh
+observes entry against its actual task, removes the list widget while the
+request is held, then releases and retains refresh completion before the app
+context exits. Existing refresh/session assertions and earlier TUI coverage
+remain. Owner-scoped replay directly awaits the committed event and preserves
+its exact sequence, session, title and entry assertions. Public conformance
+retains every advertised-method/refusal assertion; one cleanup task settles the
+reader before closing its stream, including update or reader-creation failure.
+
+Luna observed 24 passing cases with
+`UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-telemetry-20261109 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-residual-lifetimes-20261109-a tests/test_tui_streaming.py tests/test_session_reads.py tests/test_public_port_conformance.py`.
+Ruff check/format, targeted Pyright, global file-size checks, ceilings against
+HEAD and `git diff --check` passed. This is focused evidence for the three files;
+it does not qualify browser, selected live, installed or complete source gates.
+The separate PostgreSQL ownership candidate remains in error-path review.
+
+The remaining path/use audit includes shared fixtures outside the current
+three-file allocations. `tests/postgres_support.py` supplies pool acquisition
+and connect limits of three seconds and performs migration/root setup before
+its yielded-fixture cleanup protection. `tests/conftest.py` describes the
+15-second model request limit as a hang bound; its client read/shutdown values
+also need classification by actual use. A configured number alone does not
+establish a product deadline or justify retaining an incidental test watchdog.
+These uses require separate evidence and allocation; no budget increase,
+infinity substitution or shared-fixture change is authorized by this record.
+
+The remote-client lifetime tranche passed bounded review at
+`tests/client/test_remote_client.py` (`11cf9f6f`) and
+`tests/client/remote_lifetime_controls.py` (`08830017`). The two held-turn
+journeys race model entry against the exact accepted result observer and reuse
+that observer for the result assertions. Cleanup releases held models, cancels
+and joins result observers, then closes the remote client. A separate retained
+host cleanup attempts both close and physical drain even if close raises.
+Canceling an observer does not establish cancellation of an accepted server
+turn. Stale-target refusal, exact successor identity, the committed canceled
+target result, lost-response retry and exactly two model calls remain asserted.
+Configured HTTP timeout/refusal and credential/privacy assertions are unchanged.
+
+Luna observed 17 passing cases with
+`UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-telemetry-20261109 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-remote-lifetime-20261109-c tests/client/test_remote_client.py`.
+Ruff check/format, targeted Pyright, global file-size checks, ceilings against
+HEAD and `git diff --check` passed. A transient concurrent version of the test
+file exceeded its existing 800-line ceiling; extracting the coherent helper
+resolved that finding without changing the ceiling. Root independently observed
+both global shape checks exit zero afterward. No standalone log or receipt was
+generated. This focused checkpoint does not qualify complete source, native
+process, installed, browser or selected live gates.
+
+The PostgreSQL ownership tranche passed bounded review at
+`tests/test_postgres_lifetime.py` (`42b4ef59`),
+`tests/test_postgres_capture.py` (`7c8e7efe`),
+`tests/test_postgres_handle.py` (`51fe3e0f`) and
+`tests/postgres_pending_io_controls.py` (`518cf5d9`). Selected I/O durations
+remain unchanged: test-local PendingIO captures are installed after setup,
+assert the exact selected duration, arm the real timer after the held phase is
+observed, and assert actual expiry. Commit uncertainty, read failure, capacity,
+namespace, stale prefix and worker-outstanding assertions remain.
+
+Migration admission is observed through the exact granted holder and ungranted
+waiter advisory-lock rows, including their backend PIDs and lock identity, on
+fresh observer connections. The source publishes its actual task before
+acquisition and marks exit in `finally`. Failed unlock closes only the owned
+holder connection and still joins both the public caller and physical source.
+The negative control keeps the caller's cancellation cleanup held after source
+exit, proving that source completion cannot substitute for caller settlement.
+Staging ownership is published before the entry wait; its cancellation control
+checks unpublished-return paths still release and drain the real worker.
+
+Thread barriers are released before retained cleanup. Physical workers, roots
+and exact lease tokens remain owned until settlement; close errors do not skip
+the corresponding wait-closed attempt, remaining sibling roots or exact-token
+finalization. This does not qualify failures in unrelated shared fixtures.
+
+Luna observed 37 passing cases with
+`XDG_RUNTIME_DIR=/private/tmp/tether-runtime-20261109 ./.venv/bin/python -m pytest --no-cov -q --basetemp=/private/tmp/tether-pg-ownership3-final7-20261109 tests/test_postgres_lifetime.py tests/test_postgres_capture.py tests/test_postgres_handle.py`.
+Ruff check/format, targeted Pyright, global file-size checks, ceilings against
+HEAD and scoped `git diff --check` passed. Earlier final6 evidence precedes the
+last caller-settlement and continue-all cleanup fixes and does not qualify these
+bytes. The fixture runtime and basetemp are temporary directories, not saved
+receipts; no standalone log was generated. No complete source gate, other
+PostgreSQL family or selected live profile was qualified by this checkpoint.
+
+Root next allocated bounded native-process work to
+`tests/test_jsonl_process_effect.py`, `tests/test_context_summary_process.py`
+and `tests/test_postgres_processes.py`, their two named JSONL/summary child
+companions, and one essential test control helper. The PostgreSQL child and
+shared fixtures remain outside the edit allocation. This is planned work,
+without a new execution or qualification claim.
+
+The JSONL effect frontier is inside the default 30-second tool deadline; its
+five-second model setting also bounds fabricated setup. The summary child's
+five-second model setting covers both nested response timers and the held model
+stream; its context preparation deadline can also end the intended frontier.
+These crash/recovery cases do not assert deadline behavior. Their allocated
+test-local controls preserve selected values while capturing unarmed real
+timers in only the relevant model/tool modules and freezing only ContextStep's
+logical clock. Product timeout behavior and dedicated deadline tests remain.
+The parent must retain exact child ownership from spawn through protocol
+failure or caller cancellation, drain pipes and reap after the intentional
+kill, without incidental read or cleanup speed caps. Existing private process
+pipes and session/turn/phase correlation remain the protocol boundary.
+
+PostgreSQL's five-second natural lease and 120-second live-lease premise before
+forced SQL expiry remain actual fencing inputs. Expiry is proved by SQL state;
+the short polling sleep is a query throttle, not a pass/fail deadline. An
+intentionally killed and reaped peer is an expected terminal in that journey.
+
+The next PostgreSQL allocation is limited to
+`tests/test_postgres_leases.py`, `tests/test_postgres_indexed_reads.py` and
+`tests/test_postgres_changes_effects.py`, plus an essential local helper if
+needed. Planned observation changes use exact physical worker, reader, writer
+and committed-feed ownership instead of incidental speed caps. Indexed-read
+blocking must identify the held reader as the writer's blocker before release.
+
+The lease tests retain their configured 0.2-second server lease and unchanged
+database/frame deadline. Their allocated per-instance clock control freezes an
+actual pre-expiry server sample before acquisition through the selected hook,
+then polls the real server clock past that exact deadline and restores actual
+production clock reads. Helper polling does not count as a production clock
+read. Final-fence paths must observe a post-hook production read; the renew
+path instead reaches the actual SQL expiry predicate, which refuses before any
+final clock read. This phase-controlled expiry allocation preserves causal
+clock-freshness and rollback assertions without claiming natural acquisition
+timing qualification. No row deadline mutation, configured budget increase,
+shared fixture edit or execution result is established by this plan.
+
+The lease/indexed-read/filtered-feed tranche subsequently passed bounded review
+at `tests/test_postgres_leases.py` (`c147e39c`),
+`tests/test_postgres_indexed_reads.py` (`6e1f701c`),
+`tests/test_postgres_changes_effects.py` (`cff4e178`) and the shared
+`tests/postgres_pending_io_controls.py` (`1bba7f6c`). The lease controls retain
+the unchanged server/frame expiry and distinguish helper polling from actual
+production clock reads. Hook entry is observed against the real operation;
+expiry cannot pass solely because setup ran past the selected phase. The renew
+path reaches its unchanged SQL expiry predicate. Snapshot blocking identifies
+the exact held reader among the writer's blockers before release. Committed
+filtered-feed events are awaited directly, preserving scope, sequence and
+original-fact assertions.
+
+Cleanup releases and retains physical workers, settles reader/writer tasks and
+continues through root drain and exact-token finalization. A new held-root
+control proves an initial bounded close result of `False` is valid: cleanup
+remains pending until `wait_closed()` establishes physical completion. An
+earlier candidate incorrectly treated that initial result as failure; it was
+corrected before acceptance. Actual close exceptions remain visible.
+
+Luna observed 42 passing cases with
+`XDG_RUNTIME_DIR=/private/tmp/tether-runtime-20261109 ./.venv/bin/python -m pytest --no-cov -q --basetemp=/private/tmp/tether-pg-ownership4-final2-20261109 tests/test_postgres_leases.py tests/test_postgres_indexed_reads.py tests/test_postgres_changes_effects.py`.
+Because the cleanup helper also supports the preceding ownership tranche, Luna
+separately reran its three files using
+`XDG_RUNTIME_DIR=/private/tmp/tether-runtime-20261109 ./.venv/bin/python -m pytest --no-cov -q --basetemp=/private/tmp/tether-pg-ownership3-retained-final-20261109 tests/test_postgres_lifetime.py tests/test_postgres_capture.py tests/test_postgres_handle.py`,
+with 37 passing cases. Ruff check/format, targeted Pyright, global file-size
+checks, ceilings against HEAD and scoped `git diff --check` passed on the final
+bytes. These are two focused observations, not a complete source gate. The
+earlier 41-case candidate does not qualify the corrected helper. No standalone
+log, selected live profile, other PostgreSQL family or shared-fixture correction
+is claimed by these results.
+
+Root allocated a separate prepared-pool feasibility proof to two new test files,
+`tests/postgres_prepared_pool.py` and
+`tests/test_postgres_prepared_pool.py`. Shared fixtures remain unchanged. The
+proposal uses one real eight-connection pool per preparation attempt and public
+readiness/configure/reconnect-failure APIs before application caller clocks.
+Existing three-second SDK readiness/connect attempts are classified as
+environment-attempt bounds, not functional latency requirements. No new
+reconnect budget, infinity value, private SDK rebinding or automatic retry loop
+is allocated.
+
+Pool workers and scheduler must be retained immediately after open, before
+public readiness wait can close and clear their registry. A failed or canceled
+attempt must physically drain before any new attempt. Retrying `getconn` on the
+same timed-out pool is excluded: installed waiting positions can remain queued
+until assignment or closure. Planned controls cover separate failed configure
+attempts with zero pending requests/workers, eight concurrent real public
+borrows, and repeated cancellation of actual close after readiness. This is a
+bounded feasibility plan, without shared-fixture integration or execution proof.
+
+The native-process tranche passed bounded review at
+`tests/test_jsonl_process_effect.py` (`89cf3923`),
+`tests/jsonl_effect_process.py` (`02319abd`),
+`tests/test_context_summary_process.py` (`913ee8f8`),
+`tests/context_summary_process.py` (`e886e616`),
+`tests/test_postgres_processes.py` (`02301ff8`) and
+`tests/process_lifetime_controls.py` (`436b209c`). The direct-child owner
+retains a spawn result through cancellation before publication, drains stderr,
+settles the sole protocol reader before further stdout drain, and joins the
+exact child after intentional kill. Buffered protocol events remain valid when
+normal child exit is simultaneous. Caller cancellation cannot cancel the owned
+native wait or stderr observer. Recovery acquisition registers resources before
+later awaits; cleanup continues from bounded close to physical and observer
+drain, preserving the primary failure and other owned resources.
+
+Real-child controls cover failure before the first protocol event, canceled
+event/wait observers, and two acknowledged caller cancellations while actual
+post-EOF cleanup is held. The close caller is registered before observation;
+native wait/stderr completion is awaited, not inferred from scheduler order.
+The model/tool/context controls preserve their selected numeric values while
+removing incidental elapsed guards from these crash frontiers. Dedicated
+deadline qualification is separate. Unsafe-effect refusal, safe invocation
+reuse and exact intent/result counts, accepted summary/context-use identity,
+compaction integrity, PostgreSQL stale-token fencing and committed recovery
+barriers remain asserted. Actual PostgreSQL leases of five and 120 seconds and
+server SQL expiry remain unchanged; the polling interval is a throttle.
+
+Luna observed eight passing cases with
+`XDG_RUNTIME_DIR=/private/tmp/tether-runtime-20261109 UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-telemetry-20261109 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-native-process-final-20261109-v2 tests/test_jsonl_process_effect.py tests/test_context_summary_process.py tests/test_postgres_processes.py`.
+Runtime was Python 3.11.17, with authorized local temporary PostgreSQL fixture
+access. Ruff check/format, targeted Pyright across the six files, ceilings and
+`git diff --check` passed. No standalone log was generated. Earlier eight-case
+candidates precede the cancellation/cleanup corrections and do not qualify these
+bytes. This is not a newer-Python matrix, complete source gate, shared-fixture
+integration, selected live or performance qualification.
+
+The prepared-pool feasibility tranche passed bounded review at
+`tests/postgres_prepared_pool.py` (`7a6668b8`) and
+`tests/test_postgres_prepared_pool.py` (`32362fb4`). One preparation attempt
+uses a real pool, unchanged three-second SDK attempt values and default
+reconnect settings; there is no retry loop or private SDK rebinding. Worker and
+scheduler references are retained before readiness can close the pool.
+Configure failures keep their exact primary identity. Cleanup joins producers
+before sweeping every still-open configured connection, including connections
+skipped by an earlier public close error. Borrower registration lasts through
+the complete public connection context exit, including commit and return.
+
+Four real-pool controls cover two separately rejected configure attempts with
+zero pending requests/workers, eight distinct concurrent public borrows held
+through owner closure, a native close error that still closes remaining owned
+connections, and two acknowledged caller cancellations during actual held
+connection close. The reconnect-failure callback is wired and raced as a
+separate diagnostic; it did not fire in these live-server cases and is not
+qualified by their execution.
+
+Luna observed four passing cases with
+`XDG_RUNTIME_DIR=/private/tmp/tether-runtime-20261109 ./.venv/bin/python -m pytest --no-cov -q --basetemp=/private/tmp/tether-prepared-pool-final5-20261109 tests/test_postgres_prepared_pool.py`.
+Ruff check/format, targeted Pyright, global file-size checks, ceilings against
+HEAD and checks of whitespace in both new files passed. This qualifies only the
+two-file feasibility allocation. Shared fixtures are unchanged, finite SDK
+attempts are not functional latency claims, and no supported unbounded public
+pool acquisition API or complete source gate is established. Earlier three/four
+case candidates precede the final connection-sweep and borrower-return fixes.
+
+Root next allocated embedded lifetime work to the three named embedded parent
+tests, a conditional ordinary-startup control in their existing child companion,
+and essential test helpers. A raw-line addition to the accepted process owner
+must rerun its earlier native cohort. Ordinary startup captures preserve the
+configured value; dedicated phase-armed startup and inner-root expiry controls
+retain actual deadline contracts. Final cleanup must preserve temporary runtime
+directories until all matching physical owners have finished. Cold/warm timing
+output is excluded from functional persistence proof.
+
+The orphan allocation permits only the exact fixture's original native owner:
+capture process creation identity, executable/arguments and owned datadir PID
+correlation before intentional wrapper kill, then revalidate before one scoped
+nonwaiting `pg_ctl` stop request. Final original-native absence and PID-file
+removal are required before reopen or runtime-directory deletion. Permission
+failure, unknown identity or mismatch does not establish absence or authorize a
+fallback PID signal. A pre-publication failure without safely established native
+ownership must preserve the runtime directory and report incomplete cleanup.
+This is planned work without an embedded execution or qualification claim.
+
+Following the prepared-pool checkpoint, root allocated shared PostgreSQL fixture
+integration to `tests/postgres_support.py`, its minimal prepared-pool helper and
+proof changes, and fixture-lifetime controls. `tests/conftest.py` remains outside
+this allocation. The approved design tracks public `getconn`/`putconn` by
+individual acquisition identity through complete return, so an old handoff
+cannot erase a newer loan of the same connection. Failed return still leaves
+the exact native connection owned by the configured-connection registry.
+
+Setup migration and root-open callers are separately retained; a returned root
+is stored before its setup task completes. The synchronous application source
+registers actual operation-task identity before acquisition, through complete
+task exit. Current migration/bootstrap paths enter that source before their
+first await. Cleanup must finish setup, root, source and raw-loan ownership
+before dropping the exact generated UUID schema, including uncertain migration
+outcomes, then continue pool/worker/connection cleanup after independent errors.
+No fixture integration result, unbounded public acquisition, timer-budget change
+or complete audit closure is established by this plan.
+
+The next exact-use inventory identifies 29 ordinary timeout-bearing public port
+suite calls across nine test paths: `test_context_ports.py` (six),
+`test_telemetry_ports.py` (five), `test_archive_conformance_profiles.py` (five),
+`test_storage_conformance.py` (four), `test_conformance_oracles.py` (three),
+`test_mutation_receipts.py` (three), `test_agent_summary_boundaries.py` (one),
+`test_postgres_mutations.py` (one) and `test_wire_estimator.py` (one). These assert
+logical conformance, refusal, scope and oracle behavior; they do not assert ten/30-second execution
+speed. A future public-configuration-only allocation may pass the canonical
+functional watchdog maximum explicitly through `timeout_seconds`. Product
+suite defaults remain unchanged; no module-clock hooks or new framework is
+needed.
+
+Suffix scans also find five `test_suite_runner.py` tool calls and three
+`test_consumer_companions.py` calls whose APIs have no timeout parameter or timer;
+these are excluded. Current `test_wire_estimator_lifetime.py` has two explicit
+0.1/0.05-second suite expiry cases with phase-armed real timers, not an omitted
+ordinary suite timeout. Those cases and invalid-bound tests remain unchanged.
+This classification does not turn every configured duration into an exemption
+or require a zero textual timeout count.
+
+The shared fabricated model fixture's 15-second hang ceiling and the separate
+`test_incomplete_restart.py` 15-second override need a later distinct allocation.
+Public typed settings can place ordinary fabricated requests under the existing
+outer functional owner, following the browser fixture's canonical-maximum
+pattern, while explicit request expiry tests remain real. That change also
+requires reviewing native summary assertions against actual prepared-request
+timeouts and model limits independently of the outer context deadline. Neither
+this model-fixture change nor the 29 suite call changes has been
+implemented or qualified by the inventory.
+
+The expanded read-only audit also allocates future qualification-observation
+work across four paths. In
+`examples/databricks-app/tests/test_qualification_shared_session.py`, result
+and worker-entry speed caps and pending-state polling are incidental; accepted
+terminal results and durable state must provide witnesses, with retained real
+worker/host cleanup. The live scenario's bounded physical hold, approval,
+unknown-effect, tool-margin and shutdown contracts remain unchanged.
+
+In `scripts/selected_profiles_logs.py`, process/reader cleanup caps of five
+seconds must yield to retained physical reap and pipe settlement. APP and
+unfiltered log anchors, privacy refusals and capture-byte limits remain.
+The CLI subscription's explicit observation boundary can establish only
+incomplete observation when required witnesses are absent.
+
+In `scripts/selected_profiles_identity_credentials.py` and
+`scripts/selected_profiles_pg_oracle.py`, explicit SDK/observer acquisition
+bounds (including 25/18-second attempts) are separate from provider behavior.
+Their exhaustion must be typed `INCOMPLETE` after owned cleanup, never inferred
+network failure or authentication refusal. Incidental process/reader cleanup,
+four-second query and two-second close speed caps are allocated for removal
+with physical retention. A successful connection cannot produce qualified
+success before its close is confirmed. Only actual PostgreSQL authentication
+SQLSTATE 28000/28P01 establishes authentication refusal; driver version, TLS,
+hostname/CA, caller identity, secret-source and privacy requirements remain.
+
+Root approved planning two bounded tranches after the active checkpoints:
+example/log observation cleanup, then credential/oracle ownership and outcome
+classification. Proposals must allocate focused controls and minimal existing
+`LiveQualificationIncomplete` wiring, including direct callers. There is no
+implementation GO or new execution proof for these paths yet. A later private
+Source29 operator must understand the new typed outcomes before actual live
+qualification; immutable Source28 operator bytes must remain unchanged.
+Terminal PTY emergency ownership, genuine package/event guards and optional
+benchmark waits remain separately classified. No live, cloud, secret or
+performance action is authorized by this inventory entry.
+
+The fixture integration candidate subsequently passed nine focused prepared-pool
+controls, including cancellation followed by an exact late setup failure, using
+`XDG_RUNTIME_DIR=/private/tmp/tether-runtime-20261109 ./.venv/bin/python -m pytest --no-cov -q --basetemp=/private/tmp/tether-prepared-pool-integration5-20261109 tests/test_postgres_prepared_pool.py`.
+Luna also reported one passing migration/history fixture smoke case. These
+observations precede complete affected-family acceptance.
+
+Expanded PostgreSQL collection exposed a compatibility regression: the modified
+JSONL process parent no longer exported `receive`/`stop`, which
+`test_postgres_engine_effect_process.py` imports. Two independent/shared
+consumer process parents also import those helpers from the PostgreSQL process
+parent. A run excluding only the blocked PostgreSQL engine-effect file passed
+221 cases under
+`/private/tmp/tether-postgres-family-except-engine-20261109`; that is explicitly
+limited evidence, not the full PostgreSQL family. Source inspection additionally
+found legacy `EffectTool` constructor calls incompatible with its new mandatory
+instrumentation arguments.
+
+Root authorized a bounded compatibility repair: restore the two existing parent
+exports backed by one cached accepted process owner per exact process object,
+and make instrumentation optional for legacy `EffectTool` callers. No old read
+or cleanup speed caps may return, and consumer assertions may not be skipped.
+All PostgreSQL cases, both affected consumer files and the accepted native
+cohort require fresh execution afterward. The three additional consumers and
+their model/tool crash-frontier timing remain a distinct exact-use audit; the
+earlier eight-case native proof did not cover them. Compatibility repair and
+complete fixture integration remain pending in this record.
+
+The shared PostgreSQL fixture integration subsequently passed bounded review at
+`tests/postgres_support.py` (`fc4f1966`),
+`tests/postgres_prepared_pool.py` (`b7154308`),
+`tests/postgres_fixture_lifetime.py` (`63412868`) and
+`tests/test_postgres_prepared_pool.py` (`cfc1519e`). Public acquisition tracking
+starts before `getconn` awaits; each exact loan remains owned through checkout
+and return. An old return cannot remove a new checkout's identity. Source tasks
+are recorded before acquisition and retained through termination. Setup stores
+returned root ownership before completion; cancellation followed by a late
+setup failure preserves the exact first cancellation and late failure. Root,
+source and raw pool loans settle before the exact owned UUID schema is dropped,
+and independent cleanup continues through pool, worker and connection closure.
+
+The compatibility repair restored both parent exports through one cached
+process owner per exact process object and restored legacy `EffectTool` calls
+through optional instrumentation. Controlled cases retain their capture
+assertions. No old speed caps or consumer assertion changes were introduced.
+After those repairs, Luna observed 238 passing affected cases with
+`XDG_RUNTIME_DIR=/private/tmp/tether-runtime-20261109 ./.venv/bin/python -m pytest --no-cov -q --basetemp=/private/tmp/tether-postgres-consumer-final-20261109 tests/test_postgres_*.py tests/test_consumer_independent_process.py tests/test_consumer_transaction_process.py tests/test_jsonl_process_effect.py tests/test_context_summary_process.py`.
+The repaired process helper, exporters and companion had identical hashes
+before and after that run. Ruff check/format, targeted Pyright, global file-size
+checks, ceilings and diff checks passed for the integration candidate.
+
+This no-exclusion affected-family result supersedes the earlier collection
+block and limited 221-case run for integration acceptance, while preserving
+both observations. It is not a full repository gate, qualification of all
+remaining timing uses, selected live or performance evidence. The separate
+three-consumer crash-frontier timing audit remains open. Any subsequent import
+sorting must be recorded against its new bytes and scoped affected rerun.
+
+The embedded tranche subsequently passed bounded review at
+`tests/embedded_lifetime_controls.py` (`0cec0516`),
+`tests/embedded_process.py` (`58db3714`),
+`tests/test_embedded_lifetime.py` (`da213090`),
+`tests/test_embedded_postgres.py` (`c8050722`) and
+`tests/test_embedded_process.py` (`4f97fe50`). Cold/warm persistence waits for
+actual physical closure rather than requiring the first bounded close to
+succeed. Ordinary startup captures preserve the selected 20-second setting;
+the explicit startup and inner-root tests arm actual timers after phase entry
+and assert expiry. Shutdown bounds and authority, adoption, capacity,
+durability and actual worker assertions remain.
+
+Matching-owner location and closure run in one retained composite. Acquisition
+and orphan stop remain owned through utility reap, native observation and
+strict original-identity absence with PID-file removal. Datadir uncertainty is
+recorded before native acquisition; a missing published PID cannot authorize
+deletion or a fallback signal. The unknown-publication control uses a real
+harmless wrapper that exits without a PID, proves its pipe/wait completion and
+issues no native stop. The actual orphan case validates original creation
+identity, executable, arguments and datadir immediately before one nonwaiting
+stop request. Runtime directories remain until ownership is resolved; cold/warm
+elapsed measurements are absent from functional proof.
+
+Luna observed 25 passing cases on native macOS/Python 3.11 with
+`XDG_RUNTIME_DIR=/private/tmp/tether-runtime-20261109 UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-telemetry-20261109 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-embedded-process-final-20261109-v5 tests/test_embedded_lifetime.py tests/test_embedded_postgres.py tests/test_embedded_process.py`.
+Embedded scoped Ruff/Pyright and diff checks passed. The earlier 24-case
+candidate precedes the consolidated cleanup and unknown-publication fixes and
+does not qualify these bytes. Global Ruff, whole-project Pyright, file-size,
+ceilings and diff checks subsequently passed. No standalone log, complete
+repository test gate, selected live profile or performance measurement is
+claimed by this checkpoint.
+
+Root separately observed 3,741 tests collected with no collection errors using
+`pytest --collect-only -q --no-cov`. Collection executed no test cases and is not
+a full test gate or source acceptance receipt.
+
+After import sorting, the JSONL exporter hash became `0526228c`; the shared
+process helper remained `06e09ddb`, PostgreSQL exporter `c53672d2` and
+optional-instrumentation companion `2abe6c72`. Luna observed 22 passing affected
+cases with
+`XDG_RUNTIME_DIR=/private/tmp/tether-runtime-20261109 UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-telemetry-20261109 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-native-compat-after-format-20261109 tests/test_jsonl_process_effect.py tests/test_context_summary_process.py tests/test_postgres_processes.py tests/test_postgres_engine_effect_process.py tests/test_consumer_independent_process.py tests/test_consumer_transaction_process.py`.
+This verifies the final compatibility/format bytes across all three original
+native parents and all three cross-consumers. It does not close their separate
+remaining timing-use classification or replace the earlier 238-case affected
+fixture proof with a full repository claim.
+
+During the public-configuration tranche, focused reproduction corrected one
+planning assumption: the frozen context deadlines retained 30 seconds, while
+the actual inner model timers selected the configured model limit. The prepared
+requests in this fixture have no per-request timeout; ContextStep's outer
+deadline does not rewrite that input into a model clamp. The allocated assertion
+must therefore check each layer's exact inputs independently, retaining exact
+equality rather than a permissive upper-bound test. This is a corrected test
+expectation, not a runtime deadline change or an execution-pass claim.
+
+The public ordinary-guard tranche subsequently passed bounded review in its
+12-file allocation. All 29 previously classified ordinary suite calls now pass
+the canonical functional watchdog maximum through their existing public
+configuration. Suite API defaults remain unchanged. The fabricated model
+fixture (`180c8ec5`) and restart fixture (`5085967c`) use that same accepted
+maximum instead of an incidental 15-second hang guard, explicitly leaving useful
+hang containment to the outer functional owner. Genuine request/suite expiry,
+invalid-bound, read/shutdown and performance assertions are unchanged.
+
+The summary process assertion (`248fd300`) independently verifies nonempty
+consistent context remaining time equal to its configured 30 seconds, prepared
+model requests with no request-specific timeout, and exact selected inner model
+timer values derived from those actual inputs and model limits. It does not
+invent a context-to-model clamp or relax equality to an upper-bound check.
+
+Luna observed 230 passing cases with
+`TMPDIR=/private/tmp/tether-ordinary-guard-final-tmp XDG_CACHE_HOME=/private/tmp/tether-ordinary-guard-final-xdg .venv/bin/pytest --no-cov --basetemp=/private/tmp/tether-ordinary-guard-final-base-20261109 tests/test_incomplete_restart.py tests/test_context_summary_process.py tests/test_context_ports.py tests/test_telemetry_ports.py tests/test_archive_conformance_profiles.py tests/test_storage_conformance.py tests/test_conformance_oracles.py tests/test_mutation_receipts.py tests/test_agent_summary_boundaries.py tests/test_postgres_mutations.py tests/test_wire_estimator.py tests/test_wire_estimator_lifetime.py tests/test_public_port_conformance.py tests/test_compatible_loopback.py tests/test_agent_bridge.py`.
+The native fixture boundary used authorized escalation after an earlier sandbox
+permission failure. After the final comment and explicit no-request-timeout
+assertion saves, the three summary cases passed with
+`XDG_CACHE_HOME=/private/tmp/tether-summary-final-xdg .venv/bin/pytest --no-cov --basetemp=/private/tmp/tether-summary-final-base-20261109 tests/test_context_summary_process.py`.
+These counts overlap and are not additive. Ruff check/format, file-size,
+ceilings and diff checks passed. Repository-wide Pyright reported a concurrent
+log-observer task-variance annotation error outside this allocation; its
+correction and verification remain separate. No complete repository test gate,
+benchmark, selected live or external service qualification is claimed.
+
+Root next allocated three ordinary functional controls in
+`tests/test_benchmark_follower_memory.py` and `tests/test_apps_benchmark.py`.
+Their benchmark filenames do not exempt incidental entry/result caps or
+`sleep(0)` cancellation guesses. Planned changes retain the actual cleanup
+functions, use phase-versus-owner races and real shield-catch cancellation
+acknowledgments, then release and settle owned tasks before borrowed resources
+close. Exact close order, initial host-close `False` followed by physical drain,
+borrowed HTTP transport survival and one remote-view close remain asserted.
+The held MockTransport does not enforce HTTPX timeout metadata, so its public
+request setting need not change. Benchmark source, metrics, sample counts,
+ratchets and measurement runs remain outside this allocation. This is a plan
+without new execution proof.
+
+Those three ordinary controls subsequently passed bounded review at
+`tests/test_benchmark_follower_memory.py` (`13839ac5`) and
+`tests/test_apps_benchmark.py` (`ff9fa654`). Each retainer cancellation is
+acknowledged by an actual caught cancellation while the physical close phase
+remains held. Release and owned settlement run in `finally`, followed by exact
+cancellation and close-order assertions. The Apps task settles before its
+borrowed HTTP context exits, including an entry failure, and retains its exact
+one-view-close assertion. Request settings remain unchanged.
+
+Luna observed 23 passing cases with
+`XDG_CACHE_HOME=/private/tmp/tether-bench-controls-final-xdg .venv/bin/pytest --no-cov --basetemp=/private/tmp/tether-bench-controls-final-base-20261109 tests/test_benchmark_follower_memory.py tests/test_apps_benchmark.py`.
+The three changed controls also passed an earlier focused invocation; counts
+overlap. Scoped Ruff/format and Pyright, global file-size/ceilings and diff
+checks passed. No benchmark workload, metric measurement, hardware
+qualification, remote request or performance-ratchet change was performed.
+
+Root next allocated the three cross-consumer process parents and their three
+companions for a separate crash-frontier timing tranche, with minimal reuse of
+the accepted process controls. The PostgreSQL engine-effect pair uses fabricated
+model-five/tool-30 guards; independent settlement holds inside its five-second
+settlement hook and performs no model call. Shared-transaction participant and
+pre-commit holds are inside the 30-second PendingIO caller envelope, whereas
+staged and post-commit holds are outside active PendingIO. These exact phases
+require scoped test controls rather than a blanket model-timeout change.
+
+The allocation preserves actual PostgreSQL leases, forced/natural SQL expiry,
+negative child termination, history/feed/application atomicity, effect counts,
+binding identity and recovery assertions. Child ownership must be registered
+before config writes; returned recovery resources require retained physical
+drain. Compatibility exports and optional instrumentation remain supported.
+This plan adds no new protocol or product deadline and does not reuse the
+22-case compatibility pass as proof of these new timing controls.
+
+The final timing-use inventory is now a finite allocation, approved by the
+orchestrator on 2026-11-09. The 94-line search observation and four numeric
+wait/join observations identify candidates, not a requirement that all sleeps,
+timeouts or configured bounds become zero. No further broad inventory expansion
+is planned before the complete functional gate; a concrete gate failure can
+still require a bounded correction. The remaining checklist is planning and
+does not claim new execution proof:
+
+- Current cross-consumer crash tranche: the three parent/companion pairs
+  allocated above retain exact model/tool/settlement/PendingIO phase controls,
+  physical child/recovery ownership and all persisted crash assertions.
+- Current qualification-observation tranche 1:
+  `examples/databricks-app/tests/test_qualification_shared_session.py`,
+  `scripts/selected_profiles_logs.py` and
+  `tests/test_selected_profile_log_cleanup.py`. The first 51-case candidate
+  precedes requested corrections for process/reader terminal races, partial
+  acquisition gate release, retained test finalizers and ordinary public model
+  configuration. Acceptance requires fresh proof of those corrected bytes.
+  The held fabricated tool records its real 300-second wait argument but waits
+  for explicit release; a scoped test control captures the exact selected
+  310-second tool deadline. Production hold range, tool margin and shutdown
+  settings remain unchanged.
+- Reserved qualification-observation tranche 2:
+  `scripts/selected_profiles_identity_credentials.py`,
+  `scripts/selected_profiles_pg_oracle.py` and their direct controls, including
+  `tests/test_selected_profiles.py`'s physical-disable cancellation case.
+  Remove incidental process/reader five-second, query four-second and close
+  two-second observation caps through retained physical settlement. Preserve
+  SDK attempt/convergence bounds and credential expiry semantics; an uncertain
+  observation is typed incomplete, never inferred network/auth refusal.
+  Preserve exact SQLSTATE authentication refusal and real connection-close
+  proof. Replace the disable worker's release-five/entry-two guards and two
+  50-millisecond cancellation guesses with phase and actual catch witnesses.
+  Related identity/oracle retainer controls in
+  `tests/test_identity_credentials_unit_controls.py`,
+  `tests/test_pg_oracle_unit_controls.py`,
+  `tests/test_selected_profile_pg_oracle.py` and
+  `tests/test_selected_profile_identity_restore_controls.py` stay in this
+  allocation. A future Source 29 private operator must recognize the typed
+  incomplete outcome; the immutable Source 28 operator is not rewritten.
+- Example tranche: only `examples/otel/tests/test_profile.py` and
+  `examples/embed/tests/test_consumer.py`. Replace the exporter release-five,
+  entry-two, receiver join-two and 100-attempt result polling with actual entry,
+  public turn/feed result and physical thread/host/profile ownership. Preserve
+  real OTLP HTTP/export/flush/request/shutdown behavior, queue-loss and privacy
+  assertions. Receiver/profile setup and all cleanup need retained ownership;
+  this is functional example proof, not a benchmark.
+- Native readiness tranche: `tests/test_databricks_startup.py`,
+  `tests/test_qualify_live_apps.py` and essential existing test controls. Replace
+  marker 300-attempt polling, spawn-plus-100-millisecond readiness and child
+  sleep-20/sleep-60 automatic completion with a private ready handshake and
+  exact owned process/group retention. Preserve CLI privacy, actual process
+  cancellation and strict group absence. Child acquisition and every protocol
+  failure require release/stop/drain/reap in one retained finalizer.
+- Residual R1: `tests/test_process_ownership_branches.py` retainer/settle
+  cancellation controls; `tests/test_client_cancel_io.py` repeated persistence
+  cancellation; `tests/test_observer_delivery.py` close cancellation and
+  abandoned-owner GC; and `tests/test_operation_ownership.py` abandoned-child
+  GC. Use actual retained-await entry and cancellation catch acknowledgments.
+  For GC, prove ownership survives while the actual child/emission is held,
+  then release and await the actual child, delivery runner/callback or owner
+  finalizer completion before collecting and testing weak-reference release.
+  Do not replace ten scheduler turns with another bounded weak-reference poll.
+- Residual R2: only the existing cancellation controls in
+  `tests/test_live_apps_timing_controls.py` (two),
+  `tests/test_benchmark_client_output.py` (two),
+  `tests/test_qualify_web_platform_controls.py`,
+  `tests/test_live_apps_spawn_controls.py`,
+  `tests/test_selected_profiles_example_runtime_controls.py`,
+  `tests/test_suite_runner.py` and
+  `tests/packaging/test_performance_gate.py`. Replace cancellation-after-yield
+  guesses with actual catch witnesses while exercising the real retainer;
+  retain release and settlement on every exit. These are ordinary lifecycle
+  controls despite some benchmark filenames. Measurement algorithms, metrics,
+  thresholds and real cancellation semantics remain unchanged.
+- Residual R3, alongside native readiness: the monitor cancellation control in
+  `tests/test_qualify_live_apps.py` and cleanup cancellation control in
+  `tests/test_live_apps_browser_cleanup_controls.py`. Retain actual monitor,
+  child and reader settlement through acknowledged repeated cancellation. The
+  latter file's already-failed capture can be awaited for its exact error
+  rather than inferred done after a yield.
+
+Deliberate scheduler yields are not elapsed pass/fail budgets. Existing
+cancellation-before-entry, executor-queue admission, posted callback, concurrent
+context isolation and explicit fanout checkpoints retain their scheduling
+purpose where they do not stand in for repeated cancellation handling or
+eventual physical completion. The four live-disclosure cooperative fanout
+checkpoints remain intentional. Browser pipe-pressure polling checks actual
+buffer pressure or child terminal state and has no arbitrary attempt ceiling.
+The browser's three-second failure-summary observation remains failure-only,
+records truncation and cannot produce a passed receipt; separately retained
+process/pipe cleanup owns physical settlement. Its SIGTERM grace before SIGKILL
+is an actual escalation policy, not a functional latency assertion.
+
+Genuine lease expiry (including the UI server's lease-plus-one wait), explicit
+deadline expiry/refusal tests, SDK prepared-pool admission attempts and typed
+live environment observation budgets remain classified contracts. Optional
+performance measurement budgets remain separate; ordinary cancellation
+controls in benchmark-named files are explicitly included above. Small shared
+test observers may be reused only for matching semantics. No production API,
+global clock, test count, coverage exemption or benchmark threshold change is
+authorized by this checklist. Each tranche needs its own source review,
+affected focused execution and static proof before the inventory is frozen
+for the complete eleven-stage functional gate.
+
+The cross-consumer crash-frontier tranche subsequently passed bounded source
+review at the six allocated files: PostgreSQL engine parent `5ac4e7d4` and
+companion `cc905b23`, independent settlement parent `7ef27369` and companion
+`116d262d`, and shared-transaction parent `9f608004` and companion `385aeda5`.
+Each child is owned before config writes and protocol reads, and recovery
+engines are registered for actual worker/observer drain before use. The exact
+local model-five/tool-30 checks now derive from their own engine configuration,
+independently of the ordinary database fixture's canonical model guard.
+Independent settlement captures its real hook-five call, and only the two
+in-flight shared-transaction frontiers capture PendingIO-30. The staged and
+post-commit frontiers do not invent an active timer. All crash, negative exit,
+SQL visibility, fencing/recovery, binding, history/feed and exact effect-count
+assertions remain.
+
+Luna observed 61 passing cases with
+`TMPDIR=/private/tmp/tether-crashfrontier-final-tmp XDG_CACHE_HOME=/private/tmp/tether-crashfrontier-final-xdg .venv/bin/pytest --no-cov --basetemp=/private/tmp/tether-crashfrontier-final-base-20261109 tests/test_postgres_engine_effect_process.py tests/test_consumer_independent_process.py tests/test_consumer_transaction_process.py tests/test_jsonl_process_effect.py tests/test_owned_jsonl_shutdown.py tests/test_public_host_ownership.py tests/test_postgres_resource_shutdown.py tests/test_postgres_lifetime.py tests/test_postgres_capture.py tests/test_postgres_handle.py`.
+The native fixture boundary used authorized escalation. Scoped Ruff/format,
+six-file Pyright, ceilings and diff checks passed. At this observation the
+global file-size check refused the concurrent log-control draft's 856-line
+file, outside this allocation; that draft requires extraction and fresh proof.
+No full repository gate or standalone log is claimed, and overlapping native
+and fixture tests are not additive evidence counts.
+
+The approved two-example tranche is now allocated for a concrete proposal
+before editing. Its public turn/feed terminal witness must retain the original
+HTTP result endpoint assertion. Exporter release, receiver thread completion
+and host/profile physical drain replace incidental harness observations while
+real exporter, flush, request and bounded-shutdown contracts remain asserted.
+
+Qualification-observation tranche 1 subsequently passed bounded source review
+at the example (`a96ba77a`), log observer (`bff42705`), direct controls
+(`3fa31f5c`) and extracted test helper (`c33a70d4`). Both fabricated journeys
+retain actual host/store drain and public canonical ordinary-model
+configuration. The held tool asserts the recorded 300-second argument and
+selected 310-second timer at actual worker entry, then waits for explicit
+release. The log observer races changed events against actual reader/process
+terminal tasks, maps producer failure to typed privacy observation incomplete,
+and leaves physical stream settlement to retained cleanup. Known privacy
+violations preserve their primary identity even if cleanup also fails.
+
+The real-child factory now retains spawn through cancellation before
+publication, recovers its exact returned child, releases both gates and drains
+unclaimed pipes. Focused controls cover this path, early child termination,
+reader termination without a changed-event signal, typed reader failure,
+retained repeated cancellation and privacy-error precedence. The helper
+extraction resolves the intermediate 856-line draft refusal without raising
+the file ceiling.
+
+Luna observed 55 passing cases with
+`UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-telemetry-20261109 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-qualification-observation-final5-20261109 examples/databricks-app/tests/test_qualification_shared_session.py tests/test_selected_profile_log_cleanup.py tests/test_selected_profile_qualifier_controls.py tests/test_selected_profile_identity_controls.py`.
+All four changed paths passed scoped Ruff/Pyright; file-size, ceilings and diff
+checks passed. Root subsequently observed whole-repository Ruff/format (671
+files) and Pyright with zero errors, superseding the earlier concurrent draft
+lint/type observations. Layer and dependency checks also passed. These are
+focused functional/control and static observations, with no standalone log,
+live CLI/authentication, external service or full eleven-stage execution claim.
+
+The reserved identity/credential/oracle tranche 2 is now allocated for its
+concrete proposal before editing. It includes the separately identified
+physical-disable and direct cancellation controls and minimal typed-incomplete
+caller wiring. Existing SDK-classified failures remain distinct from
+observation exhaustion; no private Source 28 operator or credential is touched.
+
+On 2026-11-10, both focused candidates reached review. The two example files
+(`5c9e2a61`, `59a42301`) passed four cases under the authorized temporary
+loopback bind. The initial sandbox run had two bind-permission failures.
+The qualifier candidate (`dbe6b079`, `1433c65b` for the two scripts) passed
+165 focused cases, including local TLS controls. Both candidates passed their
+reported scoped static checks. Source review found remaining ownership gaps.
+The ordinary OTLP assertions still require a drained result from the first
+bounded close. The blocked exporter finalizer can skip the worker join after
+a close failure. The two qualifier observers still directly await their owned
+reader, infer observation expiry from any `TimeoutError`, and turn cancellation
+during successful-result cleanup into observation incomplete. Fresh owned-group
+stop also retains the signal-zero preflight that previously refused on macOS.
+The corresponding narrow corrections are active. These focused observations
+refer to the reviewed candidate bytes.
+
+The remaining cancellation controls and native readiness proposals are now
+allocated in parallel with those corrections. Their scope follows the finite
+checklist above. After the focused reviews, freeze the included source inventory
+and record its digest and the selected Python, Node, npm and Chromium runtimes.
+Run the complete functional aggregate once from that inventory and retain the
+installed package work directory. Verify the aggregate and component receipts
+against the frozen files before promoting evidence. A subsequent change to an
+included file requires fresh qualification of the changed cohort.
+
+Use the same frozen inventory for the temporary development app, managed peers
+and selected profile. Compare current wheel, candidate, observer overlay and
+deployed export bytes before reusing any existing deployment. Collect the two
+instrumented browser and held-worker cases, the two managed process cases and
+all seven selected cases with their exact profile bindings. The current private
+operator must preserve typed incomplete outcomes and retained cleanup. The
+expiry case requires genuinely observed expiry and classified fresh-connection
+results. Close the temporary attempt's exact secret lifecycle and verify it
+before promoting its selected receipt.
+
+Review the current public captures and support claims, join all 41 acceptance
+criteria and 45 tasks to the actual evidence, and reconcile the plan with the
+closure audit. Run the release postcheck against the explicitly retained
+aggregate and current profile receipt. After qualification, reconcile the
+private owned-resource inventory and authorized cleanup against actual app,
+identity, credential and database outcomes. Promote the sanitized disposition
+with unresolved resources identified as such. Optional performance keeps its
+actual recorded status and its own evidence.
+
+Root's read-only live preflight found the selected workspace refresh token
+invalid and opened browser authentication. The earlier flat private reference,
+settings and cleanup artifacts are absent from the temporary directory. The old
+bundle directories are empty. The public operator and observer archives remain
+available. Recover exact creation and deployment identifiers from prior
+provenance, then verify them through authenticated read-only inventory. A fresh
+private record must bind the workspace, account operator, exact service identity
+and assignment, exact app and immutable deployment, and dedicated database
+resources and dependencies. Historical hashes identify their original bytes.
+Missing private files and matching names establish no cleanup ownership.
+
+Root subsequently restored authentication and matched the exact prior app,
+application principal, Lakebase project and endpoint, database and test identity
+to retained creation evidence and fresh read-only platform records. Existing
+validators confirmed the account administrator, active target and sole workspace
+assignment. The immutable deployed snapshot byte map matched the historical
+receipt (`a1551802`). Root recovered the non-secret app configuration and CA,
+prepared fresh private references and observer inputs, and observed 16 passing
+offline observer controls. The baseline secret's metadata was recovered from
+the prior plan preview. Its value was not read. The app compute read reported
+`UPDATING` during provider migration. Deployment reuse for the frozen candidate
+and live qualification still depend on current bytes and observed readiness.
+
+The corrected OTLP/embed example files (`39294d54`, `59a42301`) passed source
+review and four focused cases. Each HTTP journey waits for the exact accepted
+turn's committed event and then reads the original result endpoint. Ordinary
+profile reports await actual shutdown before asserting drain. The held exporter
+continues to prove the configured bounded outstanding result, with explicit
+release and an independent join of its real SDK worker. The finalizer settles
+that worker even if another close step fails. Real receiver status, trace/span
+correlation, privacy and delivery accounting remain asserted.
+
+Luna observed the four cases pass with
+`.venv/bin/pytest -q --no-cov --basetemp=/private/tmp/tether-otel-embed-report2-20261110 examples/otel/tests/test_profile.py examples/embed/tests/test_consumer.py`
+under authorized local loopback binding. Scoped Ruff, Pyright, ceilings and
+diff checks passed. The simultaneous global size check refused the separate
+qualifier oracle draft at 510 lines against its 500-line ceiling. The first
+remaining cancellation and GC proposal is now approved for its four listed
+test files.
+
+Before freezing the current source, Root fast-forwarded `origin/main` from
+`00c7a9b` to `b55c82a2fbb437c1d628c2e1502befce94c52997` and reconciled the
+local PRD changes with the upstream 0.3.x consumer decisions. The upstream
+Linux and macOS release support paragraph is retained. README's web interface
+section now reflects publication of the three optional Python distributions
+at 0.3.2, the current development npm version, the accepted consumer defaults
+and optional performance measurement. The publication receipt and current
+candidate qualification retain their respective source bindings.
+
+Root's further read-only platform checks confirmed PostgreSQL 18, verify-full
+TLS, the primary role and database, and the exact observer SELECT and INSERT
+grants. Provider metadata showed the exact expired baseline credential absent
+and no other credential IDs. The corresponding Keychain metadata remains and
+the earlier dedicated config is absent. The private Source 29 runner derives
+from the archived operator with typed incomplete outcome handling. A fresh
+cleanup draft binds the verified inventory. Cleanup execution still requires
+the current exact executor and actual dispositions.
+
+The four remaining process, persistence, observer and worker cancellation
+files passed source review at `cddc6abf`, `f9a11d17`, `be44742f` and
+`af02c8b0`. Process holds release and settle in retained finalizers.
+Persistence cancellation reaches the real shield twice while work remains
+held. The delivery test observes the actual emitter and its first cancellation
+and re-entry before starting the independent shutdown deadline. The delivery
+and worker GC controls drop caller references, prove ownership while the
+physical work is held, and await actual completion and drain before collecting
+again.
+
+Luna observed 50 passing cases with
+`.venv/bin/pytest -q --no-cov --basetemp=/private/tmp/tether-r1-solfix-20261110 tests/test_process_ownership_branches.py tests/test_client_cancel_io.py tests/test_observer_delivery.py tests/test_operation_ownership.py`.
+Scoped Ruff, formatting and Pyright passed, as did file size, ceilings and
+diff checks. The seven-file cancellation proposal is approved and active.
+
+The corrected credential and PostgreSQL oracle tranche passed source review at
+`754bac82`, `5ff9eca8` and protocol helper `43f8dfc1`. The exact reader remains
+owned through observation cancellation. The observed timer must report expiry
+before its timeout is classified as incomplete. Cancellation during successful
+result cleanup propagates after physical settlement. Oracle connection close
+also retains its actual task. Only the closed private expiry report and exit
+code map to typed incomplete. Actual SDK-classified failures and SQLSTATE
+authentication refusals retain their existing meaning. The owned group stop
+removes the preliminary signal-zero check and retains strict final absence.
+
+Luna observed 172 passing cases with
+`UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-tranche2 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-tranche2-final-protocol-20261110 tests/test_identity_credentials_unit_controls.py tests/test_pg_oracle_unit_controls.py tests/test_pg_oracle_parent_controls.py tests/test_selected_profile_identity_credentials_controls.py tests/test_selected_profile_identity_restore_controls.py tests/test_selected_profile_pg_oracle.py tests/test_selected_profiles.py::test_cancelled_revocation_waits_for_physical_disable_before_restore`.
+The local fixtures used authorized elevation. Ruff, formatting, Pyright,
+file-size, ceilings and diff checks passed. The wire-format extraction resolves
+the earlier size refusal. The native readiness and cancellation controls are
+now active in their approved test-only scope.
+
+Preparing the closure joins reproduced an installed-matrix reader mismatch.
+The canonical schema-1 matrix includes exact Python nodes from the independent
+installed embedder. The reader treated those nodes as a schema-2 full Python
+aggregate and refused the retained Source 28 matrix with
+`python_evidence_schema_invalid`. Root corrected that specific reader path.
+The validator requires the canonical matrix structure and its nested external
+embedder result, strict typing, lock digest and exact ordered Python outcome
+join. Standalone Python receipts still use strict schema-2 validation. Root
+observed 25 passing focused closure controls and the historical matrix's 49
+outcomes accepted against its original source binding.
+
+The private Source 29 join draft now covers seven requirements, 41 criteria
+and 45 tasks. Current source paths, citations and Python function names were
+checked. Its 12 receipt roles remain unbound until actual current results,
+including Root's public media and support-claim review. The draft separates
+same-named workspace and installed nodes by their observed receipt role.
+No final acceptance manifest or task completion is recorded here.
+
+The native readiness and cancellation files passed review at `1cd34faf`,
+`21b94a00` and `338688bf`. The fabricated CLI publishes the exact child PID
+through a private FIFO and retains the captured child through reap. The browser
+fixture publishes its descendant's readiness and proves that the leader reaped
+that descendant, both pipes settled and the owned group was absent. Early
+spawn or protocol failures retain that same physical cleanup. Monitor and
+resource cancellation controls observe the real shield catches.
+
+Luna observed 48 passing cases with
+`UV_CACHE_DIR=/private/tmp/tether-uv-cache-codex-tranche2 uv run --locked --no-sync pytest -q --no-cov --basetemp=/private/tmp/tether-native-r3-final2-20261110 tests/test_databricks_startup.py tests/test_qualify_live_apps.py tests/test_live_apps_browser_cleanup_controls.py`.
+Ruff, formatting, Pyright, file-size, ceilings and diff checks passed. This
+used local fabricated processes and pipes.
+
+The independent embedder's installed proof exposed a separate import boundary
+in the earlier example candidate. Its copied project contains the public
+example and explicit collector utilities, so isolated Python could not import
+the repository test helper used by the focused workspace run. Root allocated
+a small self-contained example teardown and fresh copied-project proof. The
+original HTTP result endpoint and exact committed-turn witness remain required.
+
+Pre-freeze guide review updated the three Python install recipes to the exact
+published cohort. Core and API installs now pin `0.3.2` together, and the
+remote terminal recipe pins the same core version with both required extras.
+The existing compatibility and support limits remain in those guides.
+
+The remaining seven-file cancellation tranche passed review and all nine
+selected controls with the final shared test observer (`7db1e823`). The
+observer records actual shield catches for the intended caller tasks. Held
+thread and process cases release and settle actual owners. The two held
+benchmark cancellation controls still select their exact three- and two-second
+arguments. Their test-only timer capture separates cancellation from expiry.
+The genuine timeout control remains armed. The held measurement receipt control
+proves write completion before release of its admission lock.
+
+The focused proof used `/private/tmp/tether-r2-finalproof2-20261110` and
+passed nine cases. The four-file process, persistence, observer and worker
+regression passed 50 cases with `/private/tmp/tether-r1-r2-regression-20261110`.
+An independent rerun of the three native files passed 48 cases with the final
+shared helper and `/private/tmp/tether-native-final-shared-helper-20261110`.
+Scoped Ruff, formatting and Pyright passed, as did ceilings, size and diff
+checks. These are overlapping focused observations.
+
+The corrected independent embedder (`0fa98a3d`) uses only its copied project and
+public APIs. The local teardown retains the exact feed and actual host drain,
+and preserves the primary failure alongside cleanup errors. Its isolated
+copied test passed with the workspace interpreter and editable Tether packages,
+without the repository's test helper path. This verifies the import correction.
+The four-case local example regression also passed with authorized loopback
+binding. The installed aggregate will provide the separate wheel-backed proof.
+
+Root started the complete functional aggregate after these reviews. Its required
+initial asset build regenerated four tracked paths for the old and new JavaScript
+asset, HTML and manifest. The authoritative freeze is the post-build inventory
+of 816 files. The saved inventory file SHA-256 is
+`3d2b652782a8b5827859fa516d5c1cf75bb80c87fe258b2ade1c10953c8f40f2`.
+The canonical sorted, compact JSON digest is
+`38696a61d5b36c54c80a14875a044589088dae1ea1b4a542effdd876b5bb2fc2`.
+The pre-build map remains a diagnostic. The built JavaScript gzip size is
+131,806 bytes. The aggregate's terminal result and component receipts remain
+pending. Subsequent continuation evidence writes are outside that inventory.
+
+The first complete-gate attempt passed all 3,761 Python cases in 151 groups.
+Coverage reached 87% with branch measurement enabled. The 32 JavaScript cases
+and npm package checks passed. Chromium revision 1248 was missing from the
+runtime cache, so the browser cases could not start and the aggregate did not
+pass. The retained attempt records the toolchain failure.
+
+Root installed the pinned Chromium 156.0.8078.4 into a private Playwright
+cache without changing the frozen source. The second attempt verified that
+Chromium could launch. Its nested runtime directory exceeded the macOS Unix
+socket path limit at the first native telemetry case, stopping that attempt.
+
+The third attempt uses a shorter private runtime directory and the same
+post-build inventory. Its Unix socket probe and one focused native preflight
+case passed. A separate diagnostic on the pinned browser passed all three
+local journeys in 36.4 seconds with exit code 0. That diagnostic confirmed
+that the repaired browser environment could run the journeys.
+
+## Source 29 functional aggregate passed
+
+The third attempt passed all 11 required stages on the exact frozen 816-file
+map. Python passed all 3,761 cases in 151 bounded groups with 86% coverage,
+branch measurement enabled and the existing 85% floor. JavaScript passed 32
+cases, npm passed four package checks, Playwright passed three real browser
+journeys and all six native owner validations passed. The installed matrix
+passed 49 checks across ten profiles. The separate installed PTY journey
+passed against the exact installed matrix receipt. The first attempt lacked
+the required pinned browser revision and the second used a runtime directory
+too long for native Unix sockets on macOS. The successful attempt used the
+pinned private browser cache and the shorter runtime directory, with no
+change to the frozen source or the gate requirements.
+
+The archive copies are byte-for-byte identical to the retained outputs. Each
+contains the exact frozen source map. The aggregate embeds the byte-identical
+Python receipt and the PTY receipt names the installed receipt digest. The
+local receipt scan found no actual private paths, selected provider hosts or
+bearer values. A synthetic file-URL parameter remains in its collected test
+identity.
+
+| Receipt | SHA-256 |
+| --- | --- |
+| [Aggregate](web-platform/full29-aggregate.json) | `dcf5f916f55b9f3a8c16c26d30b86737928481a1ead6b7f56dd629478aa7fc3e` |
+| [Python](web-platform/full29-python.json) | `4d9c23677a64d1e34be0e269e69a330ddf7d59099ac73c251f5a3ccb60eff119` |
+| [JavaScript](web-platform/full29-javascript.json) | `33e6428aba06f01967812a8447a59a97377c1d7400b566e9f991b00c4bf08408` |
+| [npm](web-platform/full29-npm.json) | `c63454a1969b497a6714ae3f6b833bcfb4927529d3985fc851aa86e55b7eb1ee` |
+| [Browser](web-platform/full29-browser.json) | `bc70a4e3d77b01680379f7e29387845cdfb1269323ef8af0f8a208ad8db24fb4` |
+| [Installed matrix](web-platform/full29-installed.json) | `839ae09f86ec05788cf0f4cecedd77bbaceae44ff380ce727e99fff5170fda3c` |
+| [Installed PTY](web-platform/full29-terminal.json) | `01df81c9432ebd51097bfe2f08c0e162f674eb869db4fe9b86be8ed7a7626947` |
+
+The exact four-wheel app overlay was deployed and its immutable source export
+matched the prepared overlay. The instrumented live browser, terminal and
+stop/restart qualification was still running at this checkpoint.
+
+The installed capture passed all three browser journeys. Its
+[archived capture receipt](web-platform/full29-media.json) is identical to the
+user-facing receipt and has SHA-256
+`0e118e1e21f004e00e8a41d069951de1e4731c1d8022bc2d1fcd3d76d27d814a`.
+The 31 capture source hashes and all three published PNG hashes matched.
+[Root's visual review](web-platform/full29-media-review.json), SHA-256
+`eab7fa735eb11d620f5cd88225236c97f4360eee822ef4c28f43b37118193562`,
+observed readable approval actions and literal script-shaped text, the durable
+result and response, a connecting indicator at reload, and a clipped longer
+neighboring title in the horizontal session rail at 390 pixels. The review
+joins to the exact capture and frozen source map. It is limited to the
+observed views and viewport. The selected live receipts, independent support
+review, final acceptance and cleanup closure remain pending.
+
+### First selected live attempt
+
+The first exact Source 29 app overlay did not pass the selected live journey.
+The protected continuation completed its fabricated tool, then returned
+`context_unavailable` with `context_failed` before the shutdown stage. In the
+observed durable sequence, `context_preparation` arrived 29.570 seconds after
+resume, an authorization fact at 32.062 seconds, `x.context.failed` at 35.018
+seconds and `turn_ended` at 36.833 seconds. The existing context step starts its
+30-second guard before initial capture and reuses that deadline during model
+preparation. The sequence is consistent with that guard expiring during hosted
+journal and authorization work. These times locate the failure in this
+attempt. No live case or latency result is credited.
+
+### Configured live retry
+
+The retry uses the public `RuntimeBindings.client_settings` injection seam
+for the explicitly selected fabricated shared-session deployment. The private
+factory delegates to the unchanged reference factory, checks the selected
+scenario and original model and context configuration, and replaces only
+`ContextConfig.timeout_seconds` with the finite test guard
+`(2**31 - 1) / 1000` seconds. The live command owner still bounds the observed
+journey. The genuine context-expiration tests, shipped reference and product
+settings, and all four wheels are unchanged. In the exact bundle environment,
+locked sync and an isolated Python check verified the single setting difference
+and refusal of other scenarios.
+
+The two base bundle differences were `app.yaml` and the private runtime
+factory. The factory SHA-256 is
+`d8e6a170a46ca34f7c6444640c059136ebf5190a7e5a4141acbcb2653ef0fe33`,
+the retry base digest is
+`9b35cc7ed9e181463f4822310371935ab709aae7b28db33377b318d60919b1e9`, and
+the instrumented overlay digest is
+`d8ffbcc053392c0e045e6569b29cc0c14327c3838c1a35a185d8762259e66fc8`.
+The overlay receipt confirms byte equality of its candidate modules with
+that base. A successful retry can qualify the exact selected configuration.
+
+The configured retry passed both observed live journeys with exit code 0.
+[The exact selected live receipt](web-platform/full29-live.json) has SHA-256
+`dad7aacdc947fe8bbea78210cccbeb025f51fbb826429923aae905aecb56eadd`.
+It binds the exact frozen 816-file source before and after qualification,
+the selected profile and the loaded instrumented overlay. The shared journey
+observed the browser and remote TUI with one approval winner. The stop/restart
+journey retained the original unknown-effect barrier and verified its durable
+post-stop row. The SIGTERM report arrived at 12.9530 seconds and the main
+coroutine returned at 12.9532 seconds within the configured 14-second stop
+allowance. The report was incomplete by design while the client host,
+platform resources and PostgreSQL root remained outstanding. The frontend
+used HTTP/2 while ASGI ingress observed HTTP/1.1. Direct listener H2C observed
+ASGI HTTP/2 on the bound invocation. This evidence qualifies the explicit
+fabricated shared-session settings above. The remaining managed and selected
+collector cases were still running when the live receipt was archived.
+
+The first RAM credential attempt stopped in the managed public process
+cases with `RuntimeError`. It produced neither the managed nor the selected
+collector receipt. The run operator verified revocation of the exact
+credential it created. The saved failure records the exception class, so it
+does not identify a cause. Root prepared a fresh private diagnostics copy
+that preserves the same proof order and revocation path and records only
+allowlisted error codes and safe module and line metadata.
+
+The second RAM attempt observed `managed_peer_recovery_missing` after the
+natural fencing phase and the exact worker SIGKILL. It produced neither the
+managed nor the selected receipt. The operator verified revocation of this
+attempt's exact credential. Read-only owner and lease metadata confirmed that
+the first killed fixture was already interrupted and had no lease after the
+second run, while the second killed fixture remained running with a naturally
+expired lease. Both fencing fixtures were idle without leases. The managed
+case expects the first nonempty owner recovery batch to name only its current
+killed fixture. A prior expired fixture can enter that batch first. Root's
+next private attempt will settle only the exact proven prior fabricated
+fixture through public owner recovery before running the unchanged cases.
+
+The third attempt's private preflight settled exactly that one expired
+fixture through public actor-scoped owner recovery at the observed database
+clock cutoff. The returned session and turn matched the prior fixture.
+Its projection was interrupted with one unknown effect and no inferred
+result. An immediate repeat was empty. The new managed cases use the
+unchanged public source and fresh fabricated sessions. This preflight is
+prior-fixture isolation evidence. The third attempt's managed and selected
+outcomes remain pending at this checkpoint.
+
+The unchanged third-attempt managed cases passed natural expiry fencing and
+killed-worker recovery. [The exact managed receipt](web-platform/full29-managed.json)
+has SHA-256 `ccd05989d845b34364352e4362b08995cb2584777bf4449e63335b7ef1e0993f`
+and binds the frozen Source 29 map and the same selected profile as the live
+receipt. The subsequent selected collector failed AC9 with
+`deployment_source_binding_mismatch` and produced no collector receipt. The
+attempt's exact credential revocation was verified. Root is independently
+verifying the exact postrestart active deployment and immutable export before
+rerunning all seven collector cases with a fresh RAM-only credential. The
+managed pass stands on its own receipt. Partial collector cases are excluded.
+
+The fresh selected-only attempt reached AC3 restoration and ended with
+`IdentityObservationIncomplete(identity_workspace_transition_timeout)` in
+`fresh_workspace_access`. The operator recorded three contextual retries and
+verified exact credential revocation. There is no selected receipt from this
+attempt. TP-001's single 90-second deactivation deadline still applies to the
+workspace and account inactive readbacks and the captured unexpired-token
+refusal. The separate restoration proof requires a fresh credential, the exact
+active identity and a protected 200. The current restoration observer ended
+before it proved those states. Root is checking actual restoration readbacks
+before retrying.
+
+The fresh account readback showed the exact test identity active and its sole
+workspace assignment unchanged. The exact filtered workspace readback still
+showed the identity inactive. The primary operator's workspace get-by-ID was
+forbidden, so the permitted exact filtered list supplies the workspace
+observation. All exact attempt credentials were absent in provider metadata.
+The split leaves restoration incomplete. Root is waiting for the workspace
+state to converge or for authoritative provider diagnosis before a new run.
+
+The exact identity later converged. Account and filtered workspace SCIM both
+showed active, account workspace access reported `ACTIVE`, the sole assignment
+was unchanged and the prior credential remained absent. The fifth attempt runs
+all seven selected cases using the same frozen source and verified deployment.
+Only the exact test principal's private restoration observer uses the canonical
+1,800-second command budget. It retains one absolute deadline, the same fresh
+credential checks, typed retry handling, exact `/Me` and protected 200, and
+account-active re-read. The deactivation budget remains 90 seconds. The
+fifth attempt is in progress at this checkpoint.
+
+The fifth selected attempt passed all seven exact cases and exited zero.
+[The selected-profile receipt](web-platform/full29-selected.json) has SHA-256
+`dbb7bab79b53a605149a4e8419ee1b2bba330e3ce7be4c44fa41855a3bba35b3`.
+It binds the same frozen source and selected profile as the live and managed
+receipts. The identity case observed refusal with the captured token still
+unexpired, and verified fresh restored access. The credential case observed
+genuine expiry, refusal and acceptance with fresh credentials. The private
+operator verified revocation of its exact RAM-only temporary credential and
+unchanged operator provenance. The promoted receipt contains no private
+paths, selected origin or bearer values.
+
+The expiry observation occurred after both recorded provider expiries. The
+expired database credential returned SQLSTATE `28P01`; fresh credentials
+were accepted.
+
+### Current acceptance closure and release postcheck
+
+[Root's independent support review](web-platform/full29-support-review.json)
+has SHA-256 `fbe789c33bc660726b385947996487a3f3ccb1a6b91054f046a0806a1bc12af5`.
+Its ten exact receipt digests match the archived source, installed, selected
+and media evidence. The [acceptance manifest](web-platform/acceptance-closure.json),
+SHA-256 `4c3d58fd5591d728f693cde1b1ec0d55229feff828a79092c14837a54aaab3be`,
+joins all 41 criteria and 42 ordinary work tasks to current passing receipts.
+The exact frozen 816-file map remained unchanged during resolution.
+
+The standalone closure audit and the release postcheck each exited zero and
+reported seven requirements, 41 criteria, 45 task records and an empty error
+list. [The audit](web-platform/full29-closure-audit.json) and
+[postcheck](web-platform/full29-release-postcheck.json) outputs are byte-identical,
+with SHA-256 `085f1051425a6f760a20576c02809b439fc31c3813b506439bc9fc0e7237d787`.
+The postcheck reverified the exact aggregate, the current live profile and
+its allocated carrier proof, and the closure manifest. The 42 ordinary task
+boxes, WP-39, WP-44 and the seven validation checks now reflect the observed
+results. [The candidate packet](web-platform-release-candidate.md) records the
+qualified scope and the actual unrun optional measurements. WP-40 remains
+pending the authorized exact cleanup and its provider readbacks.
+
+### Exact selected-resource cleanup completed
+
+The read-only provider snapshot observed 40 exact resources and three owned
+upload roots. The reviewed plan bound ten actions to that snapshot, the
+qualified source and the exact provider targets. Its SHA-256 is
+`0420b2175230c9fa9b7f7d513a2ebc9f76a41b6caff74560f6fa2f58e9267ca5`.
+The executor stopped and deleted the selected app, verified its 20 deployment
+rows absent and removed the three exact upload roots. An initial workspace
+readback surfaced the SDK's typed `ResourceDoesNotExist` subclass. The
+private adapter was corrected for that exact typed response and reconciled
+the already-absent root without resubmitting its delete. The PostgreSQL
+cleanup initially refused an identity mismatch before mutation. The reviewed
+correction bound the TLS idle probe to the exact authenticated cleanup
+operator. After verified app absence and a fresh idle read, the executor
+purged the dedicated PostgreSQL 18 project and verified the project and its
+branch, endpoint and database absent. The prior PostgreSQL 17 project was
+verified absent without mutation.
+
+The exact account service-principal delete returned success while SCIM still
+reported the identity present. The executor stopped with the action retained
+in the durable receipt. Fresh SCIM item and application-ID filter readbacks
+later converged to absence, consistent with the independent account and
+workspace observations. The executor resumed the same plan without a second
+SCIM delete and completed all ten actions with exit code zero. The exact
+execution receipt SHA-256 is
+`3858b948d0c25d48306cc9f7caa77eed2a7072cf2682be79f08dab9c3f19384d`.
+
+[The independent cleanup disposition](web-platform/full29-cleanup-disposition.json),
+SHA-256 `ca0406a2af403154b7548038d346b0ca30c0a34b6a76eda34ea68b8a82f72032`,
+verifies the managed app principal absent and 39 other exact absences. These
+include the app, deployment rows, upload roots, database topology, test
+identity and workspace assignment, six provider credentials, the exact
+Keychain item and dedicated local configuration. The public receipt binds
+the private plan and execution receipt by digest. WP-40 and all 45 work
+tasks and seven validation checks are complete for the recorded candidate.
+The final frozen 816-file map is unchanged.

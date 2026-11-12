@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from collections.abc import Awaitable, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager, nullcontext
 from typing import TypeVar
 
+from postgres_pending_io_controls import PendingIOControl
 from psycopg import AsyncConnection, sql
 
 from tether.stores.postgres import DatabaseRoot, PostgresHistory
@@ -22,6 +23,18 @@ from tether.types.settlement import SettlementBinding
 T = TypeVar("T")
 
 
+@contextmanager
+def _capture_pending_io(control: PendingIOControl) -> Iterator[None]:
+    from tether.stores.postgres import io as io_module
+
+    previous = io_module.asyncio
+    io_module.asyncio = control.facade
+    try:
+        yield
+    finally:
+        io_module.asyncio = previous
+
+
 def emit(value):
     print(json.dumps(value), flush=True)
 
@@ -29,6 +42,13 @@ def emit(value):
 class FaultRoot(DatabaseRoot):
     armed = False
     mode = ""
+    pending_io_control: PendingIOControl | None = None
+
+    def _assert_pending_io_timeout(self) -> None:
+        assert self.pending_io_control is not None
+        durations = self.pending_io_control.durations
+        assert durations
+        assert durations[-1] == 30
 
     async def run(
         self,
@@ -41,6 +61,7 @@ class FaultRoot(DatabaseRoot):
         async def intercept(connection):
             result = await operation(connection)
             if self.armed and write and self.mode == "before_commit":
+                self._assert_pending_io_timeout()
                 emit({"event": "frontier"})
                 await asyncio.Event().wait()
             return result
@@ -71,6 +92,7 @@ async def main():
         await transaction.execute("write", [binding.settlement_id])
         root.armed = True
         if root.mode == "participant":
+            root._assert_pending_io_timeout()
             emit({"event": "frontier"})
             await asyncio.Event().wait()
 
@@ -113,28 +135,32 @@ async def main():
             decision=config["decision"],
         )
         terminal = "committed" if binding.decision == "commit" else "rolled_back"
-        await log.settle(
-            [
-                NewEntry(
-                    kind="message",
-                    key="atomic-message",
-                    history_ref=ref,
-                    facts={"role": "user", "is_error": False},
-                ),
-                NewEntry(
-                    kind="settlement",
-                    key="settlement:fabricated-settlement:pending",
-                    facts={"binding": binding.model_dump(mode="json"), "status": "pending"},
-                ),
-                NewEntry(
-                    kind="settlement",
-                    key="settlement:fabricated-settlement:" + terminal,
-                    facts={"binding": binding.model_dump(mode="json"), "status": terminal},
-                ),
-            ],
-            binding,
-            participant,
-        )
+        control = PendingIOControl() if root.mode in ("participant", "before_commit") else None
+        root.pending_io_control = control
+        capture = _capture_pending_io(control) if control is not None else nullcontext()
+        with capture:
+            await log.settle(
+                [
+                    NewEntry(
+                        kind="message",
+                        key="atomic-message",
+                        history_ref=ref,
+                        facts={"role": "user", "is_error": False},
+                    ),
+                    NewEntry(
+                        kind="settlement",
+                        key="settlement:fabricated-settlement:pending",
+                        facts={"binding": binding.model_dump(mode="json"), "status": "pending"},
+                    ),
+                    NewEntry(
+                        kind="settlement",
+                        key="settlement:fabricated-settlement:" + terminal,
+                        facts={"binding": binding.model_dump(mode="json"), "status": terminal},
+                    ),
+                ],
+                binding,
+                participant,
+            )
 
 
 if __name__ == "__main__":

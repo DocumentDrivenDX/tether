@@ -54,7 +54,7 @@ kind: product
 
 ## Summary
 
-Tether is an open-source Python library for building agent harnesses. It provides an asynchronous agent loop with a provider-neutral model port, a typed tool-call interface, durable session management with crash recovery, and telemetry. It exposes the session list and session data to a user interface through a fast in-process Python API (list, read in pages, follow live changes), and it ships a command-line client and a terminal UI that work seconds after cloning the repository. It supports configured local, self-hosted, sovereign or hosted model servers within declared protocol/model subsets, and keeps provider SDKs out of base packaging/public core types while permitting explicitly selected optional adapter SDKs (ADR-012). Python developers and platform teams who embed an agent runtime in their own services use it, keeping their own interface, storage, and policy. Release success is that every port has a dummy and a conformance suite, that recorded conversations replay deterministically through the loop, that a killed turn on a qualified durable profile preserves accepted steps and explicitly reports blocked or unknown outcomes, that a UI lists, reads, and follows sessions within published budgets, and that a developer is using the harness in a terminal within seconds of cloning.
+Tether is an open-source Python library for building agent harnesses. It provides an asynchronous agent loop with a provider-neutral model port, a typed tool-call interface, durable session management with crash recovery, and telemetry. It exposes the session list and session data to a user interface through a fast in-process Python API (list, read in pages, follow live changes), and it ships a command-line client and a terminal UI that work seconds after cloning the repository. It supports configured local, self-hosted, sovereign or hosted model servers within declared protocol/model subsets, and keeps provider SDKs out of base packaging/public core types while permitting explicitly selected optional adapter SDKs (ADR-012). Python developers and platform teams who embed an agent runtime in their own services use it, keeping their own interface, storage, and policy. Release success is that every port has a dummy and a conformance suite, that recorded conversations replay deterministically through the loop, that a killed turn on a qualified durable profile preserves accepted steps and explicitly reports blocked or unknown outcomes, that a UI correctly lists, reads, and follows sessions with declared ownership and authorization, and that a developer can use the harness through the documented terminal workflow.
 
 ## Problem and Goals
 
@@ -423,7 +423,7 @@ before claiming a current performance pass.
 ### NFR-7 controlled gate and Apps observations — owner decision, 2026-11-02
 
 Keep Databricks Apps network latency observational, outside performance
-pass/fail. The current controlled gate has six local profiles and 54 metrics:
+pass/fail. Optional controlled qualification has six local profiles and 54 metrics:
 POSIX store 7, MemoryFiles store 7, POSIX public client 17, volatile public
 client 11, engine 2 and follower memory 10. These require the known-hardware
 reservation and independent isolation evidence above. The two Apps handshake
@@ -439,6 +439,24 @@ baselines and receipts remain unchanged; this decision does not turn source28
 failures into passes or fit any numeric cap. All 41 interface acceptance
 criteria and all 45 IP-002 tasks remain required. Functional Apps identity,
 storage, recovery, privacy and compatibility qualification are unchanged.
+
+### NFR-7 release disposition — owner decision, 2026-11-09
+
+The owner stated, “I don't think this gate should be a blocker.” Actual
+performance qualification is optional and does not block implementation,
+interface acceptance or release. A release may report performance as unrun,
+deferred, incomplete or failed without claiming a current performance pass.
+Required functional, security, lifecycle, caller-deadline and genuine-expiry
+proof remains unchanged.
+
+The isolated measurement workflow and its deterministic admission, rejection,
+separation, privacy and cleanup controls remain required implementation work.
+WP-36 closes on that workflow and its controls; it does not require actual
+benchmark measurements to pass. Any referenced qualified performance claim
+still requires the exact six-profile/54-metric scope, admission and source joins.
+Unknown isolation continues to refuse measurement. Apps latency remains
+observational. Preserve source27 baselines, source28 failures and all numeric
+thresholds as recorded; nonblocking disposition does not relabel their outcomes.
 
 ## Acceptance Test Sketches
 

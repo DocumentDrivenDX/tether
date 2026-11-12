@@ -141,7 +141,7 @@ tests and reproducible evidence preparation, including documentation updates.
 
 ### Foundation and bounded uncertainty probes
 
-- [ ] **WP-00 — Freeze the executable baseline and acceptance map.** Depends: none.
+- [x] **WP-00 — Freeze the executable baseline and acceptance map.** Depends: none.
   Read the current governing artifacts, actual implementation, existing release
   receipts and dirty diff, including TD-065–069 and STP-001's concrete case/path map.
   Map every required capability to task/test IDs; identify
@@ -167,26 +167,26 @@ from committed HEAD. Preserve that incomplete original attempt and its captured
 inventory; qualify the final current cohort separately. WP-00 remains unchecked
 until that complete gate passes. This records the departure from planned ordering
 without a retroactive baseline-success claim or a reduced quality requirement.
-- [ ] **WP-01 — Adopt the repository/package boundary and command scaffold.** Depends: WP-00.
+- [x] **WP-01 — Adopt the repository/package boundary and command scaffold.** Depends: WP-00.
   Register ADR-022 package paths, public export maps, package versions and dependency
   directions. Add the command contract below, Python/TypeScript shape checks,
   package-aware coverage collection, local/pre-commit/CI wiring and negative-control
   harness. Prove: allowed imports pass, forbidden/private imports and cycles fail;
   old violations have bounded remediation tasks without expanded exclusions.
-- [ ] **WP-02 — Qualify selected stack and build tooling.** Depends: WP-01.
+- [x] **WP-02 — Qualify selected stack and build tooling.** Depends: WP-01.
   Bound the probe to Python 3.11/current Pydantic and Agent pins, selected FastAPI/
   ASGI server, React/TypeScript/Vite/Playwright and package manager/runtime pins.
   Check proposed registry/package names; test range boundaries, schema generation, SSE parsing and
   asset build/install. Prove: resolver plus executable compatibility matrix with
   exact versions; failed combinations stay unsupported and block dependent builds.
-- [ ] **WP-03 — Prove the browser/HTTP event and lifecycle design.** Depends: WP-02.
+- [x] **WP-03 — Prove the browser/HTTP event and lifecycle design.** Depends: WP-02.
   Bound to a dummy client, two users, a slow subscriber, malformed frames and a
   disconnect during acceptance. Resolve stream authentication/refresh, replay/reset,
   heartbeat/queue bounds, provisional versus committed events, abort semantics and
   typed transport errors. Include Unicode scalar offsets and SSE IDs only at the
   final event of each commit. Prove: contract fixtures and wire/browser probe receipt;
   revise CONTRACT-006 before implementing any failed assumption.
-- [ ] **WP-04 — Qualify Apps identity, ingress and remote terminal access.** Depends: WP-02.
+- [x] **WP-04 — Qualify Apps identity, ingress and remote terminal access.** Depends: WP-02.
   Bound to an operator-selected fabricated workspace/profile. Verify trusted proxy
   headers, forwarded-user versus app service principal identity, absent/revoked
   user refusal, OAuth remote-TUI access to `/api`, ingress path and SSE behavior,
@@ -194,19 +194,19 @@ without a retroactive baseline-success claim or a reduced quality requirement.
   proxy protocol and actual SIGTERM allowance. Bind observations to one process/nonce
   and loaded candidate hashes; do not infer proxy H2 from frontend HTTP/2. Prove: versioned
   identity/ingress matrix; no workspace access means an explicit profile blocker.
-- [ ] **WP-05 — Qualify external durable storage and shutdown.** Depends: WP-04.
+- [x] **WP-05 — Qualify external durable storage and shutdown.** Depends: WP-04.
   Bound to the selected external PostgreSQL profile and separately Lakebase profile.
   Verify required versions/settings/schema, migrations as explicit operator action,
   per-caller acquisition/role/RLS, pool/token renewal, fencing, restart, failover and
   the 15-second SIGTERM gate with real worker ownership. Prove: process/database
   receipts and limitations. Failed Lakebase checks cannot inherit PostgreSQL proof.
-- [ ] **WP-06 — Qualify selected Databricks service capabilities.** Depends: WP-04.
+- [x] **WP-06 — Qualify selected Databricks service capabilities.** Depends: WP-04.
   Bound each probe to the SD-003 release profile: Gateway/model identity/correlation,
   authorized source readiness, governed retrieval/tools and trace receiver where
   selected. Distinguish declared, denied, delayed, unavailable and unsupported.
   Prove: fabricated service/version/permission matrix; untested adapters block their
   acceptance case without obstructing the platform-neutral interface release.
-- [ ] **WP-41 — Prove durable remote turn results and targeted cancellation.** Depends: WP-00, WP-03.
+- [x] **WP-41 — Prove durable remote turn results and targeted cancellation.** Depends: WP-00, WP-03.
   Bound the probe to accepted/terminal journal facts, API process replacement, an
   old turn followed by a new turn and a lost cancel response. Resolve public
   `turn_result` authority, missing/unavailable/ongoing distinctions, lookup bounds,
@@ -217,24 +217,24 @@ without a retroactive baseline-success claim or a reduced quality requirement.
 
 ### Public core facade and terminal migration
 
-- [ ] **WP-07 — Publish client protocols and complete exported types.** Depends: WP-01, WP-02.
+- [x] **WP-07 — Publish client protocols and complete exported types.** Depends: WP-01, WP-02.
   Implement CONTRACT-006's client/provider/host protocol, request/result/event/error
   types and CONTRACT-003 compatibility mapping through `tether.client`. Add dummy,
   conformance and third-party replacement examples. Prove: `make web-client-contract`,
   strict public consumer typing and exported symbol/schema compatibility fixtures.
-- [ ] **WP-08 — Implement explicit construction, configuration and owned lifetime.** Depends: WP-07.
+- [x] **WP-08 — Implement explicit construction, configuration and owned lifetime.** Depends: WP-07.
   Provide public `ClientHost.open(ClientSettings)` and `ClientHost.from_ports`
   minimal/offline/local and advanced-port composition; preserve profile refusals and
   the documented legacy compatibility path. Cover startup failure,
   cancellation, bounded close, retained physical workers and borrowed ownership.
   Prove: facade-only installed examples and lifecycle conformance; no consumer imports
   private implementation or reads configuration implicitly inside core.
-- [ ] **WP-09 — Publish advanced port/test-kit entrypoints.** Depends: WP-08.
+- [x] **WP-09 — Publish advanced port/test-kit entrypoints.** Depends: WP-08.
   Expose the supported model/storage/history/policy/telemetry extension ports and
   configuration factories without SDK types or private internals. Each example
   substitutes a dummy then a conforming adapter. Prove: positive/negative boundary
   checks and installed custom-adapter typing/conformance under base-only dependencies.
-- [ ] **WP-10 — Migrate CLI and TUI composition to the public facade.** Depends: WP-08, WP-09.
+- [x] **WP-10 — Migrate CLI and TUI composition to the public facade.** Depends: WP-08, WP-09.
   Retain documented commands, demo, local durable configuration and Textual extra;
   inject the client into presentation factories. Remove runtime/store/adapter
   construction from consumers. Capture the initial snapshot watermark before
@@ -246,13 +246,13 @@ without a retroactive baseline-success claim or a reduced quality requirement.
   public reads after refresh; prove new-turn/session/read-refusal and concurrent
   prefix invalidation without relying on a transient post-command log write.
   Preserve published entrypoint migration guidance.
-- [ ] **WP-42 — Implement public durable result and targeted-cancel semantics.** Depends: WP-07, WP-41.
+- [x] **WP-42 — Implement public durable result and targeted-cancel semantics.** Depends: WP-07, WP-41.
   Implement the accepted journal-backed result reader and turn-bound cancellation;
   exclude process-local retained handles as outcome authority. Prove: process
   replacement during acceptance/running/terminal states, lost acknowledgement,
   old-turn retry against a newer turn and current read revocation through the shared
   local/remote conformance suite. Closed or unavailable results never trigger rerun.
-- [ ] **WP-11 — Add the remote client used by the terminal interface.** Depends: WP-03, WP-10, WP-17.
+- [x] **WP-11 — Add the remote client used by the terminal interface.** Depends: WP-03, WP-10, WP-17.
   Implement the optional core remote extra and accepted HTTP client/provider mapping
   with injected transport/auth and no FastAPI/API-package dependency or host internals.
   Scope credentials to the explicit remote profile, refresh current identity and
@@ -262,36 +262,36 @@ without a retroactive baseline-success claim or a reduced quality requirement.
 
 ### Independent Python API and asset host
 
-- [ ] **WP-12 — Scaffold the API distribution and injected factory.** Depends: WP-02, WP-07.
+- [x] **WP-12 — Scaffold the API distribution and injected factory.** Depends: WP-02, WP-07.
   Implement independently installable `tether_web_api`, public typed factory/router,
   configurable mount prefix, owned versus borrowed lifecycle and no hidden host.
   Prove: API-only and mounted-in-existing-ASGI-host examples against a dummy provider;
   importing core never imports the web framework or optional API package.
-- [ ] **WP-13 — Implement authenticated reads and wire errors.** Depends: WP-03, WP-12.
+- [x] **WP-13 — Implement authenticated reads and wire errors.** Depends: WP-03, WP-12.
   Translate list/find/get/snapshot/entries/history/effects/call/pending/capability reads and pagination
   through injected current-actor clients. Validate wire versions, request/response
   byte bounds and exception redaction. Prove: `make web-api-contract`, two-user owner/
   payload-read negatives, malformed/oversized inputs and unavailable-history cases.
-- [ ] **WP-14 — Implement command and operation transport.** Depends: WP-13, WP-08, WP-42.
+- [x] **WP-14 — Implement command and operation transport.** Depends: WP-13, WP-08, WP-42.
   Translate create/update/send/cancel/approve/resume/resolve/close/restore/history-link
   commands and result retrieval; preserve request identity, accepted-operation handles and
   semantic conflicts. Distinguish session cancel from target-turn cancel, accepted
   versus late confirmation and command-specific acknowledgement/retry reconciliation.
   Postcommit disclosure denial never proves rollback. Prove: races, authorization refresh, unknown-effect
   refusal, disconnect-after-acceptance and retry without duplicate accepted execution.
-- [ ] **WP-15 — Implement versioned follow and reconnect transport.** Depends: WP-03, WP-13, WP-14.
+- [x] **WP-15 — Implement versioned follow and reconnect transport.** Depends: WP-03, WP-13, WP-14.
   Implement server-sent events (SSE), owner-scoped cursors, snapshot watermark replay,
   retention/reset, slow-consumer bounds, `last_in_commit` watermark advancement
   and stream identity expiry. Preserve
   provisional/committed distinction; only commit-final SSE frames carry an ID.
   Prove: real HTTP stream fragmentation, Unicode offsets, cancellation,
   revocation, reset/gap and cross-process committed-feed tests; no polling-only substitute.
-- [ ] **WP-16 — Implement independent asset hosting and mount configuration.** Depends: WP-02, WP-12.
+- [x] **WP-16 — Implement independent asset hosting and mount configuration.** Depends: WP-02, WP-12.
   Implement `tether_web_ui` with immutable built assets, nested-prefix/base-path/API
   discovery, cache/security headers and SPA fallback excluding `/api` and missing
   assets. Prove: UI-only host with an alternate API, API-only host without UI,
   nested mounts and packaged-resource installation outside the source checkout.
-- [ ] **WP-17 — Close API conformance and OpenAPI/schema publication.** Depends: WP-13, WP-14, WP-15.
+- [x] **WP-17 — Close API conformance and OpenAPI/schema publication.** Depends: WP-13, WP-14, WP-15.
   Export deterministic versioned OpenAPI/JSON Schema including event/error variants,
   compatibility rules and capability negotiation. Run the same client conformance
   through local and HTTP implementations. Prove: wire golden corpus, generated-schema
@@ -299,32 +299,32 @@ without a retroactive baseline-success claim or a reduced quality requirement.
 
 ### Browser packages and replaceable reference UI
 
-- [ ] **WP-18 — Generate the typed browser contract.** Depends: WP-17.
+- [x] **WP-18 — Generate the typed browser contract.** Depends: WP-17.
   Generate `@tether/client` types/codecs from canonical schemas with a pinned generator;
   preserve IDs, exact integers above 2^53, unknown variants, optional/null fields and typed
   errors. Prove: deterministic generation, compile-time fixtures and Python/TypeScript
   round-trip corpus; no hand-maintained competing wire type authority.
-- [ ] **WP-19 — Implement browser HTTP/stream client.** Depends: WP-18, WP-03.
+- [x] **WP-19 — Implement browser HTTP/stream client.** Depends: WP-18, WP-03.
   Add explicit transport/auth/base-URL injection, bounded streaming parser, retry/
   idempotency rules, abort/dispose and reconnect/reset handling. Keep React and UI
   imports out. Prove: `make web-ui-check` client layer, real browser/loopback API
   conformance, fragmented frames, unknown variants and credential-expiry negatives.
-- [ ] **WP-20 — Implement headless React bindings.** Depends: WP-19.
+- [x] **WP-20 — Implement headless React bindings.** Depends: WP-19.
   Implement `@tether/react` injection, cache/subscription ownership, pagination,
   mutations and current snapshot/replay state. Avoid duplicate stream/command owners
   across mount/unmount and Strict Mode; clear protected caches after auth changes.
   Prove: fake-client tests, React lifecycle races and a custom component consumer.
-- [ ] **WP-21 — Implement composable UI components.** Depends: WP-20.
+- [x] **WP-21 — Implement composable UI components.** Depends: WP-20.
   Implement `@tether/ui` session list/transcript, composer, pending approvals, turn/
   tool state, explicit history/reset/unknown outcomes and recovery controls. Expose
   typed slots/themes/commands; render external content safely with keyboard/focus/
   screen-reader support. Prove: dummy bindings, accessibility and untrusted-content tests.
-- [ ] **WP-22 — Assemble the reference browser application.** Depends: WP-21, WP-16.
+- [x] **WP-22 — Assemble the reference browser application.** Depends: WP-21, WP-16.
   Implement `apps/reference-web` as an ordinary public-package consumer; support
   nested mounts, loading/empty/error/reconnect states and a no-network fabricated
   demo. Prove: real Playwright create/send/follow/tool/approve/cancel/resume/close
   journeys; API replacement and UI replacement each work without core changes.
-- [ ] **WP-23 — Package and verify built browser assets.** Depends: WP-22.
+- [x] **WP-23 — Package and verify built browser assets.** Depends: WP-22.
   Build Vite assets from a clean locked checkout, assemble the independent UI wheel/
   source distribution and browser package tarballs, and declare runtime/peer versions.
   Prove: installed browser smoke outside the repository, asset inventory/hashes,
@@ -334,29 +334,29 @@ without a retroactive baseline-success claim or a reduced quality requirement.
 
 ### Databricks composition and security
 
-- [ ] **WP-24 — Implement the external carrier composition root.** Depends: WP-04, WP-08, WP-12, WP-16.
+- [x] **WP-24 — Implement the external carrier composition root.** Depends: WP-04, WP-08, WP-12, WP-16.
   Implement `tether_databricks` explicit settings/resource mapping and one ASGI host
   composing mounted API/assets plus the public client host. Keep app environment,
   SDK/bootstrap/deployment concerns outside core. Prove: fabricated local deployment
   fixture with injected resources and absence of hidden host/store or secondary service.
   Supply complete `examples/databricks-app` app/bundle definitions, `app.yaml`,
   `pyproject.toml`, `uv.lock` and packaged assets; no `requirements.txt` or Node runtime.
-- [ ] **WP-25 — Implement per-request and stream identity binding.** Depends: WP-24, WP-04.
+- [x] **WP-25 — Implement per-request and stream identity binding.** Depends: WP-24, WP-04.
   Apply CONTRACT-007's trusted proxy/user/application identity matrix; verify ingress
   trust, refresh and expiry, scoped credential lifetime and unattended-mode refusals.
   Prove: two concurrent users, forged direct headers, missing/revoked identity and
   no service-principal fallback across ordinary reads, commands and resumed streams.
-- [ ] **WP-26 — Wire external PostgreSQL and qualified Lakebase.** Depends: WP-05, WP-24, WP-25.
+- [x] **WP-26 — Wire external PostgreSQL and qualified Lakebase.** Depends: WP-05, WP-24, WP-25.
   Compose explicit acquisition/migration/maintenance ownership through public ports;
   no App-local durable store, implicit migration or pooled identity widening.
   Prove: selected-profile restart, concurrent processes/fencing, credential rotation,
   failed acquisition and role/RLS isolation; publish separate backend/version limits.
-- [ ] **WP-27 — Wire selected Gateway and platform service adapters.** Depends: WP-06, WP-25, WP-26.
+- [x] **WP-27 — Wire selected Gateway and platform service adapters.** Depends: WP-06, WP-25, WP-26.
   Implement only the SD-003 accepted model/history/retrieval/tool capabilities with
   stable correlation, current identity and bounded readiness. Prove: adapter dummy/
   conformance suites plus each selected live fabricated case; unavailable originals
   block affected continuation and unknown remote effects never silently repeat.
-- [ ] **WP-28 — Implement proxy streaming and bounded shutdown.** Depends: WP-15, WP-24, WP-26.
+- [x] **WP-28 — Implement proxy streaming and bounded shutdown.** Depends: WP-15, WP-24, WP-26.
   Apply verified SSE/H2C/header/path behavior and explicitly configured server startup.
   Seal admissions on SIGTERM and attempt drain in accepted order. Return an accurate
   complete/outstanding report by the configured sub-15-second deadline; retain actual
@@ -369,17 +369,17 @@ without a retroactive baseline-success claim or a reduced quality requirement.
   Preserve committed `cancelled` on orderly application stop or `interrupted` on
   process/lease loss; both must retain the same unknown-effect barrier without replay.
   Keep the separate killed-process control strictly `interrupted`.
-- [ ] **WP-29 — Prove browser and OAuth remote-TUI Apps access.** Depends: WP-11, WP-22, WP-25, WP-28.
+- [x] **WP-29 — Prove browser and OAuth remote-TUI Apps access.** Depends: WP-11, WP-22, WP-25, WP-28.
   Drive the same accepted session through browser and remote terminal `/api` routes;
   prove correct OAuth audience/scope/token refresh and denial. Prove: simultaneous
   two-interface send/approve/reconnect journey behind actual ingress, without copying
   tokens into URLs, settings fixtures, logs, screenshots or durable records.
-- [ ] **WP-30 — Complete cross-component security qualification.** Depends: WP-17, WP-22, WP-25, WP-29.
+- [x] **WP-30 — Complete cross-component security qualification.** Depends: WP-17, WP-22, WP-25, WP-29.
   Exercise origin/CORS/CSRF where applicable, proxy trust, cookie/token policy,
   request/event bounds, XSS/unsafe links/Markdown, path traversal, session enumeration,
   payload permission revocation, cache leakage and redacted errors. Prove: TP-002
   adversarial/browser cases and dependency audit; affected failures block release.
-- [ ] **WP-31 — Wire and prove diagnostics before the pilot.** Depends: WP-27, WP-28, WP-30.
+- [x] **WP-31 — Wire and prove diagnostics before the pilot.** Depends: WP-27, WP-28, WP-30.
   Apply accepted telemetry naming/correlation contracts, metadata-only spans/audit,
   bounded delivery and failure isolation. Prove: real selected OTel receiver/exporter
   join plus content/credential exclusion, sampling/loss and receiver-failure cases;
@@ -387,37 +387,39 @@ without a retroactive baseline-success claim or a reduced quality requirement.
 
 ### Artifact, deployment and release acceptance
 
-- [ ] **WP-32 — Prove package and extras isolation from installed artifacts.** Depends: WP-10, WP-17, WP-23, WP-24.
+- [x] **WP-32 — Prove package and extras isolation from installed artifacts.** Depends: WP-10, WP-17, WP-23, WP-24.
   Build core/API/UI/carrier wheels and source distributions plus browser tarballs.
   Install base, each selected extra, each independent package and supported combinations
   in clean environments. Prove: `make web-package-check`, strict installed typing,
   dependency closure and no source-path escape; old documented TUI installs still work.
-- [ ] **WP-33 — Prove reproducible and compatible clean builds.** Depends: WP-32, WP-02.
+- [x] **WP-33 — Prove reproducible and compatible clean builds.** Depends: WP-32, WP-02.
   Build twice from clean locked sources with declared toolchain/version metadata;
   compare contents and deterministic hashes or explain permitted metadata variation.
   Test published package version constraints, schema compatibility, old/new client
   negotiation and update/rollback. Prove: artifact manifests and compatibility matrix.
-- [ ] **WP-43 — Build an independent fabricated embedder repository.** Depends: WP-32, WP-33.
+- [x] **WP-43 — Build an independent fabricated embedder repository.** Depends: WP-32, WP-33.
   Create a separate consumer fixture with its own lock/build configuration, import
   installed public packages, supply custom auth/ports/components and embed mounted
   API/UI into its own host. Prove: offline dummy and qualified durable journeys,
   independent API/UI replacement and client-only build; no source checkout path,
   private imports, customer configuration or undeclared shared workspace dependency.
-- [ ] **WP-34 — Run platform-neutral full-stack fault acceptance.** Depends: WP-19, WP-22, WP-30, WP-32.
+- [x] **WP-34 — Run platform-neutral full-stack fault acceptance.** Depends: WP-19, WP-22, WP-30, WP-32.
   Use installed artifacts and real browser/terminal/HTTP with fabricated model/tools.
   Race two users/interfaces, kill at acceptance/effect/result boundaries, reconnect
   after retention gaps and revoke access midstream. Prove: TP-001/TP-002 outcomes,
   stable accepted facts, bounded workers and explicit unknown/history/reset failures.
-- [ ] **WP-35 — Run selected Apps deployment acceptance.** Depends: WP-26, WP-27, WP-28, WP-29, WP-31, WP-34.
+- [x] **WP-35 — Run selected Apps deployment acceptance.** Depends: WP-26, WP-27, WP-28, WP-29, WP-31, WP-34.
   Prepare the exact deployment bundle, resource/permission inventory and operator
   runbook; after separate authorization deploy to the selected test target. Prove:
   `make web-platform-check` with actual ingress, durable restart, credential rotation,
   shutdown and failure recovery. Unavailable target access leaves this task blocked.
-- [ ] **WP-36 — Measure and protect interface budgets.** Depends: WP-34, WP-35.
-  Measure existing PRD list/page/follow/startup budgets and bounded CPU/memory/queue/
-  reconnect behavior for declared datasets and profiles; distinguish local and Apps
-  latency. Prove: reproducible benchmark receipt and ratchets; record failed targets
-  and resolve upstream rather than inventing performance support from fixture speed.
+- [x] **WP-36 — Qualify the isolated performance workflow.** Depends: WP-34, WP-35.
+  Provide the isolated measurement workflow and deterministic admission, rejection,
+  separation, privacy and cleanup controls. Owner decision on 2026-11-09 makes
+  actual performance qualification optional and nonblocking for implementation,
+  acceptance and release. Prove the available workflow and its controls with
+  current source-bound functional receipts; actual benchmark PASS is not required.
+  Preserve and disclose optional measurement outcomes without inventing support.
   Owner decision on 2026-11-02: the current controlled performance gate is six
   local profiles / 54 metric nodes (7/7/17/11/2/10). Apps handshake/list latency
   is optional observational provenance, outside pass/fail; default controlled
@@ -425,8 +427,9 @@ without a retroactive baseline-success claim or a reduced quality requirement.
   historical seven-profile/56-metric files and all source28 failures unchanged.
   This changes performance allocation only; no functional Apps AC or task is waived.
   The [current controlled-node policy](evidence/web-platform/reference-performance/controlled-policy-20261102.json)
-  lists 54 exact expected nodes without claiming execution. Current closure uses
-  that set and source-bound final-admission joins; the source28 56-node closure
+  lists 54 exact expected nodes without claiming execution. Referenced qualified
+  performance claims use that complete set and source-bound final-admission joins;
+  acceptance closure may contain no benchmark nodes. The source28 56-node closure
   candidates remain historical planning inputs, not current qualified evidence.
   Source27 disposition (2026-11-02): all seven actual reference profiles were
   schema/source/hash verified and their first measured ratchets established at
@@ -438,30 +441,30 @@ without a retroactive baseline-success claim or a reduced quality requirement.
   original memory-list/volatile-loop-lag/PTY misses and unvalidated meanings remain
   visible. The historical selected metric files remain unchanged; current comparisons use the owner-selected six local profiles above;
   this is not a historical regression pass, old stricter-cap enforcement or SLA.
-  The task stays unchecked pending its WP-35 dependency, Root semantic/manual
-  reconciliation and overall acceptance; establishment does not close them.
-- [ ] **WP-37 — Write installed quickstarts, extension guides and operator runbooks.** Depends: WP-32, WP-34, WP-35.
+  The task stays unchecked until its workflow/control proof and dependencies
+  pass on current inputs; historical measurement establishment does not prove them.
+- [x] **WP-37 — Write installed quickstarts, extension guides and operator runbooks.** Depends: WP-32, WP-34, WP-35.
   Cover base/TUI/API/UI/client-only embedding, alternate transports/components,
   advanced ports, auth/mount configuration, migrations, deployment rollback, shutdown,
   recovery and service support limits. Prove: copy-paste clean-environment examples,
   safe diagnostic retrieval recipes and API/generated-schema reference links.
-- [ ] **WP-38 — Capture verified public journeys.** Depends: WP-34, WP-35, WP-37.
+- [x] **WP-38 — Capture verified public journeys.** Depends: WP-34, WP-35, WP-37.
   Follow `docs/microsite.md`: fabricate all data, rerun each advertised assertion,
   capture real browser/terminal screenshots or short video, and retain versioned
   reproducible capture recipes. Prove: evidence metadata, credential/content scrub
   and publishable media tied to exact installed profiles; do not stage synthetic proof.
-- [ ] **WP-44 — Audit deterministic acceptance closure.** Depends: WP-34, WP-35, WP-38, WP-43.
+- [x] **WP-44 — Audit deterministic acceptance closure.** Depends: WP-34, WP-35, WP-38, WP-43.
   Inventory FR-65–70, NFR-9, all US-065–069 ACs, tasks and exact executable test
   IDs/implementation paths from TD-065–069 and TP-002/STP-001. Prove: a
   machine-checkable manifest fails on missing/duplicate
   mappings, empty inventories, skipped/xfail required cases or incomplete evidence;
   ensure each AC has one primary proving layer and every required edge closes.
-- [ ] **WP-39 — Close review and final release gates.** Depends: WP-30 through WP-38, WP-43, WP-44.
+- [x] **WP-39 — Close review and final release gates.** Depends: WP-30 through WP-38, WP-43, WP-44.
   Sol reviews changed public boundaries, security/ownership, all task evidence and
   source/artifact identity once; Luna fixes blocking findings and reruns affected gates.
   Prove: `make web-release-check`, full required core/source/browser/installed/profile
   matrix, licenses/notices/SBOM and no accepted-path placeholders or unchecked scope.
-- [ ] **WP-40 — Prepare authorized publication and deployment disposition.** Depends: WP-39.
+- [x] **WP-40 — Prepare authorized publication and deployment disposition.** Depends: WP-39.
   Prepare release notes, deployment checklist, immutable artifact hashes, tested
   versions/subsets, rollback instructions and evidence links. Keep signing/channel/
   registry and production target approvals explicit. Prove: a reviewable release
@@ -518,7 +521,7 @@ Each target uses locked tooling and reports its actual selected versions and tes
 | `make web-package-check` | Built wheels/sdists/tarballs, clean installed closures, extras matrix, public typing and asset checks |
 | `make web-check` | Required local/pre-commit/CI aggregate: unchanged core gate plus boundaries, client/API/browser/package gates; unqualified live profiles reported explicitly |
 | `make web-platform-check` | Operator-selected Apps/Gateway/database/trace profile gates; missing access is blocked, never a successful skip |
-| `make web-release-check` | Complete selected-source `web-check`, clean installed artifacts, required live profile/performance/documentation/evidence checks |
+| `make web-release-check` | Complete selected-source `web-check`, clean installed artifacts, required live profile/documentation/evidence checks and disclosure of optional performance status |
 
 ### Source29 timing-remediation continuation
 
@@ -534,8 +537,8 @@ corrective work within those tasks, not a reduced release or a second tracker.
 | 1 / WP-00, WP-01, WP-34 | Inventory timing uses in tests/scripts, TS/Vitest/Playwright, installed/a11y drivers and runner configuration. Classify semantic deadline/expiry, event coordination, emergency watchdog and actual performance. Reconcile AGENTS.md's existing 180s child rule with the owner direction explicitly; preserve collection/group bounds and 85% coverage. | Reviewable disposition by path/use; no case hidden by blanket filter, skip, relaxed assertion or lower coverage. Preserve source28 map, raw failed attempts and source27 baseline bytes. |
 | 2 / WP-05, WP-28, WP-30, WP-35 | Implement TD-068's managed-peer event/state coordination and retained group cleanup. Preserve natural lease duration/expiry, exact stale-owner fencing, recovery projections, unknown-effect barriers and credential privacy. | Barrier-driven delayed readiness, explicit failure/EOF, leader-exit/descendant-pipe and repeated-cancellation controls. Genuine expiry remains a later selected integration proof. |
 | 3 / WP-01, WP-34, WP-38, WP-43 | Remove incidental elapsed/startup gates and progress sleeps across ordinary Python, installed terminal, browser and a11y checks. Inject clocks in deterministic budget tests; preserve product deadlines and real worker lifetime. Separate real benchmark execution from ordinary check inventory; retain synthetic validation/rejection/cleanup controls. | Focused behavior tests and inventory completeness; ordinary functional checks allow an occupied host; real temporal cases require their actual initial-state preconditions, not startup-speed limits. No broad benchmark workloads in ordinary checks. Verify actual framework/runner watchdog dispositions and truthful incomplete results. |
-| 4 / WP-36 | Implement the PRD NFR-7 explicit performance admission contract: the existing known Mac under owner-controlled exclusive reservation, an OS nonblocking benchmark lock and independent pre/through/post activity observation, with typed injectable admission/observer composition outside the library core. Refuse/defer when binding, exclusivity or conditions are unknown; the lock alone excludes only cooperating owners. Qualify exactly six local profiles/54 metrics; Apps latency is optional observational provenance outside pass/fail, with no required precollected Apps input. Keep measurements and baseline disposition separate from functional success. | Offline admission/ratchet/schema/process-owner controls with fabricated observations; preserve both actual source28 failures and the no-workload readiness deferral. No automatic baseline replacement or threshold increase. |
-| 5 / WP-00, WP-32–38, WP-39, WP-40, WP-44 | Freeze the changed source29 inventory, build/install its artifacts and run the complete required functional/installed/browser gates. Run selected live expiry/recovery only after establishing the required live initial states and retained ownership; slow ordinary functional execution is permitted on the occupied host. Independently qualify the performance policy/reference before WP-36 closure. | Fresh source29 aggregate and profile receipts, retained failures and exact evidence joins. Root manual US-069-AC8 review, all 41AC/45WP reconciliation, closure audit and release postcheck follow actual successful proof. No publication, commit, production apply or final cleanup is authorized by this continuation alone. |
+| 4 / WP-36 | Implement the PRD NFR-7 explicit performance admission contract: the existing known Mac under owner-controlled exclusive reservation, an OS nonblocking benchmark lock and independent pre/through/post activity observation, with typed injectable admission/observer composition outside the library core. Refuse/defer when binding, exclusivity or conditions are unknown; the lock alone excludes only cooperating owners. Optional actual qualification covers exactly six local profiles/54 metrics; Apps latency stays observational. Actual qualification does not block release. | Required offline admission/ratchet/schema/process-owner/privacy controls with fabricated observations; preserve both source28 failures and the no-workload readiness deferral. No automatic baseline replacement or threshold increase. |
+| 5 / WP-00, WP-32–38, WP-39, WP-40, WP-44 | Freeze the changed source29 inventory, build/install its artifacts and run the complete required functional/installed/browser gates. Run selected live expiry/recovery only after establishing required initial states and retained ownership; slow ordinary execution is permitted on the occupied host. Close WP-36 on workflow/control proof and disclose optional measurement status separately. | Fresh source29 aggregate and profile receipts, retained failures and exact evidence joins. Root manual US-069-AC8 review, all 41AC/45WP reconciliation, closure audit and release postcheck follow actual successful proof. No publication, commit, production apply or final cleanup is authorized by this continuation alone. |
 
 Source28 attempt05 failed on initial peer readiness before lease/fencing
 assertions; its selected cases never began and its created secret was revoked
@@ -597,6 +600,19 @@ require their separately assigned next-phase GO.
 
 ## Execution Contract
 
+The 2026-11-09 owner decision requires a bounded closure-consumer correction
+after the current implementation checkpoints. Luna updates
+`scripts/web_closure.py` so WP-36 completion does not itself require benchmark
+nodes. Keep strict receipt, source and admission validation and exact 54-node
+coverage whenever qualified ratchets are referenced. Add controls in
+`tests/packaging/test_acceptance_closure.py` and affected closure text audits:
+completed WP-36 with workflow/control receipts and no metrics can close; missing
+required functional proof and malformed/partial qualified performance references
+still refuse. Inspect release/postcheck consumers for hidden mandatory benchmark
+execution. Keep `web-performance-check` and measurement-admission validation
+strict and separate. No measurement workload or new baseline is authorized by
+this allocation. Sol reviews the correction and its focused proof before closure.
+
 The user authorized full IP-002 implementation on 2026-10-29. Sol selects ready
 tasks and Luna executes them through their gates. Source changes, dependency
 qualification, builds and deterministic tests are authorized. Platform actions
@@ -626,7 +642,8 @@ retains 343 source/build digests, the successful locked sync and the full baseli
 failure after 73 of 80 passing groups. Coverage reported a missing SQLite context
 table; no assertion failure preceded it. The isolated retry was invalidated when
 implementation edits were released and cannot qualify the original baseline.
-WP-00 remains unchecked pending a complete unfiltered integrated-source gate.
+At that checkpoint, WP-00 remained unchecked pending a complete unfiltered
+integrated-source gate.
 WP-00-C1's focused isolation proof corrects the known shared-file defect.
 
 Planning verification on 2026-10-29: the installed HELIX implementation-plan
@@ -641,9 +658,19 @@ Python 3.11.17 and cached PyYAML 6.0.3 without installing dependencies.
 
 These are planning checks. They establish document structure and execution
 traceability; they do not establish runtime, installed-artifact, database, browser,
-Apps ingress, shutdown or receiver conformance. All 45 implementation tasks and
-validation boxes remain unchecked. WP-02–06 and WP-41 retain bounded unresolved
-technical probes before their dependent implementation/support gates can close.
+Apps ingress, shutdown or receiver conformance. At that checkpoint, all 45
+implementation tasks and validation boxes remained unchecked. WP-02–06 and
+WP-41 retained bounded unresolved technical probes before their dependent
+implementation/support gates could close.
+
+Source 29 execution recorded the exact frozen aggregate, installed matrix,
+selected live and managed profiles, selected collector, and independent manual
+review. The [acceptance closure](evidence/web-platform/acceptance-closure.json)
+joins all 41 criteria and the 42 ordinary work tasks to those observations.
+The [continuation](evidence/web-platform-continuation.md) records the qualified
+scope, earlier attempts, release controls and exact cleanup. The
+[cleanup disposition](evidence/web-platform/full29-cleanup-disposition.json)
+binds all ten reviewed actions to their independently verified final state.
 
 Use this task list as the sole selected task tracker. Keep a compact execution
 record beside the plan at `04-build/evidence/web-platform-continuation.md` after
@@ -665,13 +692,13 @@ replace Apps ingress proof, and documentation review cannot satisfy runtime work
 
 ## Validation Plan
 
-- [ ] Every required capability maps to a task and TP-002 case; every dependency resolves.
-- [ ] Public construction/lifecycle, TUI migration, independent replacement and advanced-port extension pass their installed consumer tests.
-- [ ] API/schema/browser streaming semantics share canonical fixtures and current-identity/refusal cases.
-- [ ] All selected package/extra combinations pass clean build, import, typing, license and dependency gates.
-- [ ] Full core requirements and existing consumer acceptance boundaries remain enforced.
-- [ ] Real receiver, ingress, database and process evidence qualify each advertised platform profile separately.
-- [ ] Required documentation, real fabricated screenshots and release/deployment packet match the tested artifacts.
+- [x] Every required capability maps to a task and TP-002 case; every dependency resolves.
+- [x] Public construction/lifecycle, TUI migration, independent replacement and advanced-port extension pass their installed consumer tests.
+- [x] API/schema/browser streaming semantics share canonical fixtures and current-identity/refusal cases.
+- [x] All selected package/extra combinations pass clean build, import, typing, license and dependency gates.
+- [x] Full core requirements and existing consumer acceptance boundaries remain enforced.
+- [x] Real receiver, ingress, database and process evidence qualify each advertised platform profile separately.
+- [x] Required documentation, real fabricated screenshots and release/deployment packet match the tested artifacts.
 
 ## Risks and Rollbacks
 
@@ -696,6 +723,9 @@ Execution is complete only when every required task WP-00–44 and validation bo
 passes with its recorded evidence; all required release/profile gates pass on the
 same selected artifact set; public examples and media match those artifacts;
 canonical documents and review are complete; and no required blocker remains.
+WP-36 requires the isolated workflow/control proof; optional actual performance
+qualification may remain unrun, deferred, incomplete or failed without blocking
+release. A current performance PASS still requires admitted qualified evidence.
 Any deliberately unsupported profile is named in the accepted scope/support
 matrix before it can leave the release gate. A failed required profile cannot
 be removed merely to report success. Publication/deployment completion, when

@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 
 import pytest
+from functional_watchdog import MAX_FUNCTIONAL_WATCHDOG_MS
 
 from tether.testing.conformance import ArchiveFixture, ConformanceFailure, archive_suite
 from tether.types.archive import ArchiveCapabilities, ArchivedSession
@@ -95,7 +96,7 @@ async def test_mutating_factory_or_sink_cannot_change_expected_archive(boundary)
         yield ArchiveFixture(source, Actor(id=sample.view.summary.owner), Actor(id="foreign"), sink)
 
     with pytest.raises(ConformanceFailure, match="archive_view_lossless"):
-        await archive_suite(factory)
+        await archive_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
 
 
 async def test_unmutated_source_fixture_passes_the_same_lossless_checks():
@@ -104,7 +105,7 @@ async def test_unmutated_source_fixture_passes_the_same_lossless_checks():
         source = MutatingArchive(sample)
         yield ArchiveFixture(source, Actor(id=sample.view.summary.owner), Actor(id="foreign"))
 
-    report = await archive_suite(factory)
+    report = await archive_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
     assert "archive_owner_isolation" in report.checks
 
 
@@ -130,5 +131,5 @@ async def test_conflicting_write_mutation_cannot_poison_the_private_oracle():
             source, Actor(id=sample.view.summary.owner), Actor(id="foreign"), source
         )
 
-    report = await archive_suite(factory)
+    report = await archive_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
     assert "archive_content" in report.checks

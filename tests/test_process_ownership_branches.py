@@ -10,11 +10,45 @@ from typing import Any, cast
 
 import process as proc
 import pytest
+from context_lifetime_controls import wait_event_or_task
 from process import CommandIncompleteError, run_command
+from selected_profiles_process import await_retained
 
 pytestmark = pytest.mark.anyio
 
 PGID = 543210
+
+
+async def _settle_tasks(*tasks: asyncio.Future[Any]) -> None:
+    async def settle() -> None:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    await await_retained(asyncio.create_task(settle()))
+
+
+class _ShieldObserver:
+    def __init__(self) -> None:
+        self._asyncio = asyncio
+        self.calls = 0
+        self.entered = asyncio.Event()
+        self.second_entered = asyncio.Event()
+        self.cancel_ack = asyncio.Event()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._asyncio, name)
+
+    async def shield(self, future: asyncio.Future[Any]) -> Any:
+        self.calls += 1
+        if self.calls == 1:
+            self.entered.set()
+        elif self.calls == 2:
+            self.second_entered.set()
+        try:
+            return await self._asyncio.shield(future)
+        except asyncio.CancelledError:
+            if self.calls == 1:
+                asyncio.get_running_loop().call_soon(self.cancel_ack.set)
+            raise
 
 
 @pytest.fixture
@@ -90,22 +124,34 @@ def _present(_sig: int) -> None:
     return None
 
 
-async def test_retained_waits_through_cancellation_and_reports_it() -> None:
+async def test_retained_waits_through_cancellation_and_reports_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     gate = asyncio.Event()
+    started = asyncio.Event()
+    observer = _ShieldObserver()
+    monkeypatch.setattr(proc, "asyncio", observer)
 
     async def work() -> str:
+        started.set()
         await gate.wait()
         return "done"
 
     task = asyncio.create_task(work())
     waiter = asyncio.create_task(proc._retained(task))
-    await asyncio.sleep(0)
-    waiter.cancel()
-    await asyncio.sleep(0)
-    gate.set()
-    value, cancelled = await waiter
-    assert (value, cancelled) == ("done", True)
-    assert await proc._retained(task) == ("done", False)
+    try:
+        await wait_event_or_task(started, waiter)
+        await wait_event_or_task(observer.entered, waiter)
+        waiter.cancel()
+        await wait_event_or_task(observer.cancel_ack, waiter)
+        assert not waiter.done()
+        gate.set()
+        value, cancelled = await waiter
+        assert (value, cancelled) == ("done", True)
+        assert await proc._retained(task) == ("done", False)
+    finally:
+        gate.set()
+        await _settle_tasks(waiter, task)
 
 
 def test_signal_owned_group_and_single_child_semantics(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -203,9 +249,13 @@ async def test_settle_reraises_cancellation_after_cleanup_finishes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     release = asyncio.Event()
+    entered = asyncio.Event()
     finished: list[bool] = []
+    observer = _ShieldObserver()
+    monkeypatch.setattr(proc, "asyncio", observer)
 
     async def slow_cleanup(*_args: object) -> None:
+        entered.set()
         await release.wait()
         finished.append(True)
 
@@ -214,14 +264,19 @@ async def test_settle_reraises_cancellation_after_cleanup_finishes(
     settle = asyncio.create_task(
         proc._settle(_process(child), asyncio.create_task(child.communicate()), False)
     )
-    await asyncio.sleep(0)
-    settle.cancel()
-    await asyncio.sleep(0)
-    assert not settle.done()
-    release.set()
-    with pytest.raises(asyncio.CancelledError):
-        await settle
-    assert finished == [True]
+    try:
+        await wait_event_or_task(entered, settle)
+        await wait_event_or_task(observer.entered, settle)
+        settle.cancel()
+        await wait_event_or_task(observer.cancel_ack, settle)
+        assert not settle.done()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await settle
+        assert finished == [True]
+    finally:
+        release.set()
+        await _settle_tasks(settle)
 
 
 async def test_spawn_failures_are_closed_dispatch_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -240,6 +295,8 @@ async def test_cancelled_spawn_reaps_the_child_it_started(monkeypatch: pytest.Mo
     release = asyncio.Event()
     started = asyncio.Event()
     child = _Child()
+    observer = _ShieldObserver()
+    monkeypatch.setattr(proc, "asyncio", observer)
 
     async def slow_spawn(*_args: object, **_kwargs: object) -> _Child:
         started.set()
@@ -249,13 +306,18 @@ async def test_cancelled_spawn_reaps_the_child_it_started(monkeypatch: pytest.Mo
     monkeypatch.setattr(proc.asyncio, "create_subprocess_exec", slow_spawn)
     _killpg(monkeypatch, _absent)
     task = asyncio.create_task(proc._spawn_command(["/bin/true"], None, None, True))
-    await started.wait()
-    task.cancel()
-    await asyncio.sleep(0)
-    release.set()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert child.waited == 1
+    try:
+        await wait_event_or_task(started, task)
+        task.cancel()
+        await wait_event_or_task(observer.cancel_ack, task)
+        await wait_event_or_task(observer.second_entered, task)
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert child.waited == 1
+    finally:
+        release.set()
+        await _settle_tasks(task)
 
 
 async def test_cancelled_spawn_that_then_fails_is_dispatch_failed(
@@ -263,6 +325,8 @@ async def test_cancelled_spawn_that_then_fails_is_dispatch_failed(
 ) -> None:
     release = asyncio.Event()
     started = asyncio.Event()
+    observer = _ShieldObserver()
+    monkeypatch.setattr(proc, "asyncio", observer)
 
     async def failing_spawn(*_args: object, **_kwargs: object) -> None:
         started.set()
@@ -271,13 +335,18 @@ async def test_cancelled_spawn_that_then_fails_is_dispatch_failed(
 
     monkeypatch.setattr(proc.asyncio, "create_subprocess_exec", failing_spawn)
     task = asyncio.create_task(proc._spawn_command(["/bin/true"], None, None, False))
-    await started.wait()
-    task.cancel()
-    await asyncio.sleep(0)
-    release.set()
-    with pytest.raises(CommandIncompleteError) as error:
-        await task
-    assert _reason(error) == ("dispatch_failed", "spawn")
+    try:
+        await wait_event_or_task(started, task)
+        task.cancel()
+        await wait_event_or_task(observer.cancel_ack, task)
+        await wait_event_or_task(observer.second_entered, task)
+        release.set()
+        with pytest.raises(CommandIncompleteError) as error:
+            await task
+        assert _reason(error) == ("dispatch_failed", "spawn")
+    finally:
+        release.set()
+        await _settle_tasks(task)
 
 
 async def test_complete_command_decodes_replacement_characters_and_missing_streams() -> None:
@@ -333,6 +402,7 @@ async def test_complete_command_cancellation_settles_before_propagating(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     gate = asyncio.Event()
+    entered = asyncio.Event()
 
     def killing(_sig: int) -> None:
         gate.set()
@@ -341,17 +411,22 @@ async def test_complete_command_cancellation_settles_before_propagating(
     _killpg(monkeypatch, killing)
 
     async def hang() -> tuple[bytes | None, bytes | None]:
+        entered.set()
         await gate.wait()
         return None, None
 
     child = _Child(communicate_override=hang)
 
     task = asyncio.create_task(proc._complete_command(_process(child), None, True))
-    await asyncio.sleep(0)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert child.waited == 1
+    try:
+        await wait_event_or_task(entered, task)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert child.waited == 1
+    finally:
+        gate.set()
+        await _settle_tasks(task)
 
 
 def _same_directory(printed: str, expected: Path) -> bool:

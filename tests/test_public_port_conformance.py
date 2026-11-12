@@ -15,6 +15,7 @@ from public_port_fixtures import (
     RecordingProvider,
     RecordingStore,
 )
+from selected_profiles_process import await_retained
 
 from tether.client import (
     Actor,
@@ -52,13 +53,7 @@ async def consumer_contract(client):
     assert (await client.list()).items[0].id == session.id
     assert (await client.get(session.id)).summary.title == "Original"
     snapshot = await client.snapshot(session.id)
-    stream = client.follow(session_id=session.id, since=snapshot.seq)
-    next_event = asyncio.create_task(anext(stream))
-    changed = await client.update(session.id, title="Changed", tags=("fabricated",))
-    assert changed.title == "Changed"
-    assert changed.tags == ("fabricated",)
-    assert (await asyncio.wait_for(next_event, 2)).summary.id == session.id
-    await stream.aclose()
+    await _update_and_read_summary(client, session.id, snapshot.seq)
     assert await client.pending(session.id) is None
     with pytest.raises(Unsupported, match="unsupported_store"):
         await client.resume(session.id)
@@ -67,6 +62,71 @@ async def consumer_contract(client):
     await approved_turn(client, session.id)
     await committed_reads_and_close(client, session.id)
     return session.id
+
+
+async def _update_and_read_summary(client, session_id, since) -> None:
+    stream = None
+    next_event = None
+    next_event_coro = None
+    reader_observed = False
+    primary = None
+    try:
+        stream = client.follow(session_id=session_id, since=since)
+        next_event_coro = anext(stream)
+        try:
+            next_event = asyncio.create_task(next_event_coro)
+        except BaseException:
+            next_event_coro.close()
+            next_event_coro = None
+            raise
+        changed = await client.update(session_id, title="Changed", tags=("fabricated",))
+        assert changed.title == "Changed"
+        assert changed.tags == ("fabricated",)
+        try:
+            event = await next_event
+        except BaseException:
+            reader_observed = True
+            raise
+        reader_observed = True
+        assert event.summary.id == session_id
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        cleanup = asyncio.create_task(_close_consumer_stream(next_event, stream, reader_observed))
+        try:
+            await await_retained(cleanup)
+        except BaseException as cleanup_error:
+            if primary is not None and cleanup_error is primary:
+                pass
+            elif primary is not None:
+                raise BaseExceptionGroup(
+                    "consumer_contract_test_and_cleanup_failed", [primary, cleanup_error]
+                ) from primary
+            else:
+                raise
+
+
+async def _close_consumer_stream(reader, stream, reader_observed: bool) -> None:
+    errors: list[BaseException] = []
+    if reader is not None:
+        if not reader.done():
+            reader.cancel()
+        outcome = await asyncio.gather(reader, return_exceptions=True)
+        if not reader_observed:
+            errors.extend(
+                value
+                for value in outcome
+                if isinstance(value, BaseException)
+                and not isinstance(value, asyncio.CancelledError)
+            )
+    if stream is not None:
+        try:
+            await stream.aclose()
+        except BaseException as error:
+            errors.append(error)
+    if errors:
+        raise BaseExceptionGroup("consumer_contract_cleanup_failed", errors)
 
 
 async def approved_turn(client, sid):

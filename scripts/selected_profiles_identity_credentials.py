@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import os
 import signal
@@ -11,13 +10,14 @@ import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.config import Config
+from qualify_live_apps_incomplete import LiveQualificationIncomplete
 from selected_profiles_identity_child import credential_child_main as _credential_child_main
 from selected_profiles_identity_child import encode_child_result as _encode_child_result
-from selected_profiles_process import await_retained
+from selected_profiles_process import await_retained, wait_for_process_group_exit
 
 _CHILD_TIMEOUT_SECONDS = 25.0
 _MAX_INPUT_BYTES = 16 * 1024
@@ -26,6 +26,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _CHILD_SCRIPT = Path(__file__).resolve()
 _T = TypeVar("_T")
 CredentialFactory = Callable[[], Awaitable["FreshCredential"]]
+
+
+class _CredentialObservationExpired(Exception):
+    """The caller-owned child observation bound expired."""
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,13 @@ class CredentialRefreshError(RuntimeError):
     def __init__(self, code: str, *, retryable: bool) -> None:
         super().__init__(code)
         self.retryable = retryable
+
+
+@dataclass
+class _CredentialChild:
+    spawn: asyncio.Task[asyncio.subprocess.Process]
+    process: asyncio.subprocess.Process | None = None
+    reader: asyncio.Task[Any] | None = None
 
 
 def workspace_from_credential(credential: FreshCredential) -> WorkspaceClient:
@@ -175,51 +186,98 @@ async def _run_process(
 ) -> bytes:
     if not sys.executable:
         raise RuntimeError("identity_credential_child_unavailable")
-    process: asyncio.subprocess.Process | None = None
-    reader: asyncio.Task[bytes] | None = None
-    spawn = asyncio.create_task(
-        asyncio.create_subprocess_exec(
-            *command,
-            cwd=_PROJECT_ROOT,
-            env=_child_environment(),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-            start_new_session=os.name == "posix",
+    child = _CredentialChild(
+        asyncio.create_task(
+            asyncio.create_subprocess_exec(
+                *command,
+                cwd=_PROJECT_ROOT,
+                env=_child_environment(),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                start_new_session=os.name == "posix",
+            )
         )
     )
     try:
-        try:
-            process = await asyncio.shield(spawn)
-        except asyncio.CancelledError:
-            process, _ = await _settle_task(spawn)
-            await await_retained(asyncio.create_task(_cleanup_child(process, None)))
-            raise
-        async with asyncio.timeout(timeout_seconds):
-            if process is None or process.stdin is None or process.stdout is None:
+        result = await _observe_credential_child(child, payload, timeout_seconds)
+    except BaseException as error:
+        cleanup_error = await _finish_credential_child(child)
+        if isinstance(error, _CredentialObservationExpired):
+            raise LiveQualificationIncomplete(
+                "qualification_workspace_identity_not_observed"
+            ) from cleanup_error
+        if cleanup_error is not None:
+            raise error from cleanup_error
+        raise
+    cleanup_error = await _finish_credential_child(child)
+    if isinstance(cleanup_error, asyncio.CancelledError):
+        raise cleanup_error
+    if cleanup_error is not None:
+        raise LiveQualificationIncomplete(
+            "qualification_workspace_identity_not_observed"
+        ) from cleanup_error
+    return result
+
+
+async def _observe_credential_child(
+    child: _CredentialChild, payload: bytes, seconds: float
+) -> bytes:
+    timeout = asyncio.timeout(seconds)
+    try:
+        async with timeout:
+            process = await asyncio.shield(child.spawn)
+            child.process = process
+            if process.stdin is None or process.stdout is None:
                 raise RuntimeError("identity_credential_child_pipe_unavailable")
-            child = process
-            stdin = child.stdin
-            stdout = child.stdout
-            if stdin is None or stdout is None:
-                raise RuntimeError("identity_credential_child_pipe_unavailable")
-            reader = asyncio.create_task(_read_child_output(stdout))
-            stdin.write(payload)
-            await stdin.drain()
-            stdin.close()
-            await child.wait()
-            raw = await reader
-            reader = None
-            if child.returncode is None:
+            child.reader = asyncio.create_task(_read_child_output(process.stdout))
+            process.stdin.write(payload)
+            await process.stdin.drain()
+            process.stdin.close()
+            await process.wait()
+            reader = child.reader
+            if reader is None:
+                raise RuntimeError("identity_credential_child_reader_unavailable")
+            raw = await asyncio.shield(reader)
+            child.reader = None
+            if process.returncode is None:
                 raise RuntimeError("identity_credential_child_failed")
-            return _validate_child_result(raw, child.returncode)
-    except TimeoutError:
-        raise CredentialRefreshError(
-            "identity_credential_network_transient", retryable=True
-        ) from None
-    finally:
-        if process is not None:
-            await await_retained(asyncio.create_task(_cleanup_child(process, reader)))
+            return _validate_child_result(raw, process.returncode)
+    except TimeoutError as error:
+        if timeout.expired():
+            raise _CredentialObservationExpired from error
+        raise
+
+
+async def _finish_credential_child(child: _CredentialChild) -> BaseException | None:
+    cleanup = asyncio.create_task(_cleanup_credential_acquisition(child))
+    try:
+        await await_retained(cleanup)
+    except BaseException as error:
+        return error
+    return None
+
+
+async def _cleanup_credential_acquisition(child: _CredentialChild) -> None:
+    process = child.process
+    if process is None:
+        try:
+            process = await asyncio.shield(child.spawn)
+        except BaseException:
+            return
+        child.process = process
+    await _cleanup_child(process, child.reader)
+
+
+def _task_failed(task: asyncio.Task[Any]) -> bool:
+    if not task.done():
+        return False
+    return task.cancelled() or task.exception() is not None
+
+
+async def _drain_child_output(stream: asyncio.StreamReader) -> None:
+    while await stream.read(4096):
+        continue
 
 
 def _child_environment() -> dict[str, str]:
@@ -234,26 +292,76 @@ def _child_environment() -> dict[str, str]:
 
 async def _read_child_output(stream: asyncio.StreamReader) -> bytes:
     output = bytearray()
+    overflow = False
     while chunk := await stream.read(4096):
-        if len(output) + len(chunk) > _MAX_OUTPUT_BYTES:
-            raise RuntimeError("identity_credential_child_output_limit")
-        output.extend(chunk)
+        remaining = _MAX_OUTPUT_BYTES - len(output)
+        output.extend(chunk[:remaining])
+        overflow = overflow or len(chunk) > remaining
+    if overflow:
+        raise RuntimeError("identity_credential_child_output_limit")
     return bytes(output)
 
 
 async def _cleanup_child(
-    process: asyncio.subprocess.Process, reader: asyncio.Task[bytes] | None
+    process: asyncio.subprocess.Process, reader: asyncio.Task[Any] | None
 ) -> None:
-    if process.returncode is None:
-        if os.name == "posix":
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-        else:
-            process.kill()
-    await asyncio.wait_for(process.wait(), timeout=5)
+    errors: list[BaseException] = []
+    _close_child_stdin(process, errors)
+    errors.extend(_signal_child_group(process))
+    if reader is None and process.stdout is not None:
+        reader = asyncio.create_task(_drain_child_output(process.stdout))
+    wait_tasks: list[asyncio.Future[Any]] = [asyncio.create_task(process.wait())]
     if reader is not None:
-        reader.cancel()
-        await asyncio.gather(reader, return_exceptions=True)
+        wait_tasks.append(reader)
+    if isinstance(process, asyncio.subprocess.Process) and os.name == "posix":
+        wait_tasks.append(
+            asyncio.create_task(asyncio.to_thread(wait_for_process_group_exit, process.pid))
+        )
+    outcomes = await asyncio.gather(*wait_tasks, return_exceptions=True)
+    errors.extend(outcome for outcome in outcomes if isinstance(outcome, BaseException))
+    if reader is not None and _task_failed(reader) and process.stdout is not None:
+        drain = asyncio.create_task(_drain_child_output(process.stdout))
+        outcomes = await asyncio.gather(drain, return_exceptions=True)
+        errors.extend(outcome for outcome in outcomes if isinstance(outcome, BaseException))
+    if errors:
+        raise BaseExceptionGroup("identity_credential_child_cleanup_failed", errors)
+
+
+def _close_child_stdin(process: asyncio.subprocess.Process, errors: list[BaseException]) -> None:
+    if process.stdin is None:
+        return
+    try:
+        process.stdin.close()
+    except BaseException as error:
+        errors.append(error)
+
+
+def _signal_child_group(process: asyncio.subprocess.Process) -> list[BaseException]:
+    errors: list[BaseException] = []
+    if not isinstance(process, asyncio.subprocess.Process):
+        errors.extend(_kill_live_child(process))
+    elif os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return errors
+        except BaseException as error:
+            errors.append(error)
+    else:
+        errors.extend(_kill_live_child(process))
+    return errors
+
+
+def _kill_live_child(process: asyncio.subprocess.Process) -> list[BaseException]:
+    if process.returncode is not None:
+        return []
+    try:
+        process.kill()
+    except ProcessLookupError:
+        return []
+    except BaseException as error:
+        return [error]
+    return []
 
 
 async def _settle_task(task: asyncio.Task[_T]) -> tuple[_T, bool]:

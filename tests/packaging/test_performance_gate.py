@@ -6,13 +6,18 @@ import json
 import threading
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+import selected_profiles_process
 import web_performance
 from benchmark_profiles import DYNAMIC_IDENTITIES, EXTERNAL_PROFILES, MEMORY_ALLOCATIONS, METRICS
 from benchmark_ratchet import capture, compare
+from context_lifetime_controls import wait_event_or_task
 from performance_admission import ActivityObservation, HostBinding, Reservation
+from process_lifetime_controls import ShieldCancellationObserver
 from web_artifacts import inventory
 from web_performance import (
     IDENTITIES,
@@ -20,6 +25,69 @@ from web_performance import (
     baselines,
     runtime_versions,
 )
+
+
+class _AdmissionLock:
+    def __init__(self) -> None:
+        self.exited = False
+
+    def __enter__(self) -> "_AdmissionLock":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.exited = True
+
+
+class _HeldMeasurementIO:
+    def __init__(self) -> None:
+        self.write_started = asyncio.Event()
+        self.write_release = threading.Event()
+        self.write_finished = asyncio.Event()
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.lock = _AdmissionLock()
+        self.observer: ShieldCancellationObserver | None = None
+
+    def held_write(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        assert self.loop is not None
+        self.loop.call_soon_threadsafe(self.write_started.set)
+        self.write_release.wait()
+        path.write_text("completed after cancellation")
+        self.loop.call_soon_threadsafe(self.write_finished.set)
+
+    async def measure(self, *_args: object, ratchet_output: Path) -> None:
+        assert self.observer is not None
+        self.observer.target = asyncio.current_task()
+        await web_performance._retained_io(
+            self.held_write, ratchet_output / "held-write-complete.txt"
+        )
+
+    async def cancel_run(
+        self,
+        arguments: tuple[Path, Path, Path],
+        options: dict[str, Any],
+        observer: ShieldCancellationObserver,
+    ) -> None:
+        self.loop = asyncio.get_running_loop()
+        self.observer = observer
+        owner = asyncio.create_task(web_performance.run(*arguments, **options))
+        observer.target = None
+        try:
+            await wait_event_or_task(self.write_started, owner)
+            await wait_event_or_task(observer.shield_entries[0], owner)
+            observer.additional_targets.add(owner)
+            owner.cancel()
+            await wait_event_or_task(observer.acknowledged[0], owner)
+            owner.cancel()
+            await wait_event_or_task(observer.acknowledged[1], owner)
+            assert not self.lock.exited
+            self.write_release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await owner
+            assert self.write_finished.is_set()
+        finally:
+            self.write_release.set()
+            await asyncio.gather(owner, return_exceptions=True)
 
 
 def write_baselines(directory):
@@ -346,79 +414,37 @@ def test_cancelled_measurement_io_finishes_before_lock_release(tmp_path, monkeyp
         True,
         "2099-01-01T00:00:00+00:00",
     )
-    write_started = threading.Event()
-    write_release = threading.Event()
-    write_finished = threading.Event()
-
-    class ReservationPort:
-        def read(self):
-            return reservation
-
-    class BindingObserver:
-        def observe(self):
-            return binding
-
-    class ActivityObserver:
-        def observe(self, phase):
-            return ActivityObservation(
-                "fabricated-observer", phase, "quiet", "2026-11-02T00:00:00+00:00", "counts only"
-            )
-
-    class Lock:
-        def __init__(self):
-            self.exited = False
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            self.exited = True
-
-    lock = Lock()
+    reservation_port = SimpleNamespace(read=lambda: reservation)
+    binding_observer = SimpleNamespace(observe=lambda: binding)
+    activity_observer = SimpleNamespace(
+        observe=lambda phase: ActivityObservation(
+            "fabricated-observer", phase, "quiet", "2026-11-02T00:00:00+00:00", "counts only"
+        )
+    )
     output = tmp_path / "cancelled-io"
     budgets = tmp_path / "baselines"
     budgets.mkdir()
     write_baselines(budgets)
-
-    def held_write(path: Path) -> None:
-        write_started.set()
-        write_release.wait()
-        path.write_text("completed after cancellation")
-        write_finished.set()
-
-    async def fake_measure(root, out, apps_measurement, values, *, ratchet_output):
-        del root, out, apps_measurement, values
-        ratchet_output.mkdir(parents=True)
-        await web_performance._retained_io(held_write, ratchet_output / "held-write-complete.txt")
-
-    monkeypatch.setattr(web_performance, "_run_measurements", fake_measure)
-
-    async def exercise_cancellation() -> None:
-        owner = asyncio.create_task(
-            web_performance.run(
-                tmp_path,
-                budgets,
-                output,
-                reservation_port=ReservationPort(),
-                binding_observer=BindingObserver(),
-                activity_observer=ActivityObserver(),
-                lock=lock,
-                expected_binding=binding,
-            )
+    control = _HeldMeasurementIO()
+    monkeypatch.setattr(web_performance, "_run_measurements", control.measure)
+    observer = ShieldCancellationObserver(2)
+    observer.install(selected_profiles_process, monkeypatch)
+    asyncio.run(
+        control.cancel_run(
+            (tmp_path, budgets, output),
+            {
+                "reservation_port": reservation_port,
+                "binding_observer": binding_observer,
+                "activity_observer": activity_observer,
+                "lock": control.lock,
+                "expected_binding": binding,
+            },
+            observer,
         )
-        await asyncio.to_thread(write_started.wait)
-        owner.cancel()
-        await asyncio.sleep(0)
-        owner.cancel()
-        assert not lock.exited
-        write_release.set()
-        with pytest.raises(asyncio.CancelledError):
-            await owner
+    )
 
-    asyncio.run(exercise_cancellation())
-
-    assert write_finished.is_set()
-    assert lock.exited
+    assert control.write_finished.is_set()
+    assert control.lock.exited
     assert (
         output / ".admission-pending" / "held-write-complete.txt"
     ).read_text() == "completed after cancellation"

@@ -11,6 +11,12 @@ import httpx
 import pytest
 from fastapi import Request
 from pydantic import BaseModel
+from remote_lifetime_controls import (
+    SecondTurnHeldModel,
+    TargetCancelThenHoldSuccessorModel,
+    run_lost_target_cancel_response_retry,
+    run_stale_remote_cancellation,
+)
 from tether_web_api import ApiFailure, ApiSettings, create_api
 
 from tether.client import (
@@ -40,48 +46,6 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-class SecondTurnHeldModel(ScriptedModel):
-    def __init__(self) -> None:
-        super().__init__(
-            [
-                ModelResponse(content="first", finish_reason="stop"),
-                ModelResponse(content="second", finish_reason="stop"),
-            ]
-        )
-        self.second_started = asyncio.Event()
-        self.release_second = asyncio.Event()
-
-    async def stream(self, request):
-        if len(self.requests) == 1:
-            self.second_started.set()
-            await self.release_second.wait()
-        async for item in super().stream(request):
-            yield item
-
-
-class TargetCancelThenHoldSuccessorModel(ScriptedModel):
-    def __init__(self) -> None:
-        super().__init__(
-            [
-                ModelResponse(content="successor reply", finish_reason="stop"),
-            ]
-        )
-        self.target_started = asyncio.Event()
-        self.successor_started = asyncio.Event()
-        self.release_successor = asyncio.Event()
-        self.calls = 0
-
-    async def stream(self, request):
-        self.calls += 1
-        if self.calls == 1:
-            self.target_started.set()
-            await asyncio.Event().wait()
-        self.successor_started.set()
-        await self.release_successor.wait()
-        async for item in super().stream(request):
-            yield item
-
-
 class LeakyProtocolFailure(httpx.AsyncBaseTransport):
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         authorization = request.headers.get("authorization", "")
@@ -102,23 +66,6 @@ class LoseFirstAcceptedResponse(httpx.AsyncBaseTransport):
             self._lost = True
             await response.aread()
             raise httpx.ReadError("fabricated_response_lost", request=request)
-        return response
-
-    async def aclose(self) -> None:
-        await self._inner.aclose()
-
-
-class LoseFirstTargetCancelResponse(httpx.AsyncBaseTransport):
-    def __init__(self, app) -> None:
-        self._inner = httpx.ASGITransport(app=app, raise_app_exceptions=False)
-        self._lost = False
-
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        response = await self._inner.handle_async_request(request)
-        if not self._lost and request.method == "DELETE" and "/turns/" in request.url.path:
-            self._lost = True
-            await response.aread()
-            raise httpx.ReadError("fabricated_cancel_response_lost", request=request)
         return response
 
     async def aclose(self) -> None:
@@ -494,32 +441,12 @@ async def test_stale_remote_cancellation_leaves_the_new_active_turn_running(
 ) -> None:
     """@covers US-066-AC7"""
     model = SecondTurnHeldModel()
-    host = await ClientHost.open(
-        make_settings(tmp_path / "journal", model=model, client_limits=client_limits, limits=limits)
+    settings = make_settings(
+        tmp_path / "journal", model=model, client_limits=client_limits, limits=limits
     )
-    api = create_api(
-        clients=host.client, authenticator=RequestAuthenticator(), settings=ApiSettings()
+    await run_stale_remote_cancellation(
+        settings, model, RequestAuthenticator(), TokenProvider("alice")
     )
-    transport = httpx.ASGITransport(app=api, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://tether.test") as http:
-        remote = await RemoteClient.open(
-            RemoteClientSettings("http://tether.test", TokenProvider("alice")), http_client=http
-        )
-        try:
-            session = await remote.create(ref="stale-cancel")
-            first = await remote.send(session.id, "first", request_id="turn-one")
-            assert (await first.result()).stop_reason == "final"
-            second = await remote.send(session.id, "second", request_id="turn-two")
-            await asyncio.wait_for(model.second_started.wait(), timeout=5)
-            assert await remote.cancel_turn(session.id, first.turn_id) is False
-            assert (await remote.snapshot(session.id)).view.summary.active_turn_id == second.turn_id
-            model.release_second.set()
-            assert (await second.result()).messages[-1].content == "second"
-            assert len(model.requests) == 2
-        finally:
-            model.release_second.set()
-            await remote.aclose()
-    assert await host.aclose()
 
 
 @pytest.mark.anyio
@@ -528,44 +455,12 @@ async def test_lost_target_cancel_response_retry_cannot_cancel_successor(
 ) -> None:
     """@covers US-066-AC7"""
     model = TargetCancelThenHoldSuccessorModel()
-    host = await ClientHost.open(
-        make_settings(tmp_path / "journal", model=model, client_limits=client_limits, limits=limits)
+    settings = make_settings(
+        tmp_path / "journal", model=model, client_limits=client_limits, limits=limits
     )
-    api = create_api(
-        clients=host.client, authenticator=RequestAuthenticator(), settings=ApiSettings()
+    await run_lost_target_cancel_response_retry(
+        settings, model, RequestAuthenticator(), TokenProvider("alice")
     )
-    transport = LoseFirstTargetCancelResponse(api)
-    async with httpx.AsyncClient(transport=transport, base_url="http://tether.test") as http:
-        remote = await RemoteClient.open(
-            RemoteClientSettings("http://tether.test", TokenProvider("alice")), http_client=http
-        )
-        try:
-            session = await remote.create(ref="lost-cancel-ack")
-            target = await remote.send(session.id, "target", request_id="target-turn")
-            await asyncio.wait_for(model.target_started.wait(), timeout=5)
-            with pytest.raises(RemoteTransportError, match="remote_transport_unavailable"):
-                await remote.cancel_turn(session.id, target.turn_id)
-
-            target_result = await target.result()
-            assert target_result.stop_reason == "cancelled"
-
-            successor = await remote.send(session.id, "successor", request_id="next-turn")
-            await asyncio.wait_for(model.successor_started.wait(), timeout=5)
-            assert await remote.cancel_turn(session.id, target.turn_id) is False
-            assert await remote.turn_result(session.id, target.turn_id) == target_result
-            active = (await remote.snapshot(session.id)).view.summary.active_turn_id
-            assert active == successor.turn_id
-            assert model.calls == 2
-
-            model.release_successor.set()
-            successor_result = await successor.result()
-            assert successor_result.stop_reason == "final"
-            assert successor_result.messages[-1].content == "successor reply"
-            assert model.calls == 2
-        finally:
-            model.release_successor.set()
-            await remote.aclose()
-    assert await host.aclose()
 
 
 @pytest.mark.anyio

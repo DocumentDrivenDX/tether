@@ -1,15 +1,15 @@
 """Independent-process death tests the shared transaction's actual visibility frontiers."""
 
 import asyncio
-import json
 import sys
 from pathlib import Path
 
 import pytest
 from postgres_support import database as database
 from postgres_support import postgres_server as postgres_server
+from process_lifetime_controls import OwnedProcess, RetainedCleanup
 from psycopg import sql
-from test_postgres_processes import receive, stop
+from test_postgres_processes import receive
 
 from tether.stores.postgres.store import PostgresSessionStore
 from tether.types.execution import HistoryRef
@@ -50,37 +50,33 @@ async def test_killed_peer_never_publishes_partial_history_application_journal_o
     store = PostgresSessionStore(h.root).for_actor(h.actor)
     session = await store.create(h.actor.id, SessionInit())
     before = await store.watermark(h.actor.id)
-    process = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-u",
-        str(Path(__file__).with_name("consumer_transaction_process.py")),
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    assert process.stdin is not None
-    process.stdin.write(
-        (
-            json.dumps(
-                {
-                    "connection": postgres_server.get_uri(),
-                    "schema": h.schema,
-                    "owner": h.actor.id,
-                    "session": session.id,
-                    "mode": mode,
-                    "decision": decision,
-                }
-            )
-            + "\n"
-        ).encode()
-    )
-    await process.stdin.drain()
-    try:
+    process: OwnedProcess | None = None
+    ref: HistoryRef | None = None
+    committed = mode == "after_commit"
+    async with RetainedCleanup() as child_cleanup:
+        process = await OwnedProcess.spawn(
+            sys.executable,
+            "-u",
+            str(Path(__file__).with_name("consumer_transaction_process.py")),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        child_cleanup.add(process.close)
+        await process.send_json(
+            {
+                "connection": postgres_server.get_uri(),
+                "schema": h.schema,
+                "owner": h.actor.id,
+                "session": session.id,
+                "mode": mode,
+                "decision": decision,
+            }
+        )
         staged = await receive(process)
         assert staged["event"] == "staged"
         ref = HistoryRef.model_validate(staged["ref"])
         assert (await receive(process))["event"] == "frontier"
-        committed = mode == "after_commit"
         assert (await h.history.read([ref], actor=h.actor))[0].status == (
             "ready" if committed else "missing"
         )
@@ -92,8 +88,8 @@ async def test_killed_peer_never_publishes_partial_history_application_journal_o
             )
             expected_rows = int(committed) if decision == "commit" else int(not committed)
             assert await cursor.fetchone() == (expected_rows,)
-    finally:
-        await stop(process)
+    assert process is not None
+    assert ref is not None
     assert process.returncode is not None
     assert process.returncode < 0
     view = await store.get(session.id, h.actor.id)

@@ -8,8 +8,11 @@ from itertools import count
 from threading import Event
 
 import pytest
+from functional_watchdog import MAX_FUNCTIONAL_WATCHDOG_MS
 from pydantic import ValidationError
+from selected_profiles_process import await_retained
 
+from tether.engine.observers.delivery import AuditDelivery
 from tether.ports.telemetry import NoopAuditSink, NullTracer
 from tether.testing.conformance import (
     AuditSinkFixture,
@@ -20,7 +23,233 @@ from tether.testing.conformance import (
 )
 from tether.testing.telemetry import ListAuditSink, RecordingTracer
 from tether.types import JsonValue
-from tether.types.telemetry import AuditContext, TraceIds
+from tether.types.telemetry import AuditContext, AuditRecord, TelemetryLimits, TraceIds
+
+
+async def _wait_for_sink_entry(entered: asyncio.Event, delivery) -> None:
+    while not entered.is_set():
+        active = delivery._active
+        if active is not None:
+            waiter = asyncio.create_task(entered.wait())
+            try:
+                done, _ = await asyncio.wait((waiter, active), return_when=asyncio.FIRST_COMPLETED)
+                if active in done and waiter not in done:
+                    await active
+                    raise AssertionError("audit_delivery_ended_before_sink_entry")
+                await waiter
+                return
+            finally:
+                await await_retained(asyncio.create_task(_cancel_and_join(waiter)))
+
+        changed = delivery._changed
+        changed.clear()
+        if entered.is_set() or delivery._active is not None:
+            continue
+        if delivery._drained():
+            raise AssertionError("audit_delivery_drained_before_sink_entry")
+        runner = delivery._runner
+        if runner is not None:
+            entry_waiter = asyncio.create_task(entered.wait())
+            change_waiter = asyncio.create_task(changed.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    (entry_waiter, change_waiter, runner),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if entry_waiter in done:
+                    return
+                if runner in done:
+                    await runner
+                    if change_waiter not in done:
+                        await change_waiter
+            finally:
+                await await_retained(
+                    asyncio.create_task(_cancel_and_join(entry_waiter, change_waiter))
+                )
+            continue
+        await changed.wait()
+
+
+async def _cancel_and_join(*tasks: asyncio.Task) -> None:
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _wait_for_signal_before_owner_exit(
+    signal: asyncio.Task, owners: tuple[asyncio.Task, ...], reason: str
+) -> None:
+    try:
+        done, _ = await asyncio.wait((signal, *owners), return_when=asyncio.FIRST_COMPLETED)
+        if signal not in done:
+            for owner in owners:
+                if owner in done:
+                    try:
+                        await owner
+                    except BaseException as error:
+                        raise AssertionError(reason) from error
+            raise AssertionError(reason)
+        await signal
+    finally:
+        await await_retained(asyncio.create_task(_cancel_and_join(signal)))
+
+
+async def _capture_cleanup_failure(failures, operation):
+    try:
+        return await operation
+    except BaseException as error:
+        failures.append(error)
+
+
+def _start_hung_sink_cleanup(release, app, engine, root) -> asyncio.Task:
+    async def cleanup() -> None:
+        failures = []
+        release.set()
+        if not app.closed:
+            await _capture_cleanup_failure(failures, app.aclose())
+        if app._cleanup is not None:
+            await _capture_cleanup_failure(failures, app._cleanup)
+        await _capture_cleanup_failure(failures, engine.wait_observers_closed())
+        if not app.drained:
+            failures.append(AssertionError("hung_sink_application_not_drained"))
+        root_closed = await _capture_cleanup_failure(failures, root.aclose())
+        if root_closed is not True:
+            failures.append(AssertionError("hung_sink_root_not_closed"))
+        if failures:
+            raise BaseExceptionGroup("hung_sink_cleanup_failed", failures)
+
+    return asyncio.create_task(cleanup())
+
+
+def _start_worker_cleanup(
+    release: Event, waiter: asyncio.Task, worker: asyncio.Task
+) -> asyncio.Task:
+    async def cleanup() -> None:
+        release.set()
+        await _cancel_and_join(waiter)
+        await await_retained(worker)
+
+    return asyncio.create_task(cleanup())
+
+
+async def _finish_worker_cleanup(
+    cleanup: asyncio.Task, caller: asyncio.Task | None, worker: asyncio.Task
+) -> None:
+    await await_retained(cleanup)
+    if caller is not None:
+        with suppress(asyncio.CancelledError):
+            await caller
+    await await_retained(worker)
+
+
+def _start_worker_cleanup_finish(
+    finish: Event, cleanup: asyncio.Task, caller: asyncio.Task | None, worker: asyncio.Task
+) -> asyncio.Task:
+    async def finalize() -> None:
+        finish.set()
+        await _finish_worker_cleanup(cleanup, caller, worker)
+
+    return asyncio.create_task(finalize())
+
+
+def _start_held_worker():
+    loop = asyncio.get_running_loop()
+    started, released = asyncio.Event(), asyncio.Event()
+    release, finish = Event(), Event()
+
+    def worker():
+        loop.call_soon_threadsafe(started.set)
+        release.wait()
+        loop.call_soon_threadsafe(released.set)
+        finish.wait()
+
+    return started, released, release, finish, asyncio.create_task(asyncio.to_thread(worker))
+
+
+def _acknowledged_shield(original_shield, acknowledgements):
+    async def wrap(task):
+        try:
+            return await original_shield(task)
+        except asyncio.CancelledError:
+            acknowledgements.put_nowait(True)
+            raise
+
+    return wrap
+
+
+def _start_cleanup_caller(cleanup):
+    ready = asyncio.Event()
+
+    async def wait_for_cleanup():
+        ready.set()
+        await await_retained(cleanup)
+
+    return asyncio.create_task(wait_for_cleanup()), ready
+
+
+async def _run_worker_cancellation_control(monkeypatch):
+    started, released, release, finish, worker = _start_held_worker()
+    start_waiter = asyncio.create_task(started.wait())
+    cleanup = None
+    caller = None
+    try:
+        await _wait_for_signal_before_owner_exit(
+            start_waiter, (worker,), "trace_factory_worker_ended_before_entry"
+        )
+        cleanup = _start_worker_cleanup(release, start_waiter, worker)
+        await _wait_for_signal_before_owner_exit(
+            asyncio.create_task(released.wait()),
+            (worker, cleanup),
+            "trace_factory_worker_ended_before_cleanup_hold",
+        )
+        acknowledgements = asyncio.Queue()
+        monkeypatch.setattr(
+            asyncio, "shield", _acknowledged_shield(asyncio.shield, acknowledgements)
+        )
+        caller, caller_ready = _start_cleanup_caller(cleanup)
+        await caller_ready.wait()
+        for _ in range(2):
+            caller.cancel()
+            await _wait_for_signal_before_owner_exit(
+                asyncio.create_task(acknowledgements.get()),
+                (caller,),
+                "retained_caller_ended_before_cancel_ack",
+            )
+            assert not caller.done()
+            assert not worker.done()
+    finally:
+        if cleanup is None:
+            cleanup = _start_worker_cleanup(release, start_waiter, worker)
+        finalizer = _start_worker_cleanup_finish(finish, cleanup, caller, worker)
+        await await_retained(finalizer)
+    assert worker.done()
+    assert cleanup.done()
+
+
+def test_sink_entry_wait_reports_delivery_terminal_before_entry():
+    async def scenario():
+        class EmptySink:
+            async def emit(self, **kwargs):
+                return None
+
+        delivery = AuditDelivery(EmptySink(), TelemetryLimits())
+        delivery.bind()
+        assert delivery.submit(
+            AuditRecord(
+                context=AuditContext(actor="owner", event_id="event"),
+                kind="authorization",
+                detail={},
+            )
+        )
+        with pytest.raises(
+            AssertionError, match=r"audit_delivery_(ended|drained)_before_sink_entry"
+        ):
+            await _wait_for_sink_entry(asyncio.Event(), delivery)
+        assert await delivery.aclose()
+        await delivery.wait_closed()
+
+    asyncio.run(scenario())
 
 
 def id_factory():
@@ -48,7 +277,9 @@ def test_public_audit_sink_suite(captures):
 
         yield AuditSinkFixture(sink, read, captures)
 
-    report = asyncio.run(audit_sink_suite(factory))
+    report = asyncio.run(
+        audit_sink_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
+    )
     assert report.capabilities == {"captures": captures}
     assert ("audit_snapshot" in report.checks) == captures
     assert ("audit_noop_capture" in report.checks) != captures
@@ -66,7 +297,7 @@ def test_public_tracer_suite(captures):
 
         yield TracerFixture(tracer, read, captures)
 
-    report = asyncio.run(tracer_suite(factory))
+    report = asyncio.run(tracer_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0))
     assert report.capabilities == {"captures": captures}
     assert ("trace_attributes" in report.checks) == captures
     assert ("trace_noop_capture" in report.checks) != captures
@@ -183,11 +414,12 @@ def test_failed_span_creation_releases_admission_and_preserves_context():
 
 def test_worker_admission_counts_unpublished_span():
     async def scenario():
-        started, release = Event(), Event()
+        loop = asyncio.get_running_loop()
+        started, release = asyncio.Event(), Event()
 
         def factory(parent):
-            started.set()
-            assert release.wait(2)
+            loop.call_soon_threadsafe(started.set)
+            release.wait()
             return TraceIds(trace_id="1" * 32, span_id="1" * 16)
 
         tracer = RecordingTracer(factory, capacity=1)
@@ -197,17 +429,26 @@ def test_worker_admission_counts_unpublished_span():
                 pass
 
         task = asyncio.create_task(asyncio.to_thread(worker))
+        waiter = asyncio.create_task(started.wait())
         try:
-            assert await asyncio.to_thread(started.wait, 2)
+            done, _ = await asyncio.wait((waiter, task), return_when=asyncio.FIRST_COMPLETED)
+            if task in done and waiter not in done:
+                await task
+                pytest.fail("trace_factory_worker_ended_before_entry")
+            await waiter
             with tracer.start_as_current_span("overflow") as span:
                 assert span.ids is None
         finally:
-            release.set()
-            await task
+            cleanup_task = _start_worker_cleanup(release, waiter, task)
+            await await_retained(cleanup_task)
         assert tracer.overflow == 1
         assert len(tracer.records) == 1
 
     asyncio.run(scenario())
+
+
+def test_worker_cleanup_survives_repeated_caller_cancellation(monkeypatch):
+    asyncio.run(_run_worker_cancellation_control(monkeypatch))
 
 
 def test_copied_parent_context_remains_valid_after_parent_span_ends():
@@ -259,7 +500,7 @@ def test_sink_suite_catches_reference_retention():
         yield AuditSinkFixture(sink, read, True)
 
     with pytest.raises(ConformanceFailure, match="audit_snapshot"):
-        asyncio.run(audit_sink_suite(factory))
+        asyncio.run(audit_sink_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0))
 
 
 def test_tracer_suite_catches_missing_context():
@@ -277,7 +518,7 @@ def test_tracer_suite_catches_missing_context():
         yield TracerFixture(tracer, read, True)
 
     with pytest.raises(ConformanceFailure, match="trace_root_current"):
-        asyncio.run(tracer_suite(factory))
+        asyncio.run(tracer_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0))
 
 
 @pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan")])
@@ -310,16 +551,17 @@ def test_trace_attributes_reject_unsupported_values_with_static_reason():
 
 
 def test_audit_capacity_holds_across_simultaneous_event_loops(monkeypatch):
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, wait
     from threading import Barrier
 
     from tether.types.canonical import canonical
 
-    boundary = Barrier(2)
+    both_arrived = Event()
+    boundary = Barrier(2, action=both_arrived.set)
 
     def encode(value):
         result = canonical(value)
-        boundary.wait(2)
+        boundary.wait()
         return result
 
     monkeypatch.setattr("tether.testing.telemetry.canonical", encode)
@@ -327,12 +569,23 @@ def test_audit_capacity_holds_across_simultaneous_event_loops(monkeypatch):
     context = AuditContext(actor="owner", event_id="event")
 
     def emit():
-        asyncio.run(sink.emit(context=context, kind="authorization", detail={}))
+        try:
+            asyncio.run(sink.emit(context=context, kind="authorization", detail={}))
+        finally:
+            if not both_arrived.is_set():
+                boundary.abort()
 
     with ThreadPoolExecutor(max_workers=2) as workers:
-        futures = [workers.submit(emit) for _ in range(2)]
-        for future in futures:
-            future.result(timeout=3)
+        futures = []
+        try:
+            for _ in range(2):
+                futures.append(workers.submit(emit))
+            for future in futures:
+                future.result()
+        finally:
+            boundary.abort()
+            wait(futures)
+    assert both_arrived.is_set()
     assert len(sink.records) == 1
     assert sink.overflow == 1
 
@@ -375,7 +628,7 @@ def test_tracer_suite_rejects_exception_suppression():
         yield TracerFixture(tracer, read, True)
 
     with pytest.raises(ConformanceFailure, match="trace_primary_exception"):
-        asyncio.run(tracer_suite(factory))
+        asyncio.run(tracer_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0))
 
 
 def test_invalid_span_names_and_reason_types_use_static_errors():

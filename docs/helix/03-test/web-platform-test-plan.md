@@ -155,6 +155,14 @@ unbounded wait on an impossible event.
 
 ## NFR-7 reference measurement contract
 
+Owner decision on 2026-11-09 makes actual performance qualification optional
+and nonblocking for implementation, interface acceptance and release. WP-36
+requires an available isolated workflow plus deterministic admission, rejection,
+separation, privacy and cleanup controls. It does not require measured metrics
+to pass. All 41 functional ACs and all 45 task IDs remain required. Required
+functional/profile receipts remain strict; optional measurement status cannot
+replace functional, security, lifecycle, caller-deadline or genuine-expiry proof.
+
 The owner's 2026-11-02 isolation constraint governs future performance
 qualification. Actual benchmark workloads run only through the explicit
 performance path with known reference hardware, exclusive admission and recorded
@@ -221,10 +229,15 @@ and co-tenancy remain unknown. No new remote infrastructure or controlled
 backend qualification follows from this decision.
 
 The historical seven-profile/56-metric files and source28 failures remain
-unchanged. Current closure requires exactly the 54 controlled metric nodes;
+unchanged. Any referenced qualified performance set requires exactly the 54 controlled metric nodes;
 Apps observations cannot fill missing controlled nodes or count as passed
 performance criteria. All 41 functional ACs and all 45 IP-002 tasks remain
 required, including the separate live Apps behavior/compatibility proofs.
+Acceptance closure may instead prove WP-36 with the isolated workflow's
+deterministic controls and no qualified metric nodes. An absent, deferred,
+incomplete or failed optional measurement is disclosed separately and does not
+block release. Referenced qualified claims still require strict complete
+metric, baseline, source, hash and admission validation.
 The [current controlled-node policy](../04-build/evidence/web-platform/reference-performance/controlled-policy-20261102.json)
 lists the exact 54 expected nodes. It is a planning contract, not executed proof.
 Each current qualified ratchet must join the final admission record by exact

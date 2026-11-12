@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
+from selected_profiles_process import await_retained
 from test_gated_execution import DemoTool, final, proposal
-from test_telemetry_ports import id_factory
+from test_telemetry_ports import _start_hung_sink_cleanup, _wait_for_sink_entry, id_factory
 
 from tether import Tether
 from tether.context.testing import fabricated_context
@@ -233,31 +235,34 @@ async def test_hung_sink_does_not_delay_acceptance_or_retain_store_root(
         ),
     )
     app = Tether(engine=engine, store=store, history=history, limits=client_limits, resume="off")
-    await app.__aenter__()
-    actor = Actor(id="owner")
-    session = await store.create(actor.id, SessionInit())
-    accepted = asyncio.Event()
     try:
+        await app.__aenter__()
+        actor = Actor(id="owner")
+        session = await store.create(actor.id, SessionInit())
+        accepted = asyncio.Event()
         async with store.turn(session.id, actor.id, turn_id="phase") as log:
             result = await engine.run_turn(
                 actor, log, "Fabricated", spec=spec(), accepted=accepted.set
             )
         assert result.stop_reason == "final"
         assert accepted.is_set()
-        await entered.wait()
+        await _wait_for_sink_entry(entered, engine.observers.delivery)
         assert not await app.aclose()
         assert engine.audit_stats.active
         reopened = await JsonlRoot.open(tmp_path)
         assert await reopened.aclose()
     finally:
-        release.set()
-        if not app.closed:
-            await app.aclose()
-        await asyncio.wait_for(engine.wait_observers_closed(), 1)
-        if app._cleanup is not None:
-            await asyncio.wait_for(app._cleanup, 1)
-        assert app.drained
-        assert await root.aclose()
+        primary_failure = sys.exception()
+        cleanup_task = _start_hung_sink_cleanup(release, app, engine, root)
+        try:
+            await await_retained(cleanup_task)
+        except BaseException as cleanup_failure:
+            if primary_failure is not None:
+                raise BaseExceptionGroup(
+                    "engine_telemetry_test_and_cleanup_failed",
+                    [primary_failure, cleanup_failure],
+                ) from cleanup_failure
+            raise
 
 
 def accepted(index, kind, **facts):

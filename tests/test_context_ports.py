@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 
 import pytest
+from functional_watchdog import MAX_FUNCTIONAL_WATCHDOG_MS
 
 from tether.context import FullContext, TailContext
 from tether.context.materialization import merged_parts, validated_merged
@@ -36,7 +37,9 @@ async def test_context_port_suite_checks_both_independent_group_shapes(kind):
             plans = [await FullContext().plan(input_case(grouped)) for grouped in (False, True)]
             yield ScriptedContext(plans, strategy_id="full")
 
-    report = await context_strategy_suite(factory)
+    report = await context_strategy_suite(
+        factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0
+    )
     assert "context_plan_valid" in report.checks
     assert "full_request_fit" in report.required_external
     assert report.capabilities == {"contract": 1}
@@ -47,7 +50,9 @@ async def test_estimator_fixture_reports_fabricated_evidence_and_external_obliga
     async def factory():
         yield TokenEstimatorFixture(FixedEstimator(17), lambda request: (17, 17))
 
-    report = await token_estimator_suite(factory)
+    report = await token_estimator_suite(
+        factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0
+    )
     assert report.capabilities["evidence"] == "fabricated"
     assert "estimate_tools_bounds" in report.checks
     assert "real_serialized_payload_framing" in report.required_external
@@ -59,7 +64,7 @@ async def test_estimator_suite_catches_underestimate_against_separate_oracle():
         yield TokenEstimatorFixture(FixedEstimator(1), lambda request: (2, 3))
 
     with pytest.raises(ConformanceFailure, match="estimate_framing_bounds"):
-        await token_estimator_suite(factory)
+        await token_estimator_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
 
 
 async def test_estimator_suite_accepts_explicit_attachment_refusal():
@@ -73,7 +78,9 @@ async def test_estimator_suite_accepts_explicit_attachment_refusal():
     async def factory():
         yield TokenEstimatorFixture(Refusing(3), lambda request: (3, 3), attachments="refuses")
 
-    report = await token_estimator_suite(factory)
+    report = await token_estimator_suite(
+        factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0
+    )
     assert "estimate_attachment_refusal" in report.checks
 
 
@@ -108,9 +115,13 @@ async def test_port_suites_reject_input_mutation(kind):
         )
 
     operation = (
-        context_strategy_suite(strategy_factory)
+        context_strategy_suite(
+            strategy_factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0
+        )
         if kind == "plan"
-        else token_estimator_suite(estimator_factory)
+        else token_estimator_suite(
+            estimator_factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0
+        )
     )
     with pytest.raises(ConformanceFailure, match="input_immutable"):
         await operation

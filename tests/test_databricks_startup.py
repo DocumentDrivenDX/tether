@@ -1,6 +1,9 @@
 """Profile-only startup derives its connection and selects a discovered chat model."""
 
+import asyncio
 import json
+import os
+import sys
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -40,6 +43,105 @@ class FakeCli(CliProfile):
 
 def service(name, api="mlflow/v1/chat/completions"):
     return {"name": "model-services/" + name, "supported_api_types": [api]}
+
+
+class _CliReadyFifo:
+    def __init__(self, path):
+        os.mkfifo(path)
+        self.path = path
+        try:
+            self.fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+        except BaseException:
+            path.unlink()
+            raise
+        self.bytes = bytearray()
+        self.ready = asyncio.Event()
+        self.loop = asyncio.get_running_loop()
+        try:
+            self.loop.add_reader(self.fd, self._read)
+        except BaseException:
+            os.close(self.fd)
+            path.unlink()
+            raise
+
+    def _read(self) -> None:
+        try:
+            self.bytes.extend(os.read(self.fd, 256))
+        except BlockingIOError:
+            return
+        if b"\n" in self.bytes:
+            self.ready.set()
+
+    async def wait_for_ready(self, task: asyncio.Task[object]) -> int:
+        waiter = asyncio.create_task(self.ready.wait())
+        try:
+            done, _ = await asyncio.wait({waiter, task}, return_when=asyncio.FIRST_COMPLETED)
+            if task in done and waiter not in done:
+                task.result()
+                raise AssertionError("CLI ended before readiness publication")
+            await waiter
+            fields = self.bytes.splitlines()[0].split()
+            assert len(fields) == 2
+            assert fields[0] == b"READY"
+            return int(fields[1])
+        finally:
+            if not waiter.done():
+                waiter.cancel()
+                await asyncio.gather(waiter, return_exceptions=True)
+
+    def close(self) -> None:
+        self.loop.remove_reader(self.fd)
+        os.close(self.fd)
+        self.path.unlink()
+
+
+class _CapturedDatabricksProcesses:
+    def __init__(self) -> None:
+        self.processes: list[asyncio.subprocess.Process] = []
+
+    def install(self, monkeypatch) -> None:
+        from tether.adapters import databricks
+
+        real_spawn = asyncio.create_subprocess_exec
+
+        async def capture(*args, **kwargs):
+            process = await real_spawn(*args, **kwargs)
+            self.processes.append(process)
+            return process
+
+        monkeypatch.setattr(databricks.asyncio, "create_subprocess_exec", capture)
+
+
+async def _finish_cli_request(
+    task: asyncio.Task[object] | None,
+    ready: _CliReadyFifo,
+    processes: list[asyncio.subprocess.Process],
+) -> None:
+    from tether.adapters import databricks
+
+    errors: list[BaseException] = []
+    try:
+        ready.close()
+    except BaseException as error:
+        errors.append(error)
+    if task is not None:
+        if not task.done():
+            task.cancel()
+        outcomes = await asyncio.gather(task, return_exceptions=True)
+        errors.extend(
+            outcome
+            for outcome in outcomes
+            if isinstance(outcome, BaseException)
+            and not isinstance(outcome, asyncio.CancelledError)
+        )
+    for process in processes:
+        if process.returncode is None:
+            try:
+                await databricks._stop(process)
+            except BaseException as error:
+                errors.append(error)
+    if errors:
+        raise BaseExceptionGroup("databricks_cli_fixture_cleanup_failed", errors)
 
 
 def test_profile_flag_needs_no_url_and_conflicts_are_clear(tmp_path, monkeypatch):
@@ -246,31 +348,45 @@ def test_partial_stream_usage_requires_valid_counts_and_complete_terminal(partia
 
 
 async def test_cli_cancellation_reaps_actual_process(tmp_path, monkeypatch):
-    import asyncio
-    import os
-
-    executable, marker = tmp_path / "databricks", tmp_path / "child.pid"
-    executable.write_text(
-        '#!/bin/sh\nprintf "%s" "$$" > "' + str(marker) + '"\nexec /bin/sleep 20\n'
-    )
-    executable.chmod(0o700)
-    monkeypatch.setenv("PATH", str(tmp_path))
-    task = asyncio.create_task(CliProfile("work").host())
+    executable, ready_fifo = tmp_path / "databricks", tmp_path / "ready.fifo"
+    ready_control = _CliReadyFifo(ready_fifo)
+    captured = _CapturedDatabricksProcesses()
+    task: asyncio.Task[object] | None = None
+    primary: BaseException | None = None
     try:
-        for _ in range(300):
-            if marker.exists():
-                break
-            await asyncio.sleep(0.01)
-        assert marker.exists()
-        pid = int(marker.read_text())
+        executable.write_text(
+            f"#!{sys.executable}\n"
+            "import os, signal\n"
+            f"fd = os.open({str(ready_fifo)!r}, os.O_WRONLY)\n"
+            "os.write(fd, f'READY {os.getpid()}\\n'.encode())\n"
+            "os.close(fd)\n"
+            "signal.pause()\n"
+        )
+        executable.chmod(0o700)
+        monkeypatch.setenv("PATH", str(tmp_path))
+        captured.install(monkeypatch)
+        task = asyncio.create_task(CliProfile("work").host())
+        pid = await ready_control.wait_for_ready(task)
+        assert len(captured.processes) == 1
+        assert pid == captured.processes[0].pid
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
-        with pytest.raises(ProcessLookupError):
-            os.kill(pid, 0)
+        assert captured.processes[0].returncode is not None
+        assert await captured.processes[0].wait() == captured.processes[0].returncode
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        cleanup = asyncio.create_task(_finish_cli_request(task, ready_control, captured.processes))
+        from selected_profiles_process import await_retained
+
+        try:
+            await await_retained(cleanup)
+        except BaseException as cleanup_error:
+            if primary is None:
+                raise
+            primary.add_note(f"Databricks CLI fixture cleanup also failed: {cleanup_error!r}")
 
 
 async def test_gateway_estimate_matches_omitted_parameter_and_changes_revision(

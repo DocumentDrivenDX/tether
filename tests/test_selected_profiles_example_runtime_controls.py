@@ -12,7 +12,10 @@ from typing import cast
 
 import pytest
 import selected_profiles_example_runtime as example_runtime
+import selected_profiles_process
+from context_lifetime_controls import wait_event_or_task
 from databricks.sdk import WorkspaceClient
+from process_lifetime_controls import ShieldCancellationObserver
 from public_port_fixtures import RecordingModel, RecordingPolicy
 from qualify_live_apps_incomplete import LiveQualificationIncomplete
 from selected_profiles_example_lifespan import run_thread
@@ -46,8 +49,12 @@ from tether.client.postgres import ConnectionSource, PostgresResources
 from tether.client.testing import fabricated_model_context, scripted_model
 
 
-def test_example_runtime_thread_work_is_retained_through_cancellation() -> None:
+def test_example_runtime_thread_work_is_retained_through_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     release = threading.Event()
+    observer = ShieldCancellationObserver(2)
+    observer.install(selected_profiles_process, monkeypatch)
 
     async def run() -> None:
         entered = asyncio.Event()
@@ -61,16 +68,13 @@ def test_example_runtime_thread_work_is_retained_through_cancellation() -> None:
             return "settled"
 
         task = asyncio.create_task(run_thread(operation))
-        entered_task = asyncio.create_task(entered.wait())
+        observer.target = task
         try:
-            done, _ = await asyncio.wait({entered_task, task}, return_when=asyncio.FIRST_COMPLETED)
-            if task in done and entered_task not in done:
-                await task
-                raise AssertionError("worker terminated before entry witness")
-            await entered_task
+            await wait_event_or_task(entered, task)
             task.cancel()
-            await asyncio.sleep(0)
+            await wait_event_or_task(observer.acknowledged[0], task)
             task.cancel()
+            await wait_event_or_task(observer.acknowledged[1], task)
             assert not task.done()
             release.set()
             with pytest.raises(asyncio.CancelledError):
@@ -78,9 +82,7 @@ def test_example_runtime_thread_work_is_retained_through_cancellation() -> None:
             assert finished.is_set()
         finally:
             release.set()
-            if not entered_task.done():
-                entered_task.cancel()
-            await asyncio.gather(entered_task, task, return_exceptions=True)
+            await asyncio.gather(task, return_exceptions=True)
 
     asyncio.run(run())
 

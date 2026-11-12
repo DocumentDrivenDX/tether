@@ -4,6 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 import pytest
+from functional_watchdog import MAX_FUNCTIONAL_WATCHDOG_MS
 from postgres_support import database as database
 from postgres_support import postgres_server as postgres_server
 from test_client_resume import FreshCredential
@@ -31,7 +32,9 @@ async def test_public_sql_receipt_suite(database):
     async def factory():
         yield LiveStoreFixture(PostgresSessionStore(h.root), h.actor, Actor(id="foreign"))
 
-    report = await mutation_receipt_suite(factory)
+    report = await mutation_receipt_suite(
+        factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0
+    )
     assert report.capabilities["mutation_receipts"] == 1
     assert "exact_accepted_metadata" in report.checks
 

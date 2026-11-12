@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from typing import cast
 
 import pytest
+from functional_watchdog import MAX_FUNCTIONAL_WATCHDOG_MS
 from postgres_support import database as database
 from postgres_support import postgres_server as postgres_server
 
@@ -43,7 +44,7 @@ async def test_public_live_store_suite(backend, tmp_path):
         finally:
             assert await root.aclose()
 
-    report = await live_store_suite(factory)
+    report = await live_store_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
     assert "journal_atomicity" in report.checks
     assert ("durable_reopen" in report.checks) == (backend == "jsonl")
     assert "adapter_faults" in report.required_external
@@ -62,7 +63,7 @@ async def test_public_postgres_suite_uses_caller_acquisition_and_borrowed_root(d
         finally:
             assert await root.aclose()
 
-    report = await live_store_suite(factory)
+    report = await live_store_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
     assert "durable_reopen" in report.checks
     assert not h.pool.closed
     assert {actor.id for actor, _ in h.calls} >= {h.actor.id, "fabricated-other"}
@@ -78,7 +79,7 @@ async def test_public_archive_suite_preserves_original_content_and_owner_scope()
             archive, Actor(id=sample.view.summary.owner), Actor(id="foreign"), archive
         )
 
-    report = await archive_suite(factory)
+    report = await archive_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
     assert "archive_restore_capability" in report.checks
     assert "readiness_pending_denied_unavailable" in report.required_external
 
@@ -100,4 +101,4 @@ async def test_testkit_rejects_a_port_that_accepts_the_wrong_owner():
         )
 
     with pytest.raises(ConformanceFailure, match="caller_owner_mismatch"):
-        await live_store_suite(factory)
+        await live_store_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)

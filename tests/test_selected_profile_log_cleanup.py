@@ -4,12 +4,26 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from types import SimpleNamespace
 from typing import Any, Literal, cast
 
 import pytest
 import selected_profiles_logs as logs
-from selected_profiles_privacy_types import PrivacyRejection, PrivacyTurn
+import selected_profiles_process as process_helpers
+from selected_profile_log_controls import (
+    _await_cancel_ack,
+    _finish_real_follower,
+    _hold_reader,
+    _settle_tasks,
+    _ShieldControl,
+    _spawn_held_log_follower,
+)
+from selected_profiles_privacy_types import (
+    PrivacyObservationIncomplete,
+    PrivacyRejection,
+    PrivacyTurn,
+)
 
 
 class _ObservedEvent(asyncio.Event):
@@ -61,11 +75,6 @@ class _PartialStart:
 
     async def unused(self) -> Any:
         raise AssertionError("requests_dispatched_before_both_followers_started")
-
-
-async def _hold_reader() -> bytes:
-    await asyncio.Future()
-    return b""
 
 
 def test_fresh_request_window_retains_both_followers_through_both_requests(monkeypatch) -> None:
@@ -195,13 +204,69 @@ def test_missing_or_invalid_complete_anchor_record_is_incomplete(captured: bytes
             asyncio.Event(),
             asyncio.Event(),
         )
-        with pytest.raises(RuntimeError, match=r"platform_log_(record_invalid|capture_incomplete)"):
+        with pytest.raises(
+            PrivacyObservationIncomplete,
+            match=r"platform_log_(record_invalid|capture_incomplete)",
+        ):
             await logs._wait_for_privacy_witnesses(
                 [follower, follower],
                 PrivacyTurn("private-success", "invocation", "session"),
                 PrivacyRejection("private-rejection", "private-credential", "rejected"),
                 "/api",
             )
+
+    asyncio.run(run())
+
+
+def test_reader_terminal_wakes_anchor_observation_without_changed_event() -> None:
+    async def completed() -> bytes:
+        return b""
+
+    async def run() -> None:
+        reader = asyncio.create_task(completed())
+        follower = logs._Follower(
+            cast(Any, SimpleNamespace(returncode=None)),
+            reader,
+            asyncio.create_task(_hold_reader()),
+            asyncio.Event(),
+            bytearray(),
+            bytearray(),
+            asyncio.Event(),
+            asyncio.Event(),
+        )
+        await logs._wait_for_follower_change([follower])
+        assert reader.done()
+        assert not follower.stdout_changed.is_set()
+        cleanup = asyncio.create_task(_settle_tasks((follower.stderr,)))
+        await logs.await_retained(cleanup)
+
+    asyncio.run(run())
+
+
+def test_reader_producer_failure_is_typed_incomplete() -> None:
+    async def fail_reader() -> bytes:
+        raise OSError("fabricated_reader_failure")
+
+    async def run() -> None:
+        reader = asyncio.create_task(fail_reader())
+        held_reader = asyncio.create_task(_hold_reader())
+        follower = logs._Follower(
+            cast(Any, SimpleNamespace(returncode=None)),
+            reader,
+            held_reader,
+            asyncio.Event(),
+            bytearray(),
+            bytearray(),
+            asyncio.Event(),
+            asyncio.Event(),
+        )
+        with pytest.raises(
+            PrivacyObservationIncomplete, match="platform_log_capture_incomplete"
+        ) as caught:
+            await logs._wait_for_follower_change([follower])
+        assert isinstance(caught.value.__cause__, OSError)
+        cleanup = asyncio.create_task(_settle_tasks((held_reader,)))
+        await logs.await_retained(cleanup)
 
     asyncio.run(run())
 
@@ -362,11 +427,161 @@ def test_failed_follower_cleanup_joins_other_follower(monkeypatch) -> None:
             logs._stop_followers(cast(list[logs._Follower], ["first", "second"]))
         )
         await entered.wait()
-        await asyncio.sleep(0)
         assert not task.done()
         held.set()
         with pytest.raises(RuntimeError, match="platform_log_capture_incomplete"):
             await task
+
+    asyncio.run(run())
+
+
+def test_real_follower_process_and_both_bounded_readers_settle_past_old_stop_window() -> None:
+    async def run() -> None:
+        process, follower, stdout_gate, stderr_gate = await _spawn_held_log_follower("evidence")
+        stopping: asyncio.Task[Any] | None = None
+        try:
+            stopping = asyncio.create_task(logs._stop_followers([follower]))
+            await process.wait()
+            assert process.returncode is not None
+            assert not stopping.done()
+            assert not follower.stdout.done()
+            assert not follower.stderr.done()
+            stdout_gate.release.set()
+            stderr_gate.release.set()
+            captured = await stopping
+            assert captured == [(b"stdout evidence\n", b"stderr evidence\n")]
+            assert follower.stdout.done()
+            assert follower.stderr.done()
+        finally:
+            cleanup = asyncio.create_task(
+                _finish_real_follower(process, follower, (stdout_gate, stderr_gate), stopping)
+            )
+            await logs.await_retained(cleanup)
+
+    asyncio.run(run())
+
+
+def test_held_follower_factory_reaps_child_that_ends_before_reader_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        actual_spawn = asyncio.create_subprocess_exec
+        spawned: list[asyncio.subprocess.Process] = []
+
+        async def no_output_child(*_args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
+            process = await actual_spawn(
+                sys.executable,
+                "-c",
+                "pass",
+                **kwargs,
+            )
+            spawned.append(process)
+            return process
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", no_output_child)
+        with pytest.raises(AssertionError, match="fabricated_child_ended_before_reader_gate"):
+            await _spawn_held_log_follower("never-entered")
+        assert len(spawned) == 1
+        assert spawned[0].returncode == 0
+        assert await spawned[0].wait() == 0
+
+    asyncio.run(run())
+
+
+def test_held_follower_factory_retains_child_spawn_after_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        actual_spawn = asyncio.create_subprocess_exec
+        spawn_entered, release_spawn = asyncio.Event(), asyncio.Event()
+        spawned: list[asyncio.subprocess.Process] = []
+
+        async def held_spawn(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
+            spawn_entered.set()
+            await release_spawn.wait()
+            process = await actual_spawn(*args, **kwargs)
+            spawned.append(process)
+            return process
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", held_spawn)
+        factory = asyncio.create_task(_spawn_held_log_follower("cancelled-spawn"))
+        await spawn_entered.wait()
+        factory.cancel()
+        assert not factory.done()
+        release_spawn.set()
+        with pytest.raises(asyncio.CancelledError):
+            await factory
+        assert len(spawned) == 1
+        assert spawned[0].returncode is not None
+        await spawned[0].wait()
+
+    asyncio.run(run())
+
+
+def test_real_follower_cleanup_survives_repeated_caller_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        process, follower, stdout_gate, stderr_gate = await _spawn_held_log_follower("held")
+        control = _ShieldControl()
+        monkeypatch.setattr(process_helpers, "asyncio", control)
+        caller = asyncio.create_task(logs._stop_followers([follower]))
+        try:
+            await control.entered.wait()
+            await process.wait()
+            for _ in range(2):
+                caller.cancel()
+                await _await_cancel_ack(caller, control)
+                assert process.returncode is not None
+                assert not follower.stdout.done()
+                assert not follower.stderr.done()
+            stdout_gate.release.set()
+            stderr_gate.release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await caller
+            assert follower.stdout.done()
+            assert follower.stderr.done()
+        finally:
+            cleanup = asyncio.create_task(
+                _finish_real_follower(process, follower, (stdout_gate, stderr_gate), caller)
+            )
+            await logs.await_retained(cleanup)
+
+    asyncio.run(run())
+
+
+def test_privacy_violation_remains_primary_when_follower_cleanup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        followers = [SimpleNamespace(), SimpleNamespace()]
+        primary = RuntimeError("privacy_marker_found_in_platform_logs")
+        cleanup_error = PrivacyObservationIncomplete("platform_log_capture_incomplete")
+
+        async def start(_profile: str, _app: str, _source: str | None) -> Any:
+            return followers.pop(0)
+
+        async def wait_for_witnesses(*_args: Any) -> None:
+            raise primary
+
+        async def failed_cleanup(_followers: list[Any]) -> list[tuple[bytes, bytes]]:
+            raise cleanup_error
+
+        async def success() -> PrivacyTurn:
+            return PrivacyTurn("secret-content", "invocation", "session")
+
+        async def rejected() -> PrivacyRejection:
+            return PrivacyRejection("secret-rejection", "secret-credential", "rejected")
+
+        monkeypatch.setattr(logs, "_start_follower", start)
+        monkeypatch.setattr(logs, "_wait_for_privacy_witnesses", wait_for_witnesses)
+        monkeypatch.setattr(logs, "_stop_followers", failed_cleanup)
+        with pytest.raises(RuntimeError, match="privacy_marker_found_in_platform_logs") as caught:
+            await logs.capture_privacy_window(
+                "profile", "app", success, rejected, api_prefix="/api"
+            )
+        assert caught.value is primary
+        assert caught.value.__cause__ is cleanup_error
 
     asyncio.run(run())
 

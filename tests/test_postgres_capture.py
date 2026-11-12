@@ -1,13 +1,20 @@
 """Canonical capture is bounded; reconstruction owns actual work outside database locks."""
 
 import asyncio
+import sys
 from threading import Event
 from uuid import uuid4
 
 import pytest
+from postgres_pending_io_controls import (
+    close_root_settle_and_finalize,
+    retain_cleanup,
+    wait_event_or_task,
+)
 from postgres_support import database as database
 from postgres_support import postgres_server as postgres_server
 from psycopg import sql
+from resource_lifetime_controls import cancel_and_expect_cancellation
 from test_postgres_leases import expire
 from test_postgres_read_integrity import snapshot
 from test_postgres_restore_primitives import pending_values
@@ -162,30 +169,42 @@ async def test_reconstruction_releases_database_resources_and_cannot_revive_expi
 ):
     h = database
     token, _ = await seed(h)
-    started, release = Event(), Event()
-    original = capture_module.rebuild
-
-    def delayed(captured):
-        started.set()
-        if not release.wait(5):
-            raise RuntimeError("fabricated_preparation_deadline")
-        return original(captured)
-
-    monkeypatch.setattr(capture_module, "rebuild", delayed)
+    started, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
     capture = Capture(h.root, h.actor)
-    task = asyncio.create_task(capture.reconstruct(token))
+    task = None
+    actual = None
     try:
-        assert await asyncio.to_thread(started.wait, 3)
+        original = capture_module.rebuild
+
+        def delayed(captured):
+            loop.call_soon_threadsafe(started.set)
+            release.wait()
+            return original(captured)
+
+        monkeypatch.setattr(capture_module, "rebuild", delayed)
+        task = asyncio.create_task(capture.reconstruct(token))
+        await wait_event_or_task(started, task)
+        actual = next(iter(h.root.workers.active))
+        assert not actual.done()
         # A different connection can update the row while pure reconstruction is running.
-        await asyncio.wait_for(capture.heartbeat(token), 3)
+        await capture.heartbeat(token)
         await expire(h, token.session_id)
         release.set()
         with pytest.raises(LeaseLost):
             await task
     finally:
-        release.set()
-        await asyncio.gather(task, return_exceptions=True)
-        await capture.release(token)
+
+        async def teardown():
+            release.set()
+            await asyncio.gather(
+                *((task,) if task is not None else ()),
+                *((actual,) if actual is not None else ()),
+                return_exceptions=True,
+            )
+            await capture.release(token)
+
+        await retain_cleanup(teardown(), primary=sys.exception())
 
 
 async def test_canceled_preparation_retains_actual_future_and_namespace_until_exit(
@@ -193,38 +212,50 @@ async def test_canceled_preparation_retains_actual_future_and_namespace_until_ex
 ):
     h = database
     token, _ = await seed(h)
-    root = await DatabaseRoot.open(
-        h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(shutdown_seconds=0.01)
-    )
-    capture = Capture(root, h.actor)
-    started, release = Event(), Event()
-    original = capture_module.rebuild
-
-    def delayed(captured):
-        started.set()
-        if not release.wait(5):
-            raise RuntimeError("fabricated_preparation_deadline")
-        return original(captured)
-
-    monkeypatch.setattr(capture_module, "rebuild", delayed)
-    task = asyncio.create_task(capture.reconstruct(token))
+    root = None
+    capture = None
+    task = None
+    actual = None
+    started, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
     try:
-        assert await asyncio.to_thread(started.wait, 3)
+        root = await DatabaseRoot.open(
+            h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(shutdown_seconds=0.01)
+        )
+        capture = Capture(root, h.actor)
+        original = capture_module.rebuild
+
+        def delayed(captured):
+            loop.call_soon_threadsafe(started.set)
+            release.wait()
+            return original(captured)
+
+        monkeypatch.setattr(capture_module, "rebuild", delayed)
+        task = asyncio.create_task(capture.reconstruct(token))
+        await wait_event_or_task(started, task)
         actual = next(iter(root.workers.active))
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        await cancel_and_expect_cancellation(task)
         assert not await root.aclose()
         await expire(h, token.session_id)
         with pytest.raises(WorkerOutstanding):
             await Capture(h.root, h.actor).acquire(token.session_id, turn_id="replacement")
         release.set()
-        await asyncio.wait_for(asyncio.shield(actual), 3)
+        await asyncio.shield(actual)
         replacement, _ = await Capture(h.root, h.actor).acquire(
             token.session_id, turn_id="replacement"
         )
         await Capture(h.root, h.actor).release(replacement)
     finally:
-        release.set()
-        await asyncio.gather(task, return_exceptions=True)
-        assert await root.aclose()
+
+        async def teardown():
+            release.set()
+            if root is not None:
+                await close_root_settle_and_finalize(
+                    root,
+                    (task,),
+                    lambda: Capture(h.root, h.actor).release(token),
+                )
+            else:
+                await Capture(h.root, h.actor).release(token)
+
+        await retain_cleanup(teardown(), primary=sys.exception())

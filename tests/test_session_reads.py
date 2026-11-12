@@ -6,6 +6,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from selected_profiles_process import await_retained
 
 from tether.stores.jsonl import JsonlRoot, JsonlSessionStore
 from tether.stores.memory import MemoryFiles
@@ -125,13 +126,13 @@ async def test_feed_replay_is_owner_scoped_and_filters_without_sequence_gaps(sto
     await store.update(one.id, "owner", SessionPatch(title="Later"))
     feed = store.changes("owner", session_id=one.id, since=before.seq)
     try:
-        change = await asyncio.wait_for(anext(feed), 2)
+        change = await anext(feed)
         assert change.seq == before.seq + 2
         assert change.summary.title == "Later"
         assert change.session_id == one.id
         assert change.entries[0].kind == "session"
     finally:
-        await feed.aclose()
+        await await_retained(asyncio.create_task(feed.aclose()))
 
 
 async def test_feed_retention_never_silently_skips_commits():

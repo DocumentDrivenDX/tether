@@ -332,18 +332,17 @@ def test_cancelling_probe_kills_and_reaps_its_owned_child(monkeypatch) -> None:
             self.returncode = 0
             return 0
 
+        def kill(self) -> None:
+            self.killed.set()
+            self.stdout.feed_eof()
+
     async def verify() -> None:
         child = Child()
 
         async def spawn(*_args: object, **_kwargs: object) -> Child:
             return child
 
-        def kill_group(_pid: int, _signal: int) -> None:
-            child.killed.set()
-            child.stdout.feed_eof()
-
         monkeypatch.setattr(oracle.asyncio, "create_subprocess_exec", spawn)
-        monkeypatch.setattr(oracle.os, "killpg", kill_group)
         task = asyncio.create_task(
             probe_database(
                 host="localhost",
@@ -354,10 +353,10 @@ def test_cancelling_probe_kills_and_reaps_its_owned_child(monkeypatch) -> None:
                 ca_file="/fabricated/ca.pem",
             )
         )
-        await asyncio.wait_for(child.wait_started.wait(), timeout=2)
+        await child.wait_started.wait()
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, timeout=2)
+            await task
         assert child.returncode == 0
         assert child.wait_calls >= 2
 

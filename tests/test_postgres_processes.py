@@ -1,7 +1,6 @@
 """Separate processes and actual client kill qualify SQL takeover and stale operations."""
 
 import asyncio
-import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +9,9 @@ from uuid import uuid4
 import pytest
 from postgres_support import database as database
 from postgres_support import postgres_server as postgres_server
+from process_lifetime_controls import OwnedProcess, RetainedCleanup
+from process_lifetime_controls import receive as receive
+from process_lifetime_controls import stop as stop
 from psycopg import sql
 
 from tether.stores.postgres.capture import Capture
@@ -25,8 +27,18 @@ def anyio_backend():
     return "asyncio"
 
 
-async def peer(h, server, session, turn, *, unsafe=False, effect_path=None, lease_seconds=5):
-    process = await asyncio.create_subprocess_exec(
+async def peer(
+    h,
+    server,
+    session,
+    turn,
+    cleanup: RetainedCleanup,
+    *,
+    unsafe=False,
+    effect_path=None,
+    lease_seconds=5,
+) -> OwnedProcess:
+    process = await OwnedProcess.spawn(
         sys.executable,
         "-u",
         str(Path(__file__).with_name("postgres_process.py")),
@@ -34,62 +46,35 @@ async def peer(h, server, session, turn, *, unsafe=False, effect_path=None, leas
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    assert process.stdin is not None
-    process.stdin.write(
-        (
-            json.dumps(
-                {
-                    "connection": server.get_uri(),
-                    "schema": h.schema,
-                    "owner": h.actor.id,
-                    "session": session.id,
-                    "turn": turn,
-                    "unsafe": unsafe,
-                    "effect_path": str(effect_path) if effect_path is not None else None,
-                    "lease_seconds": lease_seconds,
-                }
-            )
-            + "\n"
-        ).encode()
+    cleanup.add(process.close)
+    await process.send_json(
+        {
+            "connection": server.get_uri(),
+            "schema": h.schema,
+            "owner": h.actor.id,
+            "session": session.id,
+            "turn": turn,
+            "unsafe": unsafe,
+            "effect_path": str(effect_path) if effect_path is not None else None,
+            "lease_seconds": lease_seconds,
+        }
     )
-    await process.stdin.drain()
     return process
 
 
-async def receive(process):
-    assert process.stdout is not None
-    raw = await asyncio.wait_for(process.stdout.readline(), 15)
-    assert raw, "child exited without a protocol response"
-    return json.loads(raw)
-
-
-async def command(process, value):
-    assert process.stdin is not None
-    process.stdin.write((json.dumps({"command": value}) + "\n").encode())
-    await process.stdin.drain()
-    return await receive(process)
-
-
-async def stop(process):
-    if process.returncode is None:
-        process.kill()
-    await asyncio.wait_for(process.communicate(), 10)
-
-
 async def expired(h, session):
-    async with asyncio.timeout(10):
-        while True:
-            async with h.pool.connection() as connection:
-                cursor = await connection.execute(
-                    sql.SQL(
-                        "SELECT lease_until<=clock_timestamp() FROM {}.sessions "
-                        "WHERE owner=%s AND id=%s"
-                    ).format(sql.Identifier(h.schema)),
-                    (h.actor.id.encode(), session.id.encode()),
-                )
-                if await cursor.fetchone() == (True,):
-                    return
-            await asyncio.sleep(0.02)
+    while True:
+        async with h.pool.connection() as connection:
+            cursor = await connection.execute(
+                sql.SQL(
+                    "SELECT lease_until<=clock_timestamp() FROM {}.sessions "
+                    "WHERE owner=%s AND id=%s"
+                ).format(sql.Identifier(h.schema)),
+                (h.actor.id.encode(), session.id.encode()),
+            )
+            if await cursor.fetchone() == (True,):
+                return
+        await asyncio.sleep(0.02)
 
 
 async def force_expiry(h, session):
@@ -110,24 +95,23 @@ async def test_separate_process_exclusivity_takeover_stale_writes_and_cleanup(
 ):
     h = database
     session = await Capture(h.root, h.actor).create(SessionInit(), str(uuid4()))
-    original = await peer(h, postgres_server, session, "old-phase", lease_seconds=120)
-    peers = [original]
-    try:
-        assert (await receive(original))["event"] == "acquired"
-        blocked = await peer(h, postgres_server, session, "blocked")
-        peers.append(blocked)
-        assert await receive(blocked) == {"event": "refused", "error": "TurnInProgress"}
-        await asyncio.wait_for(blocked.wait(), 10)
+    async with RetainedCleanup() as children:
+        original = await peer(h, postgres_server, session, "old-phase", children, lease_seconds=120)
+        assert (await original.event())["event"] == "acquired"
+        blocked = await peer(h, postgres_server, session, "blocked", children)
+        assert await blocked.event() == {"event": "refused", "error": "TurnInProgress"}
+        assert await blocked.wait() == 0
         await force_expiry(h, session)
+        assert original.returncode is None
         await expired(h, session)
-        replacement = await peer(h, postgres_server, session, "new-phase")
-        peers.append(replacement)
-        assert (await receive(replacement))["event"] == "acquired"
-        assert (await command(original, "append"))["error"] == "LeaseLost"
-        assert (await command(original, "heartbeat"))["error"] == "LeaseLost"
-        assert (await command(original, "release"))["event"] == "ok"
-        assert (await command(replacement, "append"))["event"] == "ok"
-        assert (await command(replacement, "heartbeat"))["event"] == "ok"
+        assert original.returncode is None
+        replacement = await peer(h, postgres_server, session, "new-phase", children)
+        assert (await replacement.event())["event"] == "acquired"
+        assert (await original.command("append"))["error"] == "LeaseLost"
+        assert (await original.command("heartbeat"))["error"] == "LeaseLost"
+        assert (await original.command("release"))["event"] == "ok"
+        assert (await replacement.command("append"))["event"] == "ok"
+        assert (await replacement.command("heartbeat"))["event"] == "ok"
         scoped = PostgresSessionStore(h.root).for_actor(h.actor)
         entries = (await scoped.entries(session.id, h.actor.id, start=0, limit=20)).items
         ended = [e for e in entries if e.kind == "turn_ended"]
@@ -135,8 +119,6 @@ async def test_separate_process_exclusivity_takeover_stale_writes_and_cleanup(
             ("old-phase", "interrupted")
         ]
         assert sum(e.key == "child-append" for e in entries) == 1
-    finally:
-        await asyncio.gather(*(stop(process) for process in peers))
 
 
 async def test_actual_client_kill_preserves_committed_intent_and_recovery_barrier(
@@ -145,13 +127,19 @@ async def test_actual_client_kill_preserves_committed_intent_and_recovery_barrie
     h = database
     session = await Capture(h.root, h.actor).create(SessionInit(), str(uuid4()))
     effect_path = tmp_path / "fabricated-effects.log"
-    process = await peer(
-        h, postgres_server, session, "killed-phase", unsafe=True, effect_path=effect_path
-    )
-    try:
-        assert (await receive(process))["entries"] == 2
+    async with RetainedCleanup() as children:
+        process = await peer(
+            h,
+            postgres_server,
+            session,
+            "killed-phase",
+            children,
+            unsafe=True,
+            effect_path=effect_path,
+        )
+        assert (await process.event())["entries"] == 2
         assert effect_path.read_bytes() == b"fabricated-effect\n"
-        await stop(process)
+        await process.close()
         assert process.returncode is not None
         assert process.returncode < 0
         await expired(h, session)
@@ -169,5 +157,3 @@ async def test_actual_client_kill_preserves_committed_intent_and_recovery_barrie
             await log.append([NewEntry(kind="message", key="replacement-metadata")])
         assert (await scoped.effects(session.id, h.actor.id)).items[0].invocation_id == "fabricated"
         assert effect_path.read_bytes() == b"fabricated-effect\n"
-    finally:
-        await stop(process)

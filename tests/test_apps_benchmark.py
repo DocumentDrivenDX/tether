@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 from benchmark_apps import measure_remote_reads
+from context_lifetime_controls import settle_tasks, wait_event_or_task
 
 from tether.client import Page, SessionSummary
 from tether.client.remote import RemoteClient, RemoteClientSettings, RemoteProblem
@@ -81,6 +82,7 @@ def test_cancelled_sample_keeps_borrowed_transport_and_propagates_cancellation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     entered = asyncio.Event()
+    release = asyncio.Event()
     closed_views: list[RemoteClient] = []
     close = RemoteClient.aclose
 
@@ -97,8 +99,11 @@ def test_cancelled_sample_keeps_borrowed_transport_and_propagates_cancellation(
                 json={"methods": {}, "tiers": {"live": "available", "archive": "unavailable"}},
             )
         entered.set()
-        await asyncio.Event().wait()
-        raise AssertionError("unreachable")
+        await release.wait()
+        return httpx.Response(
+            200,
+            json=Page[SessionSummary](items=()).model_dump(mode="json"),
+        )
 
     async def run() -> None:
         async with httpx.AsyncClient(
@@ -111,12 +116,15 @@ def test_cancelled_sample_keeps_borrowed_transport_and_propagates_cancellation(
                     samples=1,
                 )
             )
-            await asyncio.wait_for(entered.wait(), 1)
-            task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await task
-            assert not http.is_closed
-            assert len(closed_views) == 1
+            try:
+                await wait_event_or_task(entered, task)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                assert not http.is_closed
+                assert len(closed_views) == 1
+            finally:
+                await settle_tasks((task,), release=release.set)
 
     asyncio.run(run())
 

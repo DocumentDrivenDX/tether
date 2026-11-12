@@ -116,9 +116,22 @@ assert.ok(html.includes("&lt;script&gt;"));assert.ok(!html.includes("<script>"))
   npm(["install", "--save-dev", "--prefer-offline", "--ignore-scripts", "--no-audit", "--no-fund", "jsdom@30.1.3"], combined);
   await writeFile(join(combined, "consumer-view.mjs"), await readFile(join(root, "scripts/web/consumer-view.mjs")));
   // @covers US-069-AC4: execute custom layout/message slots with the installed provider and client.
-  // Cold JSDOM import alone measured 26 seconds; allow bounded cold loading,
-  // while the consumer independently enforces five seconds after unmount.
-  captured(process.execPath, ["consumer-view.mjs"], { cwd: combined, stdio: "pipe" });
+  // The enclosing functional-command owner bounds this child and observes its
+  // natural exit, including any handles retained after the consumer unmounts.
+  captured(process.execPath, ["consumer-view.mjs"], {
+    cwd: combined,
+    stdio: "pipe",
+    env: { ...process.env, TETHER_CONSUMER_VIEW_CONTROL: "baseline" },
+  });
+  // These controlled executions exercise pending-render/feed and failed-fetch
+  // terminal paths under the same external-consumer child owner.
+  for (const control of ["delayed", "failed-fetch"]) {
+    captured(process.execPath, ["consumer-view.mjs"], {
+      cwd: combined,
+      stdio: "pipe",
+      env: { ...process.env, TETHER_CONSUMER_VIEW_CONTROL: control },
+    });
+  }
   await writeFile(report, JSON.stringify({
     schema_version: 1,
     status: "passed",

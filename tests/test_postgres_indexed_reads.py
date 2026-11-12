@@ -1,10 +1,18 @@
 """Bounded indexed SQL reads preserve original owner, facts and snapshot order."""
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
+from typing import Any
 from uuid import uuid4
 
 import pytest
+from context_lifetime_controls import wait_event_or_task
+from postgres_pending_io_controls import (
+    close_root_and_drain,
+    close_root_settle_and_finalize,
+    retain_cleanup,
+)
 from postgres_support import database as database
 from postgres_support import postgres_server as postgres_server
 from psycopg import sql
@@ -31,6 +39,39 @@ pytestmark = pytest.mark.anyio
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+class SnapshotSource:
+    def __init__(self, pool: Any) -> None:
+        self.pool = pool
+        self.reader_pid: int | None = None
+        self.writer_pid: int | None = None
+        self.reader_entered = asyncio.Event()
+        self.writer_entered = asyncio.Event()
+
+    @asynccontextmanager
+    async def __call__(self, actor, session_id):
+        async with self.pool.connection() as connection:
+            if session_id is not None:
+                if self.reader_pid is None:
+                    self.reader_pid = connection.info.backend_pid
+                    self.reader_entered.set()
+                else:
+                    self.writer_pid = connection.info.backend_pid
+                    self.writer_entered.set()
+            yield connection
+
+
+class HeldSnapshotView:
+    def __init__(self, original: Any) -> None:
+        self.original = original
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def __call__(self, connection, frame):
+        self.entered.set()
+        await self.release.wait()
+        return await self.original(connection, frame)
 
 
 async def seed(h):
@@ -139,10 +180,11 @@ async def test_entry_lookahead_does_not_hydrate_the_next_large_envelope(database
             NewEntry(kind="message", key="large", facts={"padding": "x" * 12001}),
         ],
     )
-    root = await DatabaseRoot.open(
-        h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(max_batch_bytes=12000)
-    )
+    root = None
     try:
+        root = await DatabaseRoot.open(
+            h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(max_batch_bytes=12000)
+        )
         reads = Reads(root, h.actor)
         page = await reads.entries(summary.id, start=0, limit=1)
         assert page.items == (entries[0],)
@@ -159,7 +201,8 @@ async def test_entry_lookahead_does_not_hydrate_the_next_large_envelope(database
                 max_bytes=len(canonical(entries[0].model_dump(mode="json"))) - 1,
             )
     finally:
-        assert await root.aclose()
+        if root is not None:
+            await retain_cleanup(close_root_and_drain(root), primary=sys.exception())
 
 
 @pytest.mark.parametrize("kind", ["turn", "key"])
@@ -219,16 +262,20 @@ async def test_invalid_read_limits_refuse_without_acquiring_connection(database,
     assert len(h.calls) == before
 
 
-async def blocked(pool, pid):
-    async with asyncio.timeout(3):
+async def blocked(pool, writer_pid, reader_pid, reading, writing):
+    while True:
+        if reading.done():
+            reading.result()
+            raise AssertionError("snapshot_reader_ended_before_blocker_witness")
+        if writing.done():
+            writing.result()
+            raise AssertionError("snapshot_writer_ended_before_blocker_witness")
         async with pool.connection() as connection:
-            while True:
-                cursor = await connection.execute(
-                    "SELECT cardinality(pg_blocking_pids(%s))", (pid,)
-                )
-                if (await cursor.fetchone())[0] > 0:
-                    return
-                await asyncio.sleep(0)
+            cursor = await connection.execute("SELECT pg_blocking_pids(%s)", (writer_pid,))
+            row = await cursor.fetchone()
+        assert row is not None
+        if reader_pid in row[0]:
+            return
 
 
 async def test_snapshot_holds_owner_watermark_until_its_pending_read_finishes(
@@ -236,36 +283,29 @@ async def test_snapshot_holds_owner_watermark_until_its_pending_read_finishes(
 ):
     h = database
     sid, entries, _, _ = await seed(h)
-    reads = Reads(h.root, h.actor)
-    entered, release = asyncio.Event(), asyncio.Event()
-    writer_pid = asyncio.get_running_loop().create_future()
-    original = reads.view
-
-    async def delayed(connection, frame):
-        entered.set()
-        await asyncio.wait_for(release.wait(), 5)
-        return await original(connection, frame)
-
-    @asynccontextmanager
-    async def source(actor, session_id):
-        async with h.pool.connection() as connection:
-            if session_id is not None and not writer_pid.done():
-                writer_pid.set_result(connection.info.backend_pid)
-            yield connection
-
-    root = await DatabaseRoot.open(source, actor=h.actor, schema=h.schema)
-    monkeypatch.setattr(reads, "view", delayed)
-    reading = asyncio.create_task(reads.snapshot(sid))
+    root = None
+    reading = None
     writing = None
+    source = SnapshotSource(h.pool)
+    view = None
+
     try:
-        await asyncio.wait_for(entered.wait(), 3)
+        root = await DatabaseRoot.open(source, actor=h.actor, schema=h.schema)
+        reads = Reads(root, h.actor)
+        view = HeldSnapshotView(reads.view)
+        monkeypatch.setattr(reads, "view", view)
+        reading = asyncio.create_task(reads.snapshot(sid))
+        await wait_event_or_task(view.entered, reading)
+        await wait_event_or_task(source.reader_entered, reading)
+        assert source.reader_pid is not None
         writing = asyncio.create_task(
             append(Journal(root, h.actor), sid, [NewEntry(kind="message")])
         )
-        pid = await asyncio.wait_for(writer_pid, 3)
-        await blocked(h.pool, pid)
+        await wait_event_or_task(source.writer_entered, writing)
+        assert source.writer_pid is not None
+        await blocked(h.pool, source.writer_pid, source.reader_pid, reading, writing)
         assert not writing.done()
-        release.set()
+        view.release.set()
         snapshot = await reading
         await writing
         assert snapshot.seq == 2
@@ -274,11 +314,13 @@ async def test_snapshot_holds_owner_watermark_until_its_pending_read_finishes(
         assert following.seq == 3
         assert following.through_index == len(entries)
     finally:
-        release.set()
-        await asyncio.gather(
-            reading, *([writing] if writing is not None else []), return_exceptions=True
-        )
-        assert await root.aclose()
+        if view is not None:
+            view.release.set()
+        if root is not None:
+            await retain_cleanup(
+                close_root_settle_and_finalize(root, (reading, writing)),
+                primary=sys.exception(),
+            )
 
 
 @pytest.mark.parametrize("corruption", ["negative", "naive_time"])

@@ -144,7 +144,7 @@ or a reason to delete useful functional assertions.
 | US-068-AC2/AC6 deadline and expiry | `tests/test_selected_profile_identity_revocation_convergence.py`, selected identity/expiry scripts | Controlled-clock single-budget propagation for deterministic tests; exact principal/state and fresh Me before protected refusal while captured token remains unexpired; genuine live OAuth/database expiry with expired/fresh controls. Watchdog exhaustion is incomplete. |
 | NFR-7 measurement logic / functional inventory | `tests/test_client_benchmark.py`, `tests/test_web_benchmark.py`, `tests/test_benchmark_store_profiles.py`, `tests/test_benchmark_reconnect.py`, `tests/test_benchmark_follower_memory.py`, related benchmark/ratchet tests | Keep fixture correctness, cursor replay, retention/reset, schema/source validation, rejection and cleanup controls using synthetic measurements or untimed functional helpers. Select real measurement workloads only through the explicit isolated performance path; inventory moved nodes without silently skipping required coverage. |
 
-Owner decision on 2026-11-02 allocates NFR-7 performance closure to six local
+Owner decision on 2026-11-02 allocates optional NFR-7 qualification to six local
 controlled profiles and exactly 54 metric nodes: store 7, memory-store 7,
 client 17, volatile-client 11, engine 2 and follower-memory 10. The two Apps
 latencies remain optional observations with provenance and explicit unknown
@@ -153,6 +153,18 @@ satisfy missing controlled proof. Default controlled qualification requires no
 precollected Apps observation. Historical seven-profile/56-node receipts and
 source28 failures are retained unchanged. This does not change any of the 41
 functional AC rows or the 45 IP-002 tasks.
+
+Owner decision on 2026-11-09 removes actual performance qualification as an
+implementation, acceptance or release blocker. WP-36's required proof is the
+isolated workflow and its deterministic controls, not a measured performance
+PASS. `tests/packaging/test_performance_admission.py` and
+`tests/packaging/test_performance_gate.py` retain admission, rejection, privacy,
+separation and cleanup checks. Closure controls in
+`tests/packaging/test_acceptance_closure.py` must accept completed WP-36 evidence
+with those controls and no benchmark nodes, while rejecting malformed or partial
+referenced qualified ratchets. Such references still require the exact 54-node
+set and strict source/admission joins. Optional failed, deferred, incomplete and
+unrun outcomes stay explicit and cannot satisfy a required functional receipt.
 
 NFR-7 admission controls fabricate reservation, host/runtime binding, lock
 contention, observer unavailability and interference before/during/after a run.

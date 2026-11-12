@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 
 import pytest
+from functional_watchdog import MAX_FUNCTIONAL_WATCHDOG_MS
 
 from tether.stores.archive import InMemoryArchive
 from tether.testing.conformance import ArchiveFixture, ConformanceFailure, archive_suite
@@ -30,7 +31,7 @@ async def test_read_only_archive_source_does_not_report_a_write_check():
         source.capabilities = source.capabilities.model_copy(update={"writable": False})
         yield ArchiveFixture(source, Actor(id=sample.view.summary.owner), Actor(id="foreign"))
 
-    report = await archive_suite(factory)
+    report = await archive_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
     assert "archive_idempotency" not in report.checks
     assert report.capabilities["writable"] is False
 
@@ -70,7 +71,7 @@ async def test_derived_facts_only_archive_is_partial_and_cannot_restore():
         )
         yield ArchiveFixture(source, Actor(id=sample.view.summary.owner), Actor(id="foreign"))
 
-    report = await archive_suite(factory)
+    report = await archive_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
     assert report.capabilities["kind"] == "derived"
     assert "archive_idempotency" not in report.checks
 
@@ -88,7 +89,7 @@ async def test_testkit_rejects_foreign_archive_content_disclosure():
         )
 
     with pytest.raises(ConformanceFailure, match="archive_content_owner"):
-        await archive_suite(factory)
+        await archive_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
 
 
 async def test_independent_sink_and_credentialled_source_keep_isolated_callers():
@@ -142,7 +143,7 @@ async def test_independent_sink_and_credentialled_source_keep_isolated_callers()
         facade = SourceFacade(source, {owner.id: owner, foreign.id: foreign})
         yield ArchiveFixture(cast(ArchiveSource, facade), owner, foreign, source)
 
-    report = await archive_suite(factory)
+    report = await archive_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
     assert report.capabilities["writable"] is False
     assert report.sink_capabilities is not None
     assert report.sink_capabilities["writable"] is True
@@ -163,5 +164,5 @@ async def test_falsey_sink_is_a_valid_independent_provider():
             source, Actor(id=sample.view.summary.owner), Actor(id="foreign"), source
         )
 
-    report = await archive_suite(factory)
+    report = await archive_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
     assert "archive_idempotency" in report.checks

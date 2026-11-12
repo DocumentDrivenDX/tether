@@ -6,7 +6,7 @@ import json
 import pytest
 import web_closure
 from test_evidence import ObservedEvidence
-from web_artifacts import inventory
+from web_artifacts import MATRIX, inventory
 from web_closure import (
     MANIFEST,
     PLAN,
@@ -55,9 +55,14 @@ def fixture_project(root):
     write(PLAN, "\n".join(lines))
     write("src/tether/fabricated.py", "# Explicit unit fixture, not a release receipt.\n")
     write("scripts/benchmark_ratchet.py", "# Fabricated strict-performance fixture source.\n")
+    write("scripts/performance_admission.py", "# Fabricated isolated admission workflow.\n")
     write(
         "tests/test_fabricated.py",
         "\n".join("# @covers " + ac for ac in criteria) + "\ndef test_fabricated(): pass\n",
+    )
+    write(
+        "tests/test_performance_controls.py",
+        "def test_isolated_workflow_admission_controls(): pass\n",
     )
     source = inventory(root)
     receipt_path = "docs/helix/04-build/evidence/web-platform/fabricated.json"
@@ -293,6 +298,62 @@ def test_standalone_python_receipts_use_the_strict_python_validator(tmp_path, no
         read_receipt(tmp_path, relative, current)
 
 
+def test_installed_matrix_requires_bound_external_embedder_outcomes(tmp_path):
+    source = tmp_path / "examples/embed/tests/test_consumer.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def test_consumer(): pass\n")
+    current = inventory(tmp_path)
+    path = tmp_path / "docs/helix/04-build/evidence/web-platform/installed.json"
+    path.parent.mkdir(parents=True)
+    relative = path.relative_to(tmp_path).as_posix()
+    case = {"node_id": "examples/embed/tests/test_consumer.py::test_consumer", "outcome": "passed"}
+    installed = [
+        {"node_id": f"installed::{profile}::closure", "outcome": "passed"} for profile in MATRIX
+    ]
+    value = {
+        "status": "passed",
+        "schema_version": 1,
+        "command": web_closure.INSTALLED_COMMAND,
+        "recorded_at": "fixture observation",
+        "python": "3.11",
+        "build_constraints": [],
+        "runtime_constraints": [],
+        "source_sha256": current,
+        "artifacts": {},
+        "wheel_metadata": {},
+        "installed_profiles": {profile: {} for profile in MATRIX},
+        "independent_embedder": {
+            "status": "passed",
+            "sbom": {},
+            "lock_sha256": "1" * 64,
+            "consumer_source": "examples/embed",
+            "wheel_backed_sources": [],
+            "test_results": [case],
+            "strict_installed_typing": True,
+            "limits": [],
+        },
+        "compatibility": {},
+        "test_results": [
+            *installed,
+            case,
+            {"node_id": "installed::cohort::reproducible-archives", "outcome": "passed"},
+        ],
+        "limits": [],
+    }
+    path.write_text(json.dumps(value))
+    assert read_receipt(tmp_path, relative, current)[case["node_id"]] == "passed"
+
+    value["independent_embedder"]["test_results"] = [{**case, "outcome": "failed"}]
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="installed_embedder_receipt_invalid"):
+        read_receipt(tmp_path, relative, current)
+
+    del value["independent_embedder"]
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="installed_matrix_receipt_invalid"):
+        read_receipt(tmp_path, relative, current)
+
+
 def test_controlled_performance_receipt_requires_exact_admission_and_baseline_join(tmp_path):
     from benchmark_profiles import METRICS, PROFILES
     from performance_admission import REFERENCE_CONTROL_SCOPE, SYSTEM_PROCESS_EXCLUSION_POLICY
@@ -445,11 +506,32 @@ def test_performance_acceptance_union_requires_all_54_expected_metrics(tmp_path,
     assert _performance_union_errors(tmp_path, {}, {}, inventory(tmp_path), required=True) == []
 
 
-def test_completed_wp36_with_only_ordinary_tests_fails_runtime_closure(tmp_path):
+def test_completed_wp36_workflow_controls_close_without_benchmark_nodes(tmp_path):
+    manifest, _ = fixture_project(tmp_path)
+    node = "tests/test_performance_controls.py::test_isolated_workflow_admission_controls"
+    receipt = ObservedEvidence(manifest["source_sha256"])
+    receipt.inventory = [node]
+    receipt.inventory_complete = True
+    receipt.record_group([node], "passed", [{"node_id": node, "outcome": "passed"}], 0)
+    receipt.coverage_returncode = 0
+    path = "docs/helix/04-build/evidence/web-platform/workflow-controls.json"
+    receipt.write(tmp_path, 0, tmp_path / path)
+    proof = manifest["tasks"]["WP-36"]
+    proof["implementation"] = ["scripts/performance_admission.py"]
+    proof["tests"] = [node]
+    proof["receipts"] = [path]
+    (tmp_path / MANIFEST).write_text(json.dumps(manifest))
+    assert audit(tmp_path)["errors"] == []
+
+
+def test_completed_wp36_partial_qualified_performance_claim_still_refuses(tmp_path):
     manifest, _ = fixture_project(tmp_path)
     proof = manifest["tasks"]["WP-36"]
-    proof["tests"] = ["tests/test_fabricated.py::test_fabricated"]
-    proof["receipts"] = ["docs/helix/04-build/evidence/web-platform/fabricated.json"]
+    receipt_path = tmp_path / proof["receipts"][0]
+    receipt = json.loads(receipt_path.read_text())
+    nodes = [item["node_id"] for item in receipt["test_results"]]
+    proof["tests"] = nodes
+    proof["receipts"] = [receipt_path.relative_to(tmp_path).as_posix()]
     (tmp_path / MANIFEST).write_text(json.dumps(manifest))
     assert (
         "qualified performance receipts must cover the exact admitted metric set"

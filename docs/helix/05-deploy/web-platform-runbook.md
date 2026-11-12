@@ -232,8 +232,14 @@ complete acceptance. Missing, stale, failed or skipped required proof refuses
 the gate.
 
 Run the deterministic `make web-check CHECK_BASE=HEAD` aggregate once for the
-frozen cohort. After its current successful receipt, the performance proof and
-complete acceptance evidence exist, use the receipt-based release postcheck:
+frozen cohort. After its current successful receipt and complete required
+acceptance evidence exist, use the receipt-based release postcheck. Under the
+2026-11-09 owner decision, WP-36 proves the isolated performance workflow and
+deterministic controls; actual performance qualification is optional and does
+not block release. Disclose its actual unrun, deferred, incomplete, failed or
+qualified status separately. Referenced qualified claims retain strict metric,
+source and admission checks; optional status cannot replace required functional
+or selected-profile evidence.
 
 ```bash
 make web-release-postcheck WEB_PROFILE="$PROFILE" \

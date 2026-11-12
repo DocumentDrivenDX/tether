@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from jsonl_effect_process import EffectTool, emit
+from process_lifetime_controls import model_execution_timeouts
 from psycopg import AsyncConnection
 from test_resume_engine import build
 
@@ -30,30 +31,38 @@ async def main() -> None:
         async with await AsyncConnection.connect(config["connection"]) as connection:
             yield connection
 
-    root = await DatabaseRoot.open(
-        source, actor=actor, schema=config["schema"], limits=StorageLimits(lease_seconds=5)
-    )
-    store = PostgresSessionStore(root).for_actor(actor)
-    limits = ModelExecutionLimits(
-        max_response_bytes=8192,
-        max_tool_argument_bytes=512,
-        max_attempts=2,
-        request_timeout_seconds=5,
-        max_retry_delay_seconds=0.001,
-    )
-    h = SimpleNamespace(
-        store=store,
-        provider=PostgresHistory(root),
-        actor=actor,
-        engines=[],
-        limits=limits,
-    )
-    safe = bool(config.get("safe", False))
-    run = build(h, safe=safe, tool=EffectTool(Path(config["effect_path"]), safe=safe))
-    session = await store.create(actor.id, SessionInit(settings={"approval": "auto"}))
-    emit({"event": "created", "session_id": session.id})
-    async with store.turn(session.id, actor.id, turn_id="killed-turn") as log:
-        await run.engine.run_turn(actor, log, "Fabricated request", spec=run.spec)
+    with model_execution_timeouts() as timeout_values:
+        root = await DatabaseRoot.open(
+            source, actor=actor, schema=config["schema"], limits=StorageLimits(lease_seconds=5)
+        )
+        store = PostgresSessionStore(root).for_actor(actor)
+        limits = ModelExecutionLimits(
+            max_response_bytes=8192,
+            max_tool_argument_bytes=512,
+            max_attempts=2,
+            request_timeout_seconds=5,
+            max_retry_delay_seconds=0.001,
+        )
+        h = SimpleNamespace(
+            store=store,
+            provider=PostgresHistory(root),
+            actor=actor,
+            engines=[],
+            limits=limits,
+        )
+        safe = bool(config.get("safe", False))
+        tool = EffectTool(
+            Path(config["effect_path"]),
+            timeout_values,
+            limits.request_timeout_seconds,
+            safe=safe,
+        )
+        run = build(h, safe=safe, tool=tool)
+        tool.tool_timeout_seconds = run.engine.limits.tool_timeout_seconds
+        session = await store.create(actor.id, SessionInit(settings={"approval": "auto"}))
+        emit({"event": "created", "session_id": session.id})
+        async with store.turn(session.id, actor.id, turn_id="killed-turn") as log:
+            await run.engine.run_turn(actor, log, "Fabricated request", spec=run.spec)
 
 
 if __name__ == "__main__":

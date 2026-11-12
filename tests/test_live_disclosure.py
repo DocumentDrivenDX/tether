@@ -7,6 +7,7 @@ from typing import cast
 
 import pytest
 from pydantic import JsonValue
+from selected_profiles_process import await_retained
 
 from tether.engine.attempts import JournalAttemptRecorder
 from tether.engine.governance import Governance
@@ -140,66 +141,189 @@ async def test_started_deltas_are_delivered_with_contiguous_offsets(harness):
     assert [(offset, text) for _, offset, text in events] == [(0, "A"), (1, "B")]
 
 
-async def test_live_follower_reconnect_invalidates_old_attempt(harness):
+async def test_live_follower_reconnect_invalidates_old_attempt(harness, monkeypatch):
     from tether.models.testing.scripted import observe_fixture, prepare_fixture
 
     h = harness
 
-    class PausedModel:
-        provider = "paused"
-
-        def __init__(self):
-            self.first = asyncio.Event()
-            self.release = asyncio.Event()
-
-        async def stream(self, request):
-            identity = await prepare_fixture(request)
-            assert identity is not None
-            yield TextDelta(text="A", identity=identity)
-            self.first.set()
-            await self.release.wait()
-            yield TextDelta(text="B", identity=identity)
-            response = ModelResponse(content="AB", finish_reason="stop")
-            await observe_fixture(request, identity, response, self.provider)
-            yield response
-
-    model = PausedModel()
+    model = _PausedLiveModel(observe_fixture, prepare_fixture)
     h.engine.model = model
     session = await h.client.create(ref="live", title="Live", spec="demo")
     before = await h.client.snapshot(session.id)
-    first_stream = h.client.follow(session_id=session.id, since=before.seq)
-    first_reader = asyncio.create_task(anext(first_stream))
-    for _ in range(100):
-        if h.app.followers.live:
-            break
-        await asyncio.sleep(0)
-    handle = await h.client.send(session.id, "live request", spec="demo")
-    await model.first.wait()
-    assert h.app.followers.active
-    first = await asyncio.wait_for(first_reader, 2)
-    while not isinstance(first, ReplyText):
-        first = await asyncio.wait_for(anext(first_stream), 2)
-    assert first.text == "A"
-    assert first.offset == 0
+    probe = _LiveReconnectProbe(h, model, session.id, before.seq, monkeypatch)
+    try:
+        first = await probe.read_first_attempt()
+        reset = await probe.read_reconnect()
+        assert reset.reason == "reconnect"
+        assert reset.attempt_id == first.attempt_id
+        assert probe.handle is not None
+        model.release.set()
+        result = await probe.handle._task
+        assert result.stop_reason == "final"
+        assert not h.app.followers.active
+    finally:
+        model.release.set()
+        await await_retained(asyncio.create_task(probe.cleanup()))
 
-    second_stream = h.client.follow(session_id=session.id, since=before.seq)
-    second_reader = asyncio.create_task(anext(second_stream))
-    await asyncio.sleep(0)
-    second_events = []
-    second_events.append(await asyncio.wait_for(second_reader, 2))
-    assert isinstance(second_events[0], ReplyReset)
-    while not any(isinstance(event, ReplyReset) for event in second_events):
-        second_events.append(await asyncio.wait_for(anext(second_stream), 2))
-    reset = next(event for event in second_events if isinstance(event, ReplyReset))
-    assert reset.reason == "reconnect"
-    assert reset.attempt_id == first.attempt_id
 
-    model.release.set()
-    result = await handle._task
-    assert result.stop_reason == "final"
-    assert not h.app.followers.active
-    await aclosing(first_stream).__aexit__(None, None, None)
-    await aclosing(second_stream).__aexit__(None, None, None)
+class _PausedLiveModel:
+    provider = "paused"
+
+    def __init__(self, observe_fixture, prepare_fixture) -> None:
+        self.observe_fixture = observe_fixture
+        self.prepare_fixture = prepare_fixture
+        self.first = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def stream(self, request):
+        identity = await self.prepare_fixture(request)
+        assert identity is not None
+        yield TextDelta(text="A", identity=identity)
+        self.first.set()
+        await self.release.wait()
+        yield TextDelta(text="B", identity=identity)
+        response = ModelResponse(content="AB", finish_reason="stop")
+        await self.observe_fixture(request, identity, response, self.provider)
+        yield response
+
+
+class _LiveReconnectProbe:
+    def __init__(self, harness, model, session_id, since, monkeypatch) -> None:
+        self.h, self.model, self.session_id, self.since = harness, model, session_id, since
+        self.monkeypatch = monkeypatch
+        self.original_subscribe = harness.app.followers._subscribe
+        self.subscription = asyncio.Event()
+        self.first_stream = None
+        self.first_reader = None
+        self.second_stream = None
+        self.second_reader = None
+        self.handle = None
+
+    def watch_subscription(self) -> None:
+        def observe(owner, session_id, buffer):
+            self.original_subscribe(owner, session_id, buffer)
+            if (owner, session_id) == (self.h.actor.id, self.session_id):
+                self.subscription.set()
+
+        self.monkeypatch.setattr(self.h.app.followers, "_subscribe", observe)
+
+    async def read_first_attempt(self):
+        self.watch_subscription()
+        self.first_stream = self.h.client.follow(session_id=self.session_id, since=self.since)
+        self.first_reader = asyncio.create_task(anext(self.first_stream))
+        assert self.first_reader is not None
+        await _wait_event_or_task(
+            self.subscription,
+            self.first_reader,
+            failure="first_follower_ended_before_subscription",
+        )
+        self.handle = await self.h.client.send(self.session_id, "live request", spec="demo")
+        await _wait_event_or_task(
+            self.model.first,
+            self.handle._task,
+            failure="model_ended_before_first_delta",
+        )
+        assert self.h.app.followers.active
+        first = await self.first_reader
+        while not isinstance(first, ReplyText):
+            assert self.first_stream is not None
+            first = await _next_or_terminal(
+                self.first_stream,
+                self.handle._task,
+                failure="turn_ended_before_first_reply_text",
+            )
+        assert first.text == "A"
+        assert first.offset == 0
+        return first
+
+    async def read_reconnect(self):
+        assert self.handle is not None
+        self.subscription = asyncio.Event()
+        self.watch_subscription()
+        self.second_stream = self.h.client.follow(session_id=self.session_id, since=self.since)
+        self.second_reader = asyncio.create_task(anext(self.second_stream))
+        await _wait_event_or_task(
+            self.subscription,
+            self.handle._task,
+            self.second_reader,
+            failure="turn_or_reader_ended_before_reconnect_subscription",
+        )
+        assert self.second_reader is not None
+        reset = await self.second_reader
+        if not isinstance(reset, ReplyReset):
+            while not isinstance(reset, ReplyReset):
+                assert self.second_stream is not None
+                reset = await _next_or_terminal(
+                    self.second_stream,
+                    self.handle._task,
+                    failure="turn_ended_before_reconnect_reset",
+                )
+        return reset
+
+    async def cleanup(self) -> None:
+        readers = (self.first_reader, self.second_reader)
+        for reader in readers:
+            if reader is not None and not reader.done():
+                reader.cancel()
+        tasks = [reader for reader in readers if reader is not None]
+        if self.handle is not None and self.handle._task is not None:
+            tasks.append(self.handle._task)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        for stream in (self.first_stream, self.second_stream):
+            if stream is not None:
+                await aclosing(stream).__aexit__(None, None, None)
+
+
+async def _wait_event_or_task(event, *tasks, failure):
+    waiter = asyncio.create_task(event.wait())
+    try:
+        done, _ = await asyncio.wait((waiter, *tasks), return_when=asyncio.FIRST_COMPLETED)
+        if waiter in done:
+            await waiter
+            return
+        for task in tasks:
+            if task in done:
+                await task
+        raise AssertionError(failure)
+    finally:
+        if not waiter.done():
+            waiter.cancel()
+        await await_retained(asyncio.create_task(_settle_task(waiter)))
+
+
+async def _next_or_terminal(stream, *terminals, failure):
+    operation = asyncio.create_task(anext(stream))
+    try:
+        done, _ = await asyncio.wait((operation, *terminals), return_when=asyncio.FIRST_COMPLETED)
+        if operation in done:
+            return await operation
+        for terminal in terminals:
+            if terminal in done:
+                await terminal
+        raise AssertionError(failure)
+    finally:
+        if not operation.done():
+            operation.cancel()
+        await await_retained(asyncio.create_task(_settle_task(operation)))
+
+
+async def _settle_task(task):
+    await asyncio.gather(task, return_exceptions=True)
+
+
+async def _seal_old_phase_after_auth(run, old_scope, new_scope, auth_started, release_auth, late):
+    try:
+        await _wait_event_or_task(
+            auth_started, late, failure="old_delta_ended_before_authorization"
+        )
+        await run._finish_live_scope(old_scope, None)
+        run._live_scope = new_scope
+        release_auth.set()
+        await late
+    finally:
+        release_auth.set()
+        await await_retained(asyncio.create_task(_settle_task(late)))
 
 
 async def test_live_buffer_coalesces_contiguous_text_and_marks_loss():
@@ -460,13 +584,8 @@ async def test_old_phase_authorization_cannot_publish_after_scope_seal():
     recorder.started[old_identity.attempt_id] = (old_identity, {}, "codec")
     recorder.live_offsets[old_identity.attempt_id] = 0
     late = asyncio.create_task(recorder.disclose_delta(old_identity, "late"))
-    await auth_started.wait()
-
-    await run._finish_live_scope(old_scope, None)
     new_scope = _LiveDisclosureScope()
-    run._live_scope = new_scope
-    release_auth.set()
-    await late
+    await _seal_old_phase_after_auth(run, old_scope, new_scope, auth_started, release_auth, late)
     assert not buffer.values
     assert not followers.active
 
@@ -551,10 +670,18 @@ async def test_cancelled_finish_seals_scope_and_resets_attempt():
 
     run._finish_phase = MethodType(wait_after_delta, run)
     task = asyncio.create_task(run.finish())
-    await published.wait()
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    try:
+        await _wait_event_or_task(
+            published, task, failure="finish_ended_before_live_delta_publication"
+        )
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        hold.set()
+        if not task.done():
+            task.cancel()
+        await await_retained(asyncio.create_task(_settle_task(task)))
 
     assert await buffer.get() == ReplyReset(
         session_id="s", turn_id="t", attempt_id="a", reason="cancelled"

@@ -1,12 +1,25 @@
 """Embedded ownership follows physical startup, acquisitions and worker exit."""
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 from threading import Event
 
 import pytest
+from context_lifetime_controls import wait_event_or_task
+from embedded_lifetime_controls import (
+    RetainedCancellationControl,
+    arm_captured_timeout,
+    cancel_retained_waiter_twice,
+    close_embedded,
+    close_matching,
+    owned_server,
+    settle_embedded_server,
+)
+from process_lifetime_controls import await_retained
 from test_embedded_postgres import acquisition
 from test_embedded_postgres import config as config
+from test_embedded_postgres import pending_io_control as pending_io_control
 
 from tether.stores.postgres import migrate
 from tether.stores.postgres.embedded import EmbeddedPostgres
@@ -30,36 +43,23 @@ def process(server: EmbeddedPostgres) -> asyncio.subprocess.Process:
 
 
 async def no_live(config):
-    async with asyncio.timeout(10):
-        for server in tuple(module._LIVE):
-            if server.config.data_dir == config.data_dir:
-                task = server._close_task
-                assert task is not None
-                await asyncio.shield(task)
+    await close_matching(config.data_dir, sys.exception())
 
 
 async def closed(server):
-    async with asyncio.timeout(10):
-        await server.aclose()
-        task = server._close_task
-        assert task is not None
-        await asyncio.shield(task)
-        assert await server.aclose()
+    return await close_embedded(server)
 
 
 async def test_duplicate_canonical_data_owner_refuses_even_with_other_runtime(config, tmp_path):
-    server = await EmbeddedPostgres.start(config)
-    alias = tmp_path / "alias"
-    alias.symlink_to(config.data_dir, target_is_directory=True)
-    try:
+    async with owned_server(config) as server:
+        alias = tmp_path / "alias"
+        alias.symlink_to(config.data_dir, target_is_directory=True)
         with pytest.raises(RootBusy, match="embedded_directory_busy"):
             await EmbeddedPostgres.start(config.model_copy(update={"data_dir": alias}))
         source = acquisition(server.endpoint)
         await migrate(source, actor=Actor(id="fabricated"), schema="fabricated")
         assert server._processes.server is not None
         assert process(server).returncode is None
-    finally:
-        await closed(server)
     assert (config.data_dir / "PG_VERSION").is_file()
 
 
@@ -79,25 +79,28 @@ async def test_unmanaged_corrupted_or_already_running_data_never_adopts(config, 
         await EmbeddedPostgres.start(config)
     await no_live(config)
     assert {p.name: p.read_bytes() for p in config.data_dir.iterdir()} == before
+    if state == "existing_server":
+        (config.data_dir / "postmaster.pid").unlink()
 
 
 async def test_cancelled_startup_retains_actual_metadata_worker_and_directory_lock(
     config, monkeypatch
 ):
-    entered, release = Event(), Event()
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
     original = module.prepare
 
     def blocked(value):
         files = original(value)
-        entered.set()
-        if not release.wait(5):
-            raise RuntimeError("fabricated_startup_deadline")
+        loop.call_soon_threadsafe(entered.set)
+        release.wait()
         return files
 
     monkeypatch.setattr(module, "prepare", blocked)
-    task = asyncio.create_task(EmbeddedPostgres.start(config))
+    task = None
     try:
-        assert await asyncio.to_thread(entered.wait, 3)
+        task = asyncio.create_task(EmbeddedPostgres.start(config))
+        await wait_event_or_task(entered, task)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
@@ -108,8 +111,42 @@ async def test_cancelled_startup_retains_actual_metadata_worker_and_directory_lo
         release.set()
         await no_live(config)
     monkeypatch.setattr(module, "prepare", original)
-    server = await EmbeddedPostgres.start(config)
-    await closed(server)
+    async with owned_server(config):
+        pass
+
+
+async def test_startup_timeout_expires_only_after_metadata_phase_entry(
+    config, monkeypatch, pending_io_control
+):
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
+    original = module.prepare
+
+    def blocked(value):
+        files = original(value)
+        loop.call_soon_threadsafe(entered.set)
+        release.wait()
+        return files
+
+    monkeypatch.setattr(module, "prepare", blocked)
+    task = None
+    try:
+        task = asyncio.create_task(EmbeddedPostgres.start(config))
+        await wait_event_or_task(entered, task)
+        timer = arm_captured_timeout(pending_io_control, config.startup_seconds)
+        with pytest.raises(StoreError, match="database_unavailable"):
+            await task
+        assert timer.expired()
+        owner = next(server for server in module._LIVE if server.config.data_dir == config.data_dir)
+        assert owner._close_task is not None
+        assert not owner._close_task.done()
+        with pytest.raises(RootBusy):
+            await EmbeddedPostgres.start(config)
+    finally:
+        release.set()
+        await no_live(config)
+    monkeypatch.setattr(module, "prepare", original)
+    assert not (config.data_dir / "PG_VERSION").exists()
 
 
 async def test_failed_readiness_cleans_the_known_physical_process(config, monkeypatch):
@@ -124,9 +161,11 @@ async def test_failed_readiness_cleans_the_known_physical_process(config, monkey
         raise StoreError("fabricated_readiness_failure")
 
     monkeypatch.setattr(Processes, "start", fail)
-    with pytest.raises(StoreError, match="fabricated_readiness_failure"):
-        await EmbeddedPostgres.start(config)
-    await no_live(config)
+    try:
+        with pytest.raises(StoreError, match="fabricated_readiness_failure"):
+            await EmbeddedPostgres.start(config)
+    finally:
+        await no_live(config)
     assert len(processes) == 1
     assert processes[0].returncode == 0
     assert (config.data_dir / "PG_VERSION").is_file()
@@ -134,11 +173,55 @@ async def test_failed_readiness_cleans_the_known_physical_process(config, monkey
 
 async def test_close_waits_for_actual_source_release_after_caller_cancel(config):
     config = config.model_copy(update={"shutdown_seconds": 0.02})
+    release = asyncio.Event()
     server = await EmbeddedPostgres.start(config)
+    task = None
+    root = None
+    armed = False
+    entered = asyncio.Event()
+    try:
+        base = acquisition(server.endpoint)
+        actor = Actor(id="fabricated")
+        await migrate(base, actor=actor, schema="fabricated")
+
+        @asynccontextmanager
+        async def source(caller, sid):
+            async with base(caller, sid) as connection:
+                yield connection
+            if armed:
+                entered.set()
+                await release.wait()
+
+        root = await server.open_root(source, actor=actor, schema="fabricated")
+        armed = True
+        task = asyncio.create_task(
+            root.run(actor, None, lambda c: c.execute("SELECT 1"), write=True)
+        )
+        await wait_event_or_task(entered, task)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not await server.aclose()
+        assert process(server).returncode is None
+        with pytest.raises(RootBusy):
+            await EmbeddedPostgres.start(config)
+    finally:
+        await settle_embedded_server(
+            server,
+            release.set,
+            waiters=(task,) if task is not None else (),
+            expected_cancellation=(task,) if task is not None and task.cancelling() else (),
+            primary=sys.exception(),
+        )
+    assert root is not None
+    assert root.workers.closed
+    assert (config.data_dir / "PG_VERSION").is_file()
+
+
+async def _start_held_root_operation(server, release, entered):
     base = acquisition(server.endpoint)
     actor = Actor(id="fabricated")
     await migrate(base, actor=actor, schema="fabricated")
-    entered, release = asyncio.Event(), asyncio.Event()
     armed = False
 
     @asynccontextmanager
@@ -151,145 +234,178 @@ async def test_close_waits_for_actual_source_release_after_caller_cancel(config)
 
     root = await server.open_root(source, actor=actor, schema="fabricated")
     armed = True
-    task = asyncio.create_task(root.run(actor, None, lambda c: c.execute("SELECT 1"), write=True))
+    operation = asyncio.create_task(
+        root.run(actor, None, lambda connection: connection.execute("SELECT 1"), write=True)
+    )
+    await wait_event_or_task(entered, operation)
+    return root, operation
+
+
+async def test_server_close_task_survives_repeated_waiter_cancellation(config, monkeypatch):
+    release = asyncio.Event()
+    server = await EmbeddedPostgres.start(config)
+    operation = None
+    close_waiter = None
+    close_task = None
+    entered = asyncio.Event()
     try:
-        await asyncio.wait_for(entered.wait(), 3)
-        task.cancel()
+        _root, operation = await _start_held_root_operation(server, release, entered)
+        operation.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await task
-        assert not await server.aclose()
+            await operation
+        server._seal()
+        close_task = server._ensure_close()
+        control = RetainedCancellationControl()
+        control.install(monkeypatch)
+        close_waiter = asyncio.create_task(await_retained(close_task))
+        await cancel_retained_waiter_twice(close_waiter, close_task, control)
         assert process(server).returncode is None
-        with pytest.raises(RootBusy):
-            await EmbeddedPostgres.start(config)
-    finally:
         release.set()
-        await closed(server)
-    assert root.workers.closed
-    assert (config.data_dir / "PG_VERSION").is_file()
+        with pytest.raises(asyncio.CancelledError):
+            await close_waiter
+        assert close_task.done()
+        assert process(server).returncode == 0
+    finally:
+        waiters = tuple(waiter for waiter in (operation, close_waiter) if waiter is not None)
+        cancelled = tuple(waiter for waiter in waiters if waiter.cancelling())
+        await settle_embedded_server(
+            server, release.set, waiters, cancelled, primary=sys.exception()
+        )
 
 
-async def test_failed_root_bootstrap_retains_unreturned_source_acquisition(config):
+async def test_failed_root_bootstrap_retains_unreturned_source_acquisition(
+    config, pending_io_control
+):
     config = config.model_copy(update={"shutdown_seconds": 0.02})
     server = await EmbeddedPostgres.start(config)
-    base = acquisition(server.endpoint)
-    actor = Actor(id="fabricated")
-    await migrate(base, actor=actor, schema="fabricated")
     entered, release = asyncio.Event(), asyncio.Event()
-
-    @asynccontextmanager
-    async def source(caller, sid):
-        entered.set()
-        await release.wait()
-        async with base(caller, sid) as connection:
-            yield connection
-
-    task = asyncio.create_task(
-        server.open_root(
-            source, actor=actor, schema="fabricated", limits=StorageLimits(io_seconds=0.2)
-        )
-    )
+    actual = None
+    task = None
     try:
-        await asyncio.wait_for(entered.wait(), 3)
+        base = acquisition(server.endpoint)
+        actor = Actor(id="fabricated")
+        await migrate(base, actor=actor, schema="fabricated")
+
+        @asynccontextmanager
+        async def source(caller, sid):
+            nonlocal actual
+            actual = asyncio.current_task()
+            entered.set()
+            await release.wait()
+            async with base(caller, sid) as connection:
+                yield connection
+
+        task = asyncio.create_task(
+            server.open_root(
+                source, actor=actor, schema="fabricated", limits=StorageLimits(io_seconds=0.2)
+            )
+        )
+        await wait_event_or_task(entered, task)
+        timer = arm_captured_timeout(pending_io_control, 0.2)
         with pytest.raises(StoreError, match="database_unavailable"):
             await task
+        assert timer.expired()
         assert entered.is_set()
         assert not server._roots
         assert not await server.aclose()
         assert process(server).returncode is None
         assert server._connections == 1
     finally:
-        release.set()
-        await closed(server)
+        await settle_embedded_server(server, release.set, primary=sys.exception())
+    assert actual is not None
+    assert actual.done()
 
 
 async def test_close_retains_actual_worker_and_seals_registered_root_execution(config):
     config = config.model_copy(update={"shutdown_seconds": 0.02})
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
     server = await EmbeddedPostgres.start(config)
-    source = acquisition(server.endpoint)
-    actor = Actor(id="fabricated")
-    await migrate(source, actor=actor, schema="fabricated")
-    root = await server.open_root(source, actor=actor, schema="fabricated")
-    entered, release = Event(), Event()
+    future = None
+    root = None
 
     def work() -> object:
-        entered.set()
-        if not release.wait(5):
-            raise RuntimeError("fabricated_worker_deadline")
+        loop.call_soon_threadsafe(entered.set)
+        release.wait()
         return None
 
-    future = asyncio.get_running_loop().run_in_executor(None, work)
-    root.workers.retain("session", future)
     try:
-        assert await asyncio.to_thread(entered.wait, 3)
+        source = acquisition(server.endpoint)
+        actor = Actor(id="fabricated")
+        await migrate(source, actor=actor, schema="fabricated")
+        root = await server.open_root(source, actor=actor, schema="fabricated")
+        future = asyncio.get_running_loop().run_in_executor(None, work)
+        root.workers.retain("session", future)
+        await wait_event_or_task(entered, future)
         assert not await server.aclose()
         assert root.workers.closed
         assert root.workers.busy("session")
         assert process(server).returncode is None
     finally:
-        release.set()
-        await asyncio.wait_for(asyncio.shield(future), 3)
-        await closed(server)
+        await settle_embedded_server(
+            server,
+            release.set,
+            waiters=(future,) if future is not None else (),
+            primary=sys.exception(),
+        )
+    assert root is not None
 
 
 async def test_caller_acquisition_refusal_never_retries_with_other_authority(config):
-    server = await EmbeddedPostgres.start(config)
-    seen = []
-    base = acquisition(server.endpoint)
+    async with owned_server(config) as server:
+        seen = []
+        base = acquisition(server.endpoint)
 
-    @asynccontextmanager
-    async def refused(actor, sid):
-        seen.append((actor.id, sid))
-        if actor.id != "maintenance":
-            raise ExecutionDenied("fabricated_denied")
-        async with base(actor, sid) as connection:
-            yield connection
+        @asynccontextmanager
+        async def refused(actor, sid):
+            seen.append((actor.id, sid))
+            if actor.id != "maintenance":
+                raise ExecutionDenied("fabricated_denied")
+            async with base(actor, sid) as connection:
+                yield connection
 
-    try:
         with pytest.raises(ExecutionDenied, match="fabricated_denied"):
             await server.open_root(refused, actor=Actor(id="caller"), schema="fabricated")
         assert seen == [("caller", None)]
-    finally:
-        await closed(server)
 
 
 @pytest.mark.parametrize("operation", ["endpoint", "close"])
 async def test_wrong_loop_refuses_before_server_lifetime_changes(config, operation):
-    server = await EmbeddedPostgres.start(config)
+    async with owned_server(config) as server:
 
-    async def invoke():
-        if operation == "endpoint":
-            return server.endpoint
-        return await server.aclose()
+        async def invoke():
+            if operation == "endpoint":
+                return server.endpoint
+            return await server.aclose()
 
-    def foreign():
-        with pytest.raises(RuntimeError, match="wrong_event_loop"):
-            asyncio.run(invoke())
+        def foreign():
+            with pytest.raises(RuntimeError, match="wrong_event_loop"):
+                asyncio.run(invoke())
 
-    try:
         await asyncio.to_thread(foreign)
         assert not server._closing
         assert process(server).returncode is None
-    finally:
-        await closed(server)
 
 
 async def test_shutdown_during_bootstrap_never_publishes_an_open_root(config):
-    server = await EmbeddedPostgres.start(config.model_copy(update={"shutdown_seconds": 0.02}))
-    base = acquisition(server.endpoint)
-    actor = Actor(id="fabricated")
-    await migrate(base, actor=actor, schema="fabricated")
     entered, release = asyncio.Event(), asyncio.Event()
+    server = await EmbeddedPostgres.start(config.model_copy(update={"shutdown_seconds": 0.02}))
+    task = None
 
-    @asynccontextmanager
-    async def source(caller, sid):
-        async with base(caller, sid) as connection:
-            entered.set()
-            await release.wait()
-            yield connection
-
-    task = asyncio.create_task(server.open_root(source, actor=actor, schema="fabricated"))
     try:
-        await asyncio.wait_for(entered.wait(), 3)
+        base = acquisition(server.endpoint)
+        actor = Actor(id="fabricated")
+        await migrate(base, actor=actor, schema="fabricated")
+
+        @asynccontextmanager
+        async def source(caller, sid):
+            async with base(caller, sid) as connection:
+                entered.set()
+                await release.wait()
+                yield connection
+
+        task = asyncio.create_task(server.open_root(source, actor=actor, schema="fabricated"))
+        await wait_event_or_task(entered, task)
         assert not await server.aclose()
         release.set()
         with pytest.raises(StoreError, match="embedded_closed"):
@@ -306,8 +422,7 @@ async def test_shutdown_during_bootstrap_never_publishes_an_open_root(config):
         assert not effects
         assert not workers.active
     finally:
-        release.set()
-        await closed(server)
+        await settle_embedded_server(server, release.set, primary=sys.exception())
 
 
 @pytest.mark.parametrize("missing", [True, False])
@@ -318,19 +433,19 @@ async def test_stopped_server_releases_lock_even_when_runtime_cleanup_fails(
 
     from tether.stores.postgres.embedded import files as files_module
 
-    server = await EmbeddedPostgres.start(config)
-    files = server._files
-    assert files is not None
     original = shutil.rmtree
-    if missing:
-        original(files.runtime)
-    else:
-
-        def refused(path):
-            raise OSError("fabricated_runtime_cleanup_failure")
-
-        monkeypatch.setattr(files_module.shutil, "rmtree", refused)
+    server = await EmbeddedPostgres.start(config)
     try:
+        files = server._files
+        assert files is not None
+        if missing:
+            original(files.runtime)
+        else:
+
+            def refused(path):
+                raise OSError("fabricated_runtime_cleanup_failure")
+
+            monkeypatch.setattr(files_module.shutil, "rmtree", refused)
         if missing:
             assert await server.aclose()
         else:
@@ -341,13 +456,15 @@ async def test_stopped_server_releases_lock_even_when_runtime_cleanup_fails(
         assert process(server).returncode == 0
     finally:
         monkeypatch.setattr(files_module.shutil, "rmtree", original)
-    replacement = await EmbeddedPostgres.start(config)
-    await closed(replacement)
+        if server._close_task is None or not server._close_task.done():
+            await closed(server)
+    async with owned_server(config):
+        pass
 
 
 async def test_replaced_database_directory_is_not_adopted(config, tmp_path):
-    server = await EmbeddedPostgres.start(config)
-    await closed(server)
+    async with owned_server(config):
+        pass
     config.data_dir.rename(tmp_path / "original")
     config.data_dir.mkdir()
     (config.data_dir / "PG_VERSION").write_bytes(b"18\n")
@@ -372,9 +489,10 @@ async def test_cancelled_real_initialization_finishes_before_directory_release(c
         return native
 
     monkeypatch.setattr(Processes, "spawn", spawn)
-    task = asyncio.create_task(EmbeddedPostgres.start(config))
+    task = None
     try:
-        await asyncio.wait_for(entered.wait(), 3)
+        task = asyncio.create_task(EmbeddedPostgres.start(config))
+        await wait_event_or_task(entered, task)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
@@ -386,8 +504,8 @@ async def test_cancelled_real_initialization_finishes_before_directory_release(c
     assert len(natives) == 1
     assert natives[0].returncode == 0
     assert not (config.data_dir / "postmaster.pid").exists()
-    server = await EmbeddedPostgres.start(config)
-    await closed(server)
+    async with owned_server(config):
+        pass
 
 
 async def test_cancelled_readiness_keeps_known_process_until_cleanup(config, monkeypatch):
@@ -402,9 +520,10 @@ async def test_cancelled_readiness_keeps_known_process_until_cleanup(config, mon
         await release.wait()
 
     monkeypatch.setattr(Processes, "start", start)
-    task = asyncio.create_task(EmbeddedPostgres.start(config))
+    task = None
     try:
-        await asyncio.wait_for(entered.wait(), 15)
+        task = asyncio.create_task(EmbeddedPostgres.start(config))
+        await wait_event_or_task(entered, task)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
@@ -418,10 +537,9 @@ async def test_cancelled_readiness_keeps_known_process_until_cleanup(config, mon
 
 
 async def test_root_capacity_and_explicit_migration(config):
-    server = await EmbeddedPostgres.start(config.model_copy(update={"max_roots": 1}))
-    source = acquisition(server.endpoint)
-    actor = Actor(id="fabricated")
-    try:
+    async with owned_server(config.model_copy(update={"max_roots": 1})) as server:
+        source = acquisition(server.endpoint)
+        actor = Actor(id="fabricated")
         with pytest.raises(IntegrityError):
             await server.open_root(source, actor=actor, schema="fabricated")
         await migrate(source, actor=actor, schema="fabricated")
@@ -429,8 +547,6 @@ async def test_root_capacity_and_explicit_migration(config):
         with pytest.raises(StoreError, match="embedded_root_capacity"):
             await server.open_root(source, actor=actor, schema="fabricated")
         assert not root.workers.closed
-    finally:
-        await closed(server)
 
 
 async def test_actual_initdb_failure_releases_ownership_without_adoption(config, monkeypatch):
@@ -445,12 +561,14 @@ async def test_actual_initdb_failure_releases_ownership_without_adoption(config,
         return native
 
     monkeypatch.setattr(Processes, "spawn", spawn)
-    with pytest.raises(StoreError, match="embedded_initialization_failed"):
-        await EmbeddedPostgres.start(config)
-    await no_live(config)
+    try:
+        with pytest.raises(StoreError, match="embedded_initialization_failed"):
+            await EmbeddedPostgres.start(config)
+    finally:
+        await no_live(config)
     assert len(natives) == 1
     assert natives[0].returncode != 0
     assert not (config.data_dir / ".tether-owner").exists()
     monkeypatch.setattr(Processes, "spawn", original)
-    server = await EmbeddedPostgres.start(config)
-    await closed(server)
+    async with owned_server(config):
+        pass

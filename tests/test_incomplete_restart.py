@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx2 as httpx
 import pytest
+from functional_watchdog import MAX_FUNCTIONAL_WATCHDOG_MS
 from test_agent_context_restart import engine, spec
 from test_compatible_adapter import CredentialProbe, adapter, wire_response
 from test_gated_execution import DemoTool, final
@@ -26,7 +27,9 @@ def anyio_backend():
 
 @pytest.fixture
 def restart_limits(limits):
-    return limits.model_copy(update={"request_timeout_seconds": 15})
+    return limits.model_copy(
+        update={"request_timeout_seconds": MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0}
+    )
 
 
 @pytest.mark.parametrize(

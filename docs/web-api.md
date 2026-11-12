@@ -20,14 +20,13 @@ does not create a host, choose a database, or decide how a user authenticates.
 
 ## Install
 
-The API adapter and client facade shown here are `0.3.2`
-workspace artifacts, with an exact internal Python dependency cohort. Published
-core `0.2.0` has an earlier client facade and is refused by this candidate API.
-In this checkout, `uv sync --frozen` uses the local packages. The registry command
-below applies after compatible releases contain these interfaces.
+Install the published `0.3.2` API adapter and core together. The adapter pins
+the exact core version. Core `0.2.0` exposes an earlier client facade.
+In this checkout, `uv sync --frozen` uses the local packages. See the
+[0.3.2 publication receipt](helix/03-test/evidence/release-032-publication-20261108.md).
 
 ```sh
-uv add novirhiza-tether novirhiza-tether-web-api
+uv add 'novirhiza-tether==0.3.2' 'novirhiza-tether-web-api==0.3.2'
 ```
 
 The API package currently pins FastAPI 0.162.0 and requires Python 3.11 or later.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import pytest
 from selected_profiles_process import await_retained
@@ -12,9 +13,29 @@ from tether.client import ModelResponse, TextDelta
 from tether.client.testing import scripted_model
 from tether.engine.persistence import settled
 from tether.stores.jsonl.root import JsonlRoot
+from tether.types import lifetime
 from tether.types.execution import CommitUnknown
 
 pytestmark = pytest.mark.anyio
+
+
+class _PersistenceShieldObserver:
+    def __init__(self) -> None:
+        self._asyncio = asyncio
+        self.acknowledged = (asyncio.Event(), asyncio.Event())
+        self.seen = 0
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._asyncio, name)
+
+    async def shield(self, future: asyncio.Future[Any]) -> Any:
+        try:
+            return await self._asyncio.shield(future)
+        except asyncio.CancelledError:
+            self.seen += 1
+            if self.seen <= len(self.acknowledged):
+                asyncio.get_running_loop().call_soon(self.acknowledged[self.seen - 1].set)
+            raise
 
 
 @pytest.fixture
@@ -172,8 +193,12 @@ async def assert_healthy(client, session_id, turn_id):
     assert (await client.create()).id != session_id
 
 
-async def test_repeated_cancellation_cannot_release_unsettled_persistence():
+async def test_repeated_cancellation_cannot_release_unsettled_persistence(
+    monkeypatch: pytest.MonkeyPatch,
+):
     entered, release = asyncio.Event(), asyncio.Event()
+    observer = _PersistenceShieldObserver()
+    monkeypatch.setattr(lifetime, "asyncio", observer)
 
     async def write():
         entered.set()
@@ -184,9 +209,9 @@ async def test_repeated_cancellation_cannot_release_unsettled_persistence():
     try:
         await event_or_operation_terminal(entered, task)
         task.cancel()
-        await asyncio.sleep(0)
+        await event_or_operation_terminal(observer.acknowledged[0], task)
         task.cancel()
-        await asyncio.sleep(0)
+        await event_or_operation_terminal(observer.acknowledged[1], task)
         assert not task.done()
         release.set()
         with pytest.raises(asyncio.CancelledError):

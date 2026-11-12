@@ -13,6 +13,7 @@ from threading import Event
 from typing import Any
 
 import pytest
+from selected_profiles_process import await_retained
 
 from tether.engine.workers import Workers
 from tether.stores.jsonl import JsonlRoot
@@ -43,6 +44,69 @@ async def _await_state_or_terminal(entry: asyncio.Event, *operations: asyncio.Fu
         if operation in done:
             await operation
     raise AssertionError("operation ended before worker entry")
+
+
+async def _release_abandoned_worker(
+    owner_ref: weakref.ReferenceType[Workers],
+    waiters: list[weakref.ReferenceType[asyncio.Future[Any]]],
+    idle: asyncio.Event,
+    release: asyncio.Event,
+) -> None:
+    release.set()
+    pending = waiters[-1]()
+    assert pending is not None
+    pending.set_result(None)
+    owner = owner_ref()
+    assert owner is not None
+    completion = next(iter(owner.active))
+    await completion
+    await idle.wait()
+    assert not owner.active
+    del pending, completion, owner
+
+
+async def _settle_retained_tasks(*tasks: asyncio.Future[Any]) -> None:
+    async def settle() -> None:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    await await_retained(asyncio.create_task(settle()))
+
+
+async def _cleanup_abandoned_worker(
+    owner_ref: weakref.ReferenceType[Workers],
+    caller_ref: weakref.ReferenceType[asyncio.Task[Any]],
+    waiters: list[weakref.ReferenceType[asyncio.Future[Any]]],
+    release: asyncio.Event,
+) -> None:
+    release.set()
+    for waiter_ref in waiters:
+        waiter = waiter_ref()
+        if waiter is not None and not waiter.done():
+            waiter.set_result(None)
+    owner, caller = owner_ref(), caller_ref()
+    owned: list[asyncio.Future[Any]] = []
+    if caller is not None:
+        owned.append(caller)
+    if owner is not None:
+        owned.extend(owner.active)
+    if owned:
+        await _settle_retained_tasks(*owned)
+
+
+async def _cancel_worker_until_reentry(
+    caller: asyncio.Task[Any],
+    workers: Workers,
+    entered: asyncio.Event,
+    waiting_again: asyncio.Event,
+) -> asyncio.Future[Any]:
+    await _await_state_or_terminal(entered, caller)
+    caller.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await caller
+    completion = next(iter(workers.active))
+    await _await_state_or_terminal(waiting_again, completion)
+    assert not await workers.close(0.001)
+    return completion
 
 
 async def test_state_barrier_surfaces_failed_handoff_while_child_stays_owned():
@@ -229,39 +293,41 @@ async def test_foreign_loop_future_refuses_before_lifetime_mutation_or_await():
 
 async def test_actual_async_child_retained_after_dropping_all_caller_owners():
     workers = Workers(1)
-    entered, cancelled = asyncio.Event(), asyncio.Event()
+    entered, cancelled, waiting_again, idle = (
+        asyncio.Event(),
+        asyncio.Event(),
+        asyncio.Event(),
+        asyncio.Event(),
+    )
+    workers.local_scope.on_idle = idle.set
     waiters = []
-    released = False
+    release = asyncio.Event()
 
     async def child():
         entered.set()
-        while not released:
+        while not release.is_set():
             private = asyncio.get_running_loop().create_future()
             waiters.append(weakref.ref(private))
+            if cancelled.is_set():
+                waiting_again.set()
             try:
                 await private
             except asyncio.CancelledError:
                 cancelled.set()
 
     caller = asyncio.create_task(workers.call("session", child))
-    await _await_state_or_terminal(entered, caller)
-    caller.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await caller
-    await _await_state_or_terminal(cancelled, next(iter(workers.active)))
-    assert not await workers.close(0.001)
     owner = weakref.ref(workers)
-    del caller, workers
-    for _ in range(10):
-        await asyncio.sleep(0)
-    gc.collect()
-    assert owner() is not None
-    released = True
-    waiters[-1]().set_result(None)
-    for _ in range(10):
-        await asyncio.sleep(0)
-    gc.collect()
-    assert owner() is None
+    caller_owner = weakref.ref(caller)
+    try:
+        completion = await _cancel_worker_until_reentry(caller, workers, entered, waiting_again)
+        del caller, workers, completion
+        gc.collect()
+        assert owner() is not None
+        await _release_abandoned_worker(owner, waiters, idle, release)
+        gc.collect()
+        assert owner() is None
+    finally:
+        await _cleanup_abandoned_worker(owner, caller_owner, waiters, release)
 
 
 async def test_queued_cancellation_never_enters_function(monkeypatch):

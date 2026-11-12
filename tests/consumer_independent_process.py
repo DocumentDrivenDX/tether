@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import sys
 from contextlib import asynccontextmanager
 from typing import Literal
 
+from process_lifetime_controls import unarmed_timeouts
 from psycopg import AsyncConnection, sql
 from test_consumer_settlement import StagedTool, Withhold
 
@@ -27,13 +29,26 @@ class IndependentSQL:
     id = "fabricated"
     profile: Literal["independent", "shared"] = "independent"
 
-    def __init__(self, root: DatabaseRoot, *, pause: str | None = None):
+    def __init__(
+        self,
+        root: DatabaseRoot,
+        *,
+        pause: str | None = None,
+        timeout_values: list[float | None] | None = None,
+    ):
         self.root, self.pause = root, pause
+        self.timeout_values = timeout_values
+
+    def _assert_hook_timeout(self) -> None:
+        if self.timeout_values is not None:
+            assert self.timeout_values
+            assert self.timeout_values[-1] == 5
 
     async def settle(self, binding: SettlementBinding, actor: Actor) -> SettlementOutcome:
         if actor.id != binding.actor_id or binding.owner != actor.id:
             raise ExecutionDenied("settlement_scope")
         if self.pause == "decision":
+            self._assert_hook_timeout()
             print(json.dumps(binding.model_dump(mode="json")), flush=True)
             await asyncio.Event().wait()
 
@@ -53,6 +68,7 @@ class IndependentSQL:
 
         await self.root.run(actor, binding.session_id, write, write=True)
         if self.pause == "effect":
+            self._assert_hook_timeout()
             print(json.dumps(binding.model_dump(mode="json")), flush=True)
             await asyncio.Event().wait()
         return "committed" if binding.decision == "commit" else "rolled_back"
@@ -74,34 +90,38 @@ async def main():
     root = await DatabaseRoot.open(source, actor=actor, schema=config["schema"])
     provider = PostgresHistory(root)
     tool = StagedTool()
-    engine = Engine(
-        model=ScriptedModel([]),
-        history=MessageHistoryAdapter(provider),
-        history_provider=provider,
-        tools=(tool,),
-        settlements=(IndependentSQL(root, pause=config["mode"]),),
-        guards=(Withhold(),) if config["decision"] == "rollback" else (),
-        **fabricated_context(),
-    )
-    spec = AgentSpec(
-        id="fixture",
-        version="1",
-        title="Fixture",
-        instructions="",
-        model="fixture",
-        tools=(tool.name,),
-    )
-    async with (
-        PostgresSessionStore(root)
-        .for_actor(actor)
-        .turn(config["session"], actor.id, turn_id="killed-operation") as log
-    ):
-        await engine.commands.invoke(
-            actor,
-            log,
-            InvokeTool(request_id="write", tool_name="write", arguments={"count": 1}),
-            spec=spec,
+    settlement_module = importlib.import_module("tether.engine.settlement")
+    with unarmed_timeouts(settlement_module) as timeout_values:
+        engine = Engine(
+            model=ScriptedModel([]),
+            history=MessageHistoryAdapter(provider),
+            history_provider=provider,
+            tools=(tool,),
+            settlements=(
+                IndependentSQL(root, pause=config["mode"], timeout_values=timeout_values),
+            ),
+            guards=(Withhold(),) if config["decision"] == "rollback" else (),
+            **fabricated_context(),
         )
+        spec = AgentSpec(
+            id="fixture",
+            version="1",
+            title="Fixture",
+            instructions="",
+            model="fixture",
+            tools=(tool.name,),
+        )
+        async with (
+            PostgresSessionStore(root)
+            .for_actor(actor)
+            .turn(config["session"], actor.id, turn_id="killed-operation") as log
+        ):
+            await engine.commands.invoke(
+                actor,
+                log,
+                InvokeTool(request_id="write", tool_name="write", arguments={"count": 1}),
+                spec=spec,
+            )
 
 
 if __name__ == "__main__":

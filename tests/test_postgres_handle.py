@@ -1,12 +1,22 @@
 """A known prefix cannot grant dispatch after uncertainty, expiry or concurrent close."""
 
 import asyncio
+import sys
 from threading import Event
+from typing import Any
 from uuid import uuid4
 
 import pytest
+from postgres_pending_io_controls import (
+    PendingIOControl,
+    close_root_and_drain,
+    gate_admitted_operation,
+    retain_cleanup,
+    wait_event_or_task,
+)
 from postgres_support import database as database
 from postgres_support import postgres_server as postgres_server
+from resource_lifetime_controls import cancel_and_expect_cancellation
 from test_postgres_leases import expire
 from test_postgres_read_integrity import snapshot
 
@@ -32,6 +42,92 @@ async def handle(h, root=None):
     token, _ = await capture.acquire(summary.id, turn_id="job")
     index, prefix = await capture.load(token)
     return TurnHandle(capture, token, index, prefix), token
+
+
+async def hold_staged_append(h, root, loop, entered, release, monkeypatch, owners: dict[str, Any]):
+    capture = Capture(root, h.actor)
+    summary = await capture.create(SessionInit(), str(uuid4()))
+    owners["capture"] = capture
+    token, _ = await capture.acquire(summary.id, turn_id="job")
+    owners["token"] = token
+    index, prefix = await capture.load(token)
+    log = TurnHandle(capture, token, index, prefix)
+    owners["log"] = log
+    await log.append(
+        [NewEntry(kind="message", key=f"prefix:{i}", turn_id="prefix") for i in range(100)]
+    )
+    prefix = log.entries
+    original = log._stage
+    retain = root.workers.retain
+
+    def retain_worker(session_id, worker):
+        owners["actual"] = worker
+        return retain(session_id, worker)
+
+    monkeypatch.setattr(root.workers, "retain", retain_worker)
+
+    def block(result):
+        loop.call_soon_threadsafe(entered.set)
+        release.wait()
+        return original(result)
+
+    monkeypatch.setattr(log, "_stage", block)
+    task = asyncio.create_task(log.append([NewEntry(kind="message", key="accepted")]))
+    owners["task"] = task
+    owners["prefix"] = prefix
+    await wait_event_or_task(entered, task)
+
+
+async def _settle_staged_owners(owners):
+    errors = []
+    task = owners.get("task")
+    actual = owners.get("actual")
+    if task is not None and not task.done():
+        task.cancel()
+    settled = await asyncio.gather(
+        *(owner for owner in (task, actual) if owner is not None), return_exceptions=True
+    )
+    errors.extend(
+        result
+        for result in settled
+        if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError)
+    )
+    return errors
+
+
+async def _close_staged_log(owners, log_closed):
+    errors = []
+    log = owners.get("log")
+    if not log_closed:
+        try:
+            if log is not None:
+                await log.aclose()
+            elif "token" in owners:
+                await owners["capture"].release(owners["token"])
+        except BaseException as error:
+            errors.append(error)
+            if log is not None:
+                try:
+                    await owners["capture"].release(owners["token"])
+                except BaseException as release_error:
+                    errors.append(release_error)
+    return errors
+
+
+async def drain_staged_root(root, release, owners, log_closed):
+    release.set()
+    errors = await _settle_staged_owners(owners)
+    errors.extend(await _close_staged_log(owners, log_closed))
+    try:
+        await root.aclose()
+    except BaseException as error:
+        errors.append(error)
+    try:
+        await root.wait_closed()
+    except BaseException as error:
+        errors.append(error)
+    if errors:
+        raise BaseExceptionGroup("staged_root_cleanup_failed", errors)
 
 
 async def test_prefix_copies_retries_and_known_rejections_remain_usable(database):
@@ -116,63 +212,116 @@ async def test_cancelled_staging_retains_actual_worker_and_cannot_publish(databa
     root = await DatabaseRoot.open(
         h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(shutdown_seconds=0.02)
     )
-    log, token = await handle(h, root)
-    await log.append(
-        [NewEntry(kind="message", key=f"prefix:{i}", turn_id="prefix") for i in range(100)]
-    )
-    original_prefix = log.entries
-    entered, release = Event(), Event()
-    original = log._stage
-
-    def block(result):
-        entered.set()
-        if not release.wait(5):
-            raise RuntimeError("fabricated_staging_deadline")
-        return original(result)
-
-    monkeypatch.setattr(log, "_stage", block)
-    task = asyncio.create_task(log.append([NewEntry(kind="message", key="accepted")]))
+    owners = {}
+    log_closed = False
+    entered, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
     try:
-        assert await asyncio.to_thread(entered.wait, 3)
+        await hold_staged_append(h, root, loop, entered, release, monkeypatch, owners)
+        log, token = owners["log"], owners["token"]
+        task, actual = owners["task"], owners["actual"]
+        original_prefix = owners["prefix"]
+        assert not actual.done()
         await log.heartbeat()
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        await cancel_and_expect_cancellation(task)
         assert log.entries == original_prefix
         assert root.workers.busy(token.session_id)
         await log.aclose()
+        log_closed = True
         assert not await root.aclose()
         with pytest.raises(WorkerOutstanding):
             await Capture(h.root, h.actor).acquire(token.session_id, turn_id="replacement")
-    finally:
         release.set()
-        await asyncio.wait_for(asyncio.gather(*tuple(root._io.active)), 3)
-        assert await root.aclose()
+        await asyncio.shield(actual)
+    finally:
+        await retain_cleanup(
+            drain_staged_root(root, release, owners, log_closed),
+            primary=sys.exception(),
+        )
+    log, token = owners["log"], owners["token"]
     assert log.entries == original_prefix
     replacement, _ = await Capture(h.root, h.actor).acquire(token.session_id, turn_id="replacement")
     await Capture(h.root, h.actor).release(replacement)
 
 
+async def test_staging_owner_is_published_before_entry_wait_can_be_cancelled(database, monkeypatch):
+    root = await DatabaseRoot.open(
+        database.source,
+        actor=database.actor,
+        schema=database.schema,
+        limits=StorageLimits(shutdown_seconds=0.02),
+    )
+    owners = {}
+    entered, release, entry_observed = asyncio.Event(), Event(), asyncio.Event()
+    loop = asyncio.get_running_loop()
+    helper_task = None
+    original_wait = wait_event_or_task
+
+    async def pause_after_entry(event, task):
+        await original_wait(event, task)
+        entry_observed.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(sys.modules[__name__], "wait_event_or_task", pause_after_entry)
+    try:
+        helper_task = asyncio.create_task(
+            hold_staged_append(database, root, loop, entered, release, monkeypatch, owners)
+        )
+        await original_wait(entry_observed, helper_task)
+        assert {"capture", "token", "log", "task", "actual", "prefix"} <= owners.keys()
+        assert not owners["task"].done()
+        assert not owners["actual"].done()
+        await cancel_and_expect_cancellation(helper_task)
+    finally:
+
+        async def teardown():
+            release.set()
+            if helper_task is not None and not helper_task.done():
+                helper_task.cancel()
+            await asyncio.gather(
+                *((helper_task,) if helper_task is not None else ()),
+                return_exceptions=True,
+            )
+            await drain_staged_root(root, release, owners, False)
+
+        await retain_cleanup(teardown(), primary=sys.exception())
+
+
 async def test_concurrent_close_stops_append_permission_after_known_commit(database, monkeypatch):
     log, token = await handle(database)
     entered, release = asyncio.Event(), asyncio.Event()
-    original = log._store.commit
+    task = None
+    log_closed = False
+    try:
+        original = log._store.commit
 
-    async def block(*args, **kwargs):
-        result = await original(*args, **kwargs)
-        entered.set()
-        await release.wait()
-        return result
+        async def block(*args, **kwargs):
+            result = await original(*args, **kwargs)
+            entered.set()
+            await release.wait()
+            return result
 
-    monkeypatch.setattr(log._store, "commit", block)
-    task = asyncio.create_task(log.append([NewEntry(kind="message", key="accepted")]))
-    await asyncio.wait_for(entered.wait(), 3)
-    await log.aclose()
-    release.set()
-    with pytest.raises(LeaseLost):
-        await task
-    assert log.entries == ()
-    assert (await Changes(database.root, database.actor).get(token.session_id)) is not None
+        monkeypatch.setattr(log._store, "commit", block)
+        task = asyncio.create_task(log.append([NewEntry(kind="message", key="accepted")]))
+        await wait_event_or_task(entered, task)
+        await log.aclose()
+        log_closed = True
+        release.set()
+        with pytest.raises(LeaseLost):
+            await task
+        assert log.entries == ()
+        assert (await Changes(database.root, database.actor).get(token.session_id)) is not None
+    finally:
+
+        async def teardown():
+            release.set()
+            if task is not None and not task.done():
+                task.cancel()
+            await asyncio.gather(*((task,) if task is not None else ()), return_exceptions=True)
+            if not log_closed:
+                await log.aclose()
+
+        await retain_cleanup(teardown(), primary=sys.exception())
 
 
 @pytest.mark.parametrize("bound", ["bytes", "count"])
@@ -276,19 +425,47 @@ async def test_root_close_seals_its_execution_scope_without_sealing_sibling(data
     assert await workers.close(1)
 
 
-async def test_admitted_preparation_is_not_submitted_after_root_gate_closes(database):
+async def test_admitted_preparation_is_not_submitted_after_root_gate_closes(database, monkeypatch):
     h = database
     root = await DatabaseRoot.open(h.source, actor=h.actor, schema=h.schema)
     observed = []
-    task = asyncio.create_task(root.prepare("session", lambda: observed.append("executed")))
-    await asyncio.sleep(0)
-    assert len(root._io.active) == 1
-    assert observed == []
-    assert await root.aclose()
-    with pytest.raises(StoreError, match="database_root_closed"):
-        await task
-    assert observed == []
-    assert not root.workers.active
+    admitted, release, close_entry = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    task = None
+    closing = None
+    try:
+        control = PendingIOControl()
+        control.install(monkeypatch)
+        control.observe_wait(close_entry)
+        gate_admitted_operation(root, monkeypatch, admitted, release)
+        task = asyncio.create_task(root.prepare("session", lambda: observed.append("executed")))
+        await wait_event_or_task(admitted, task)
+        assert len(root._io.active) == 1
+        assert observed == []
+        closing = asyncio.create_task(root.aclose())
+        await wait_event_or_task(close_entry, closing)
+        assert root._io.closed
+        assert root.workers.closed
+        assert not task.done()
+        release.set()
+        assert await closing
+        with pytest.raises(StoreError, match="database_root_closed"):
+            await task
+        assert observed == []
+        assert not root.workers.active
+    finally:
+
+        async def teardown():
+            release.set()
+            for owner in (task, closing):
+                if owner is not None and not owner.done():
+                    owner.cancel()
+            if task is not None:
+                await asyncio.gather(task, return_exceptions=True)
+            if closing is not None:
+                await asyncio.gather(closing, return_exceptions=True)
+            await close_root_and_drain(root)
+
+        await retain_cleanup(teardown(), primary=sys.exception())
 
 
 async def test_final_heartbeat_failure_after_commit_is_unknown_and_seals_handle(

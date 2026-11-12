@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+import qualify_live_apps_process as live_process
+import selected_profiles_process
+from context_lifetime_controls import wait_event_or_task
+from process_lifetime_controls import ShieldCancellationObserver
 from qualify_live_apps import main
 from qualify_live_apps_incomplete import LiveQualificationIncomplete
 from qualify_live_apps_lifecycle import AppLogMonitor
@@ -102,6 +106,8 @@ def test_owned_cli_cleanup_survives_repeated_cancellation(monkeypatch: pytest.Mo
             return self.returncode or 0
 
     process = Process()
+    observer = ShieldCancellationObserver(1)
+    observer.install(selected_profiles_process, monkeypatch)
 
     async def create_subprocess_exec(*_args: object, **_kwargs: object) -> Process:
         return process
@@ -119,14 +125,20 @@ def test_owned_cli_cleanup_survives_repeated_cancellation(monkeypatch: pytest.Mo
                 incomplete_reason="live_admin_command_not_completed",
             )
         )
-        await process.started.wait()
-        task.cancel()
-        await asyncio.sleep(0)
-        task.cancel()
-        assert not task.done()
-        process.release.set()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        observer.target = task
+        try:
+            await wait_event_or_task(process.started, task)
+            task.cancel()
+            await wait_event_or_task(observer.entered, task)
+            task.cancel()
+            await wait_event_or_task(observer.acknowledged[0], task)
+            assert not task.done()
+            process.release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            process.release.set()
+            await asyncio.gather(task, return_exceptions=True)
 
     asyncio.run(run())
     assert process.killed
@@ -160,6 +172,8 @@ def test_owned_spawn_is_killed_and_reaped_after_repeated_cancellation(
     process: Process | None = None
     spawn_entered = asyncio.Event()
     release_spawn = asyncio.Event()
+    outer_observer = ShieldCancellationObserver(2)
+    outer_observer.install(live_process, monkeypatch)
 
     async def create_subprocess_exec(*_args: object, **_kwargs: object) -> Process:
         spawn_entered.set()
@@ -175,13 +189,19 @@ def test_owned_spawn_is_killed_and_reaped_after_repeated_cancellation(
         task = asyncio.create_task(
             spawn_owned_process("/fake/databricks", "apps", "logs", environment={"PATH": "/bin"})
         )
-        await spawn_entered.wait()
-        task.cancel()
-        await asyncio.sleep(0)
-        task.cancel()
-        release_spawn.set()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        outer_observer.target = task
+        try:
+            await wait_event_or_task(spawn_entered, task)
+            task.cancel()
+            await wait_event_or_task(outer_observer.acknowledged[0], task)
+            task.cancel()
+            await wait_event_or_task(outer_observer.acknowledged[1], task)
+            release_spawn.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            release_spawn.set()
+            await asyncio.gather(task, return_exceptions=True)
 
     asyncio.run(run())
     assert process is not None

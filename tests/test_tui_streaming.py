@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from selected_profiles_process import await_retained
 from test_client_reads import harness as harness
 from textual.widgets import Input, ListView, RichLog, Static
 from tui_event_waits import (
@@ -222,7 +223,7 @@ async def test_inflight_session_refresh_finishes_after_list_widget_is_unmounted(
 ):
     app = DemoApp(tmp_path, volatile=True)
     entered, release = asyncio.Event(), asyncio.Event()
-    async with asyncio.timeout(20), app.run_test():
+    async with app.run_test():
         await app._stop_follower()
         assert app.client is not None
         original = app.client.list
@@ -234,13 +235,34 @@ async def test_inflight_session_refresh_finishes_after_list_widget_is_unmounted(
             return page
 
         monkeypatch.setattr(app.client, "list", delayed_list)
-        refresh = asyncio.create_task(app._refresh_sessions())
+        refresh = None
+        primary = None
         try:
-            await asyncio.wait_for(entered.wait(), 5)
+            refresh_coro = app._refresh_sessions()
+            try:
+                refresh = asyncio.create_task(refresh_coro)
+            except BaseException:
+                refresh_coro.close()
+                raise
+            await wait_for_event_or_operation(entered, refresh)
             await app.query_one("#sessions", ListView).remove()
+        except BaseException as error:
+            primary = error
+            raise
         finally:
             release.set()
-            await refresh
+            if refresh is not None:
+                try:
+                    await await_retained(refresh)
+                except BaseException as cleanup_error:
+                    if primary is not None and cleanup_error is primary:
+                        pass
+                    elif primary is not None:
+                        raise BaseExceptionGroup(
+                            "refresh_test_and_cleanup_failed", [primary, cleanup_error]
+                        ) from primary
+                    else:
+                        raise
         assert app.sessions
 
 

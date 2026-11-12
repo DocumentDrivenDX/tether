@@ -53,6 +53,36 @@ async def close_delivery_retained(delivery: AuditDelivery) -> None:
     await await_retained(asyncio.create_task(close_delivery(delivery)))
 
 
+async def submit_and_wait_admission(delivery: AuditDelivery, record: AuditRecord) -> None:
+    admitted = asyncio.create_task(delivery._changed.wait())
+    try:
+        assert delivery.submit(record)
+        await admitted
+    finally:
+        await await_retained(asyncio.create_task(settle_waiter(admitted)))
+
+
+async def release_abandoned_delivery(
+    delivery: AuditDelivery,
+    waiters: list[weakref.ReferenceType[asyncio.Future[None]]],
+) -> None:
+    pending = waiters[-1]()
+    assert pending is not None
+    pending.set_result(None)
+    await delivery.wait_closed()
+
+
+async def wait_for_active_delivery(
+    delivery: AuditDelivery, entered: asyncio.Event
+) -> tuple[asyncio.Task[None], asyncio.Task[None]]:
+    runner = delivery._runner
+    assert runner is not None
+    await wait_event_or_owner(entered, runner)
+    active = delivery._active
+    assert active is not None
+    return runner, active
+
+
 async def settle_closing_and_delivery(
     delivery: AuditDelivery, closing: asyncio.Task[bool] | None
 ) -> None:
@@ -154,8 +184,7 @@ def test_timeout_keeps_one_physical_delivery_until_actual_exit():
         )
         delivery.bind()
         try:
-            assert delivery.submit(packet(0))
-            await asyncio.sleep(0)  # Let the posted admission callback create its runner.
+            await submit_and_wait_admission(delivery, packet(0))
             assert delivery._runner is not None
             await wait_event_or_owner(entered, delivery._runner)
             assert delivery.submit(packet(1))
@@ -238,6 +267,8 @@ def test_packet_size_and_invalid_envelopes_do_not_throw():
 def test_caller_cancellation_seals_and_retains_actual_emission():
     async def scenario():
         entered, release = asyncio.Event(), asyncio.Event()
+        closing_entered = asyncio.Event()
+        caught_cancel: list[bool] = []
 
         class Sink:
             async def emit(self, **kwargs):
@@ -248,17 +279,28 @@ def test_caller_cancellation_seals_and_retains_actual_emission():
 
         delivery = AuditDelivery(Sink(), TelemetryLimits())
         delivery.bind()
+        original_wait_closed = delivery.wait_closed
+
+        async def observe_wait_closed():
+            closing_entered.set()
+            try:
+                await original_wait_closed()
+            except asyncio.CancelledError:
+                caught_cancel.append(True)
+                raise
+
+        delivery.wait_closed = observe_wait_closed
         closing: asyncio.Task[bool] | None = None
         try:
-            assert delivery.submit(packet())
-            await asyncio.sleep(0)
+            await submit_and_wait_admission(delivery, packet())
             assert delivery._runner is not None
             await wait_event_or_owner(entered, delivery._runner)
             closing = asyncio.create_task(delivery.aclose())
-            await asyncio.sleep(0)
+            await wait_event_or_owner(closing_entered, closing)
             closing.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await closing
+            assert caught_cancel == [True]
             assert delivery.stats.sealed
             assert delivery.stats.active
         finally:
@@ -285,20 +327,27 @@ def test_wrong_loop_and_wait_before_seal_refuse():
 
 def test_loop_retains_abandoned_delivery_until_actual_exit():
     async def scenario():
-        entered, surviving = asyncio.Event(), asyncio.Event()
+        entered = asyncio.Event()
+        first_reentered, second_reentered = asyncio.Event(), asyncio.Event()
         waiters = []
         released = False
+        cancellations = 0
 
         class Sink:
             async def emit(self, **kwargs):
+                nonlocal cancellations
                 entered.set()
                 while not released:
                     private = asyncio.get_running_loop().create_future()
                     waiters.append(weakref.ref(private))
+                    if cancellations == 1:
+                        first_reentered.set()
+                    elif cancellations == 2:
+                        second_reentered.set()
                     try:
                         await private
                     except asyncio.CancelledError:
-                        surviving.set()
+                        cancellations += 1
 
         delivery = AuditDelivery(
             Sink(), TelemetryLimits(delivery_timeout_seconds=0.001, shutdown_timeout_seconds=0.01)
@@ -306,21 +355,20 @@ def test_loop_retains_abandoned_delivery_until_actual_exit():
         delivery.bind()
         owner = weakref.ref(delivery)
         try:
-            assert delivery.submit(packet())
-            await asyncio.sleep(0)
-            assert delivery._runner is not None
-            await wait_event_or_owner(entered, delivery._runner)
+            await submit_and_wait_admission(delivery, packet())
+            runner, active = await wait_for_active_delivery(delivery, entered)
+            await wait_event_or_owner(first_reentered, active)
             assert not await delivery.aclose()
-            await surviving.wait()
-            for _ in range(10):
-                await asyncio.sleep(0)
+            await wait_event_or_owner(second_reentered, active)
+            del runner, active
             del delivery
             gc.collect()
             assert owner() is not None
             released = True
-            waiters[-1]().set_result(None)
-            for _ in range(10):
-                await asyncio.sleep(0)
+            retained_delivery = owner()
+            assert retained_delivery is not None
+            await release_abandoned_delivery(retained_delivery, waiters)
+            del retained_delivery
             gc.collect()
             assert owner() is None
         finally:

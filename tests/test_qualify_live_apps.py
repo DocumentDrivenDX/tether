@@ -236,47 +236,107 @@ def test_shutdown_observation_is_incomplete_when_follower_eof_precedes_report() 
     asyncio.run(run())
 
 
-def test_monitor_close_keeps_process_and_reader_cleanup_through_cancellation() -> None:
-    class Process:
-        def __init__(self) -> None:
-            self.stdout = asyncio.StreamReader()
-            self.returncode: int | None = None
-            self.terminated = asyncio.Event()
-            self.released = asyncio.Event()
-            self.killed = False
+class _HeldLogProcess:
+    def __init__(self) -> None:
+        self.stdout = asyncio.StreamReader()
+        self.returncode: int | None = None
+        self.terminated = asyncio.Event()
+        self.killed = asyncio.Event()
+        self.released = asyncio.Event()
+        self.wait_calls = 0
 
-        def terminate(self) -> None:
-            self.terminated.set()
+    def terminate(self) -> None:
+        self.terminated.set()
 
-        def kill(self) -> None:
-            self.killed = True
-            self.returncode = -9
-            self.stdout.feed_eof()
-            self.released.set()
+    def kill(self) -> None:
+        self.killed.set()
+        self.returncode = -9
+        self.stdout.feed_eof()
 
-        async def wait(self) -> int:
-            await self.released.wait()
-            return self.returncode or 0
+    async def wait(self) -> int:
+        self.wait_calls += 1
+        await self.released.wait()
+        return self.returncode or 0
 
-    async def run() -> tuple[bool, bool, bool]:
-        process = Process()
-        monitor = AppLogMonitor(
-            process=cast(asyncio.subprocess.Process, process),
-            invocation_id="current-call",
-            worker_started=asyncio.Event(),
-            report=asyncio.get_running_loop().create_future(),
-        )
-        monitor.reader = asyncio.create_task(_read_app_logs(monitor))
-        closing = asyncio.create_task(monitor.aclose())
-        await process.terminated.wait()
+
+def _monitor_for_test(process: _HeldLogProcess) -> AppLogMonitor:
+    monitor = AppLogMonitor(
+        process=cast(asyncio.subprocess.Process, process),
+        invocation_id="current-call",
+        worker_started=asyncio.Event(),
+        report=asyncio.get_running_loop().create_future(),
+    )
+    monitor.reader = asyncio.create_task(_read_app_logs(monitor))
+    return monitor
+
+
+def _track_monitor_close(
+    monitor: AppLogMonitor,
+    owners: list[asyncio.Task[None]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_close = monitor._aclose
+
+    async def capture_close() -> None:
+        owner = asyncio.current_task()
+        assert owner is not None
+        owners.append(owner)
+        await original_close()
+
+    monkeypatch.setattr(monitor, "_aclose", capture_close)
+
+
+async def _monitor_close_control(monkeypatch: pytest.MonkeyPatch) -> tuple[bool, bool, bool, int]:
+    import qualify_live_apps_lifecycle as lifecycle
+    import selected_profiles_process
+    from context_lifetime_controls import wait_event_or_task
+    from process_lifetime_controls import ShieldCancellationObserver
+    from selected_profiles_process import await_retained
+
+    observer = ShieldCancellationObserver(2)
+    observer.install(lifecycle, monkeypatch)
+    observer.install(selected_profiles_process, monkeypatch)
+    process = _HeldLogProcess()
+    monitor = _monitor_for_test(process)
+    close_owners: list[asyncio.Task[None]] = []
+    _track_monitor_close(monitor, close_owners, monkeypatch)
+    closing = asyncio.create_task(monitor.aclose())
+    observer.target = closing
+    try:
+        await wait_event_or_task(process.terminated, closing)
         closing.cancel()
-        await asyncio.sleep(0)
+        await wait_event_or_task(observer.acknowledged[0], closing)
+        await wait_event_or_task(process.killed, closing)
+        assert len(close_owners) == 1
+        assert not close_owners[0].done()
         closing.cancel()
+        await wait_event_or_task(observer.acknowledged[1], closing)
+        assert not closing.done()
+        process.released.set()
         with pytest.raises(asyncio.CancelledError):
             await closing
-        return process.killed, process.returncode == -9, monitor.reader.done()
+        await await_retained(close_owners[0])
+        assert monitor.reader is not None
+        return (
+            process.killed.is_set(),
+            process.returncode == -9,
+            monitor.reader.done(),
+            (process.wait_calls),
+        )
+    finally:
+        process.released.set()
+        if not closing.done():
+            closing.cancel()
+        await asyncio.gather(closing, return_exceptions=True)
+        for owner in close_owners:
+            if not owner.done():
+                await await_retained(owner)
 
-    assert asyncio.run(run()) == (True, True, True)
+
+def test_monitor_close_keeps_process_and_reader_cleanup_through_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert asyncio.run(_monitor_close_control(monkeypatch)) == (True, True, True, 2)
 
 
 def test_restart_failure_after_stop_restores_app(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -328,21 +388,160 @@ def test_restart_failure_after_stop_restores_app(monkeypatch: pytest.MonkeyPatch
         pytest.fail("failed_restart_did_not_restore_app")
 
 
-def test_browser_failure_cleanup_stops_its_process_group() -> None:
-    async def run() -> None:
-        process = await asyncio.create_subprocess_exec(
+def _browser_cleanup_fixture_code() -> str:
+    descendant = (
+        "import os,signal; print(f'DESCENDANT_READY {os.getpid()}', flush=True); signal.pause()"
+    )
+    return f"""\
+import signal
+import subprocess
+import sys
+
+child = None
+def stop(*_args):
+    if child is not None:
+        if child.poll() is None:
+            child.terminate()
+        status = child.wait()
+        print(f'DESCENDANT_REAPED {{child.pid}} {{status}}', flush=True)
+    raise SystemExit(0)
+
+signal.signal(signal.SIGTERM, stop)
+child = subprocess.Popen(
+    [sys.executable, '-c', {descendant!r}], stdout=sys.stdout, stderr=sys.stderr
+)
+while True:
+    signal.pause()
+"""
+
+
+async def _spawn_browser_cleanup_fixture() -> asyncio.subprocess.Process:
+    from selected_profiles_process import await_retained
+
+    spawning = asyncio.create_task(
+        asyncio.create_subprocess_exec(
             sys.executable,
             "-c",
-            "import subprocess, sys, time; "
-            "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
-            "time.sleep(60)",
+            _browser_cleanup_fixture_code(),
             start_new_session=True,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        await asyncio.sleep(0.1)
-        await _stop_browser_group(process)
-        assert process.returncode is not None
+    )
+    try:
+        return await await_retained(spawning)
+    except BaseException as primary:
+        if not spawning.done():
+            try:
+                await await_retained(spawning)
+            except BaseException:
+                raise primary from None
+        try:
+            process = spawning.result()
+        except BaseException:
+            raise primary from None
+        cleanup = asyncio.create_task(_stop_browser_group(process))
+        try:
+            await await_retained(cleanup)
+        except BaseException as cleanup_error:
+            raise BaseExceptionGroup(
+                "browser_fixture_spawn_and_cleanup_failed", [primary, cleanup_error]
+            ) from primary
+        raise
+
+
+async def _browser_descendant_ready(
+    process: asyncio.subprocess.Process, process_wait: asyncio.Task[int]
+) -> int:
+    if process.stdout is None:
+        raise AssertionError("browser fixture stdout unavailable")
+    readiness = asyncio.create_task(process.stdout.readline())
+    try:
+        done, _ = await asyncio.wait({readiness, process_wait}, return_when=asyncio.FIRST_COMPLETED)
+        if readiness not in done:
+            process_wait.result()
+            raise AssertionError("browser descendant ended before readiness")
+        fields = readiness.result().decode("utf-8").strip().split()
+        assert len(fields) == 2
+        assert fields[0] == "DESCENDANT_READY"
+        return int(fields[1])
+    finally:
+        if not readiness.done():
+            readiness.cancel()
+            await asyncio.gather(readiness, return_exceptions=True)
+
+
+async def _assert_browser_group_stopped(
+    process: asyncio.subprocess.Process,
+    descendant_pid: int,
+    output_tasks: tuple[asyncio.Task[tuple[bytes, bool]], ...],
+) -> None:
+    from selected_profiles_process import await_retained, wait_for_process_group_exit
+
+    assert process.returncode is not None
+    captured = await asyncio.gather(*output_tasks)
+    reaped = f"DESCENDANT_REAPED {descendant_pid} ".encode()
+    assert any(reaped in output for output, _truncated in captured)
+    absence = asyncio.create_task(asyncio.to_thread(wait_for_process_group_exit, process.pid))
+    await await_retained(absence)
+
+
+def _browser_output_tasks(
+    process: asyncio.subprocess.Process,
+) -> tuple[asyncio.Task[tuple[bytes, bool]], ...]:
+    from qualify_live_apps_browser import capture_output
+
+    readers = tuple(reader for reader in (process.stdout, process.stderr) if reader is not None)
+    return tuple(asyncio.create_task(capture_output(reader)) for reader in readers)
+
+
+async def _finalize_browser_fixture(
+    process: asyncio.subprocess.Process,
+    process_wait: asyncio.Task[int],
+    output_tasks: tuple[asyncio.Task[tuple[bytes, bool]], ...],
+    stopped: bool,
+) -> None:
+    errors: list[BaseException] = []
+    if not stopped:
+        try:
+            await _stop_browser_group(process, output_tasks)
+        except BaseException as error:
+            errors.append(error)
+    tasks = (process_wait, *output_tasks)
+    outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+    errors.extend(outcome for outcome in outcomes if isinstance(outcome, BaseException))
+    if errors:
+        raise BaseExceptionGroup("browser_fixture_cleanup_failed", errors)
+
+
+def test_browser_failure_cleanup_stops_its_process_group() -> None:
+    async def run() -> None:
+        process = await _spawn_browser_cleanup_fixture()
+        process_wait = asyncio.create_task(process.wait())
+        output_tasks: tuple[asyncio.Task[tuple[bytes, bool]], ...] = ()
+        stopped = False
+        primary: BaseException | None = None
+        try:
+            descendant_pid = await _browser_descendant_ready(process, process_wait)
+            output_tasks = _browser_output_tasks(process)
+            await _stop_browser_group(process, output_tasks)
+            stopped = True
+            await _assert_browser_group_stopped(process, descendant_pid, output_tasks)
+        except BaseException as error:
+            primary = error
+            raise
+        finally:
+            cleanup = asyncio.create_task(
+                _finalize_browser_fixture(process, process_wait, output_tasks, stopped)
+            )
+            try:
+                from selected_profiles_process import await_retained
+
+                await await_retained(cleanup)
+            except BaseException as cleanup_error:
+                if primary is None:
+                    raise
+                primary.add_note(f"browser fixture cleanup also failed: {cleanup_error!r}")
 
     asyncio.run(run())
 
