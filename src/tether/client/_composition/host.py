@@ -84,9 +84,18 @@ class ClientPorts:
 class ClientHost:
     """Owns a composed client service and only the resources it opens."""
 
-    def __init__(self, service: SessionService) -> None:
-        self._service = service
-        self._closed = False
+    _service: SessionService
+    _closed: bool
+
+    def __init__(self) -> None:
+        raise TypeError("Use ClientHost.open() or ClientHost.from_ports()")
+
+    @classmethod
+    def _from_service(cls, service: SessionService) -> Self:
+        host = cls.__new__(cls)
+        host._service = service
+        host._closed = False
+        return host
 
     @classmethod
     async def open(cls, settings: ClientSettings) -> Self:
@@ -154,7 +163,7 @@ class ClientHost:
                 _storage_drain=root.wait_closed if root is not None else None,
             )
             await service.__aenter__()
-            return cls(service)
+            return cls._from_service(service)
         except BaseException:
             if service is not None:
                 await service.aclose()
@@ -170,9 +179,9 @@ class ClientHost:
     def client(self, actor: Actor) -> ClientProtocol:
         if self._closed:
             raise RuntimeError("tether_not_active")
-        from .client import Client
+        from .client import BoundClient
 
-        return Client(self._service, actor)
+        return BoundClient(self._service, actor)
 
     @property
     def store(self) -> SessionStore:
