@@ -125,10 +125,10 @@ class ClientTurnOperations:
 
 
 class Client(ClientTurnOperations, OperationClient, ClientReads):
-    def __init__(self, service: SessionService, actor: Actor) -> None:
-        super().__init__(service.access, actor, service.archives)
-        self._service = service
-        self._metadata = MetadataCommands(service.access)
+    _metadata: MetadataCommands
+
+    def __init__(self) -> None:
+        raise TypeError("Obtain a Client through ClientHost.client(actor)")
 
     async def confirm(
         self,
@@ -212,3 +212,12 @@ class Client(ClientTurnOperations, OperationClient, ClientReads):
 
     async def restore(self, session_id: str) -> SessionSummary:
         return await self._service.archives.restore(self._actor, session_id)
+
+
+class BoundClient(Client):
+    """Internal implementation constructed with an owner-bound service."""
+
+    def __init__(self, service: SessionService, actor: Actor) -> None:
+        ClientReads.__init__(self, service.access, actor, service.archives)
+        self._service = service
+        self._metadata = MetadataCommands(service.access)
