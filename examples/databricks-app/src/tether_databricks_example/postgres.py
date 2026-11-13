@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
@@ -96,9 +96,8 @@ class LakebaseConnectionSource:
         client = await self._client_for(actor)
         try:
             credential_api = client.postgres
-            credential = await asyncio.to_thread(
-                credential_api.generate_database_credential,
-                endpoint=self._settings.endpoint,
+            credential = await _await_database_credential_mint(
+                credential_api, self._settings.endpoint
             )
         except Exception as error:
             _log_credential_failure("database_token_mint", error)
@@ -159,6 +158,36 @@ class LakebaseConnectionSource:
         except Exception as error:
             _log_credential_failure("user_workspace_client", error)
             raise PermissionError("user_database_credential_required") from None
+
+
+async def _await_database_credential_mint(
+    credential_api: PostgresCredentialApi, endpoint: str
+) -> DatabaseCredential:
+    """Keep caller cancellation pending until the SDK mint thread has exited."""
+    mint = asyncio.create_task(
+        asyncio.to_thread(
+            credential_api.generate_database_credential,
+            endpoint=endpoint,
+        )
+    )
+    cancellation: asyncio.CancelledError | None = None
+    current = asyncio.current_task()
+    while not mint.done():
+        try:
+            await asyncio.shield(mint)
+        except asyncio.CancelledError as error:
+            if current is None or current.cancelling() == 0:
+                raise
+            if cancellation is None:
+                cancellation = error
+        except Exception:
+            break
+
+    if cancellation is not None:
+        with suppress(BaseException):
+            mint.result()
+        raise cancellation
+    return mint.result()
 
 
 def _sdk_user_client(host: str, token: str, /) -> WorkspacePostgresClient:

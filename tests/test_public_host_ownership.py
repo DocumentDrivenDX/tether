@@ -1,11 +1,18 @@
 """Public host retains accepted work and physical resource ownership."""
 
 import asyncio
+import sys
 from dataclasses import replace
 from threading import Event
 
 import pytest
 from public_port_fixtures import FabricatedTool
+from resource_lifetime_controls import (
+    cancel_and_expect_cancellation,
+    close_after_release,
+    wait_closed_entry,
+)
+from tui_event_waits import let_pilot_screen_wait_use_outer_owner, wait_for_event_or_operation
 
 from tether.client import (
     Actor,
@@ -90,7 +97,9 @@ async def test_borrowed_view_close_preserves_other_client_and_accepted_work(
 ):
     """@covers US-065-AC3 @covers US-065-AC4"""
     model = HeldModel()
-    async with await ClientHost.open(settings(model, client_limits, limits)) as host:
+    host = await ClientHost.open(settings(model, client_limits, limits))
+    result_task = None
+    try:
         with pytest.raises(RuntimeError, match="tether_not_closing"):
             await host.wait_closed()
 
@@ -102,22 +111,25 @@ async def test_borrowed_view_close_preserves_other_client_and_accepted_work(
         first, second = host.client(Actor(id="owner")), host.client(Actor(id="owner"))
         session = await first.create(spec="demo")
         app = ClientApp(first, session_id=session.id)
-        try:
-            async with asyncio.timeout(20), app.run_test():
-                read = ShutdownRead(first.list, app)
-                monkeypatch.setattr(first, "list", read)
-                accepted = await first.send(session.id, "Fabricated request", spec="demo")
-                await model.entered.wait()
-                await read.entered.wait()
-                assert await second.turn_result(session.id, accepted.turn_id) is None
-            assert read.returned_during_shutdown
-            # Closing the actual view preserves the shared runtime and its work.
-            assert (await second.get(session.id)).summary.status == "running"
-            model.release.set()
-            assert (await accepted.result()).stop_reason == "final"
-            assert (await second.get(session.id)).summary.status == "idle"
-        finally:
-            model.release.set()
+        let_pilot_screen_wait_use_outer_owner(monkeypatch)
+        async with app.run_test():
+            read = ShutdownRead(first.list, app)
+            monkeypatch.setattr(first, "list", read)
+            accepted = await first.send(session.id, "Fabricated request", spec="demo")
+            result_task = asyncio.create_task(accepted.result())
+            await wait_for_event_or_operation(model.entered, result_task)
+            follower = app._follower
+            assert follower is not None
+            await wait_for_event_or_operation(read.entered, follower)
+            assert await second.turn_result(session.id, accepted.turn_id) is None
+        assert read.returned_during_shutdown
+        # Closing the actual view preserves the shared runtime and its work.
+        assert (await second.get(session.id)).summary.status == "running"
+        model.release.set()
+        assert (await result_task).stop_reason == "final"
+        assert (await second.get(session.id)).summary.status == "idle"
+    finally:
+        await close_after_release(host, model.release.set, result_task, primary=sys.exception())
 
 
 class HeldTool(FabricatedTool):
@@ -170,25 +182,26 @@ async def test_public_host_incomplete_close_retains_root_until_physical_worker_e
     host = await ClientHost.from_ports(
         config, ports=ClientPorts(execution_limits=ExecutionLimits(shutdown_timeout_seconds=0.01))
     )
-    client = host.client(Actor(id="owner"))
-    session = await client.create(spec="demo")
-    handle = await client.send(session.id, "Fabricated request", spec="demo")
+    handle = None
+    result_task = None
+    waiter = None
     try:
-        await asyncio.wait_for(entered.wait(), 5)
+        client = host.client(Actor(id="owner"))
+        session = await client.create(spec="demo")
+        handle = await client.send(session.id, "Fabricated request", spec="demo")
+        result_task = asyncio.create_task(handle.result())
+        await wait_for_event_or_operation(entered, result_task)
         assert host.store.workers.busy(session.id)
         assert await host.aclose() is False
         assert not host.drained
-        waiter = asyncio.create_task(host.wait_closed())
-        await asyncio.sleep(0)
-        waiter.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await waiter
+
+        waiter = await wait_closed_entry(host)
+        await cancel_and_expect_cancellation(waiter)
         assert not host.drained
         with pytest.raises(RootBusy, match="local_root_already_open"):
             await ClientHost.open(config)
     finally:
-        release.set()
-        assert await asyncio.wait_for(host.wait_closed(), 5)
+        await close_after_release(host, release.set, result_task, waiter, primary=sys.exception())
     assert host.drained
     # Reopening through the same public factory proves the physical root was freed.
     async with await ClientHost.open(config) as reopened:

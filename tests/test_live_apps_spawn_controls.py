@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
+import selected_profiles_process
+from context_lifetime_controls import wait_event_or_task
+from process_lifetime_controls import ShieldCancellationObserver
 
 
 class _SpawnControlProcess:
@@ -47,6 +52,49 @@ class _BrowserSpawnControl:
             self.kill_sent.set()
 
 
+async def _exercise_browser_spawn_cancellation(
+    control: _BrowserSpawnControl,
+    launch_browser: Callable[[Path, dict[str, str]], Awaitable[Any]],
+    tmp_path: Path,
+    spawn_observer: ShieldCancellationObserver,
+    cleanup_observer: ShieldCancellationObserver,
+) -> None:
+    control.process = _SpawnControlProcess()
+
+    async def start_browser() -> Any:
+        return await launch_browser(tmp_path, {})
+
+    launch = asyncio.create_task(start_browser())
+    spawn_observer.target = launch
+    cleanup_observer.target = launch
+    try:
+        await wait_event_or_task(control.spawn_entered, launch)
+        launch.cancel()
+        await wait_event_or_task(spawn_observer.acknowledged[0], launch)
+        launch.cancel()
+        await wait_event_or_task(spawn_observer.acknowledged[1], launch)
+        control.spawn_release.set()
+        await wait_event_or_task(control.kill_sent, launch)
+        launch.cancel()
+        await wait_event_or_task(cleanup_observer.acknowledged[0], launch)
+        assert not launch.done()
+        assert control.process is not None
+        control.process.stdout.feed_eof()
+        control.process.stderr.feed_eof()
+        with pytest.raises(asyncio.CancelledError):
+            await launch
+    finally:
+        control.spawn_release.set()
+        if control.process is not None:
+            control.process.stdout.feed_eof()
+            control.process.stderr.feed_eof()
+            if not control.process.reaped.is_set():
+                control.kill_group(control.process.pid, signal.SIGTERM)
+        if not launch.done():
+            launch.cancel()
+        await asyncio.gather(launch, return_exceptions=True)
+
+
 def test_browser_spawn_cancellation_retains_group_and_stream_drain(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -56,25 +104,20 @@ def test_browser_spawn_cancellation_retains_group_and_stream_drain(
     monkeypatch.setattr(transport.shutil, "which", lambda _name: "/fake/npm")
     monkeypatch.setattr(transport.asyncio, "create_subprocess_exec", control.create_process)
     monkeypatch.setattr(transport.os, "killpg", control.kill_group)
+    spawn_observer = ShieldCancellationObserver(2)
+    cleanup_observer = ShieldCancellationObserver(1)
+    spawn_observer.install(transport, monkeypatch)
+    cleanup_observer.install(selected_profiles_process, monkeypatch)
 
-    async def run() -> None:
-        control.process = _SpawnControlProcess()
-        launch = asyncio.create_task(transport._launch_browser(tmp_path, {}))
-        await control.spawn_entered.wait()
-        launch.cancel()
-        await asyncio.sleep(0)
-        launch.cancel()
-        control.spawn_release.set()
-        await control.kill_sent.wait()
-        launch.cancel()
-        assert not launch.done()
-        assert control.process is not None
-        control.process.stdout.feed_eof()
-        control.process.stderr.feed_eof()
-        with pytest.raises(asyncio.CancelledError):
-            await launch
-
-    asyncio.run(run())
+    asyncio.run(
+        _exercise_browser_spawn_cancellation(
+            control,
+            transport._launch_browser,
+            tmp_path,
+            spawn_observer,
+            cleanup_observer,
+        )
+    )
     assert control.signals == [
         (7319, signal.SIGTERM),
         (7319, signal.SIGKILL),

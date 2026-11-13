@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 import selected_profiles_identity_child as child_module
 import selected_profiles_identity_credentials as credentials
+from selected_profiles_process import await_retained
 
 _HOST = "https://workspace.fabricated.example"
 _CONFIG_FILE = str(Path.cwd() / "fabricated-config")
@@ -24,29 +25,42 @@ async def _wait_event_or_operation(
     event: asyncio.Event, operation: asyncio.Task[Any], failure: str
 ) -> None:
     event_wait = asyncio.create_task(event.wait())
+    finish_cleanup = asyncio.Event()
+
+    async def settle() -> None:
+        await finish_cleanup.wait()
+        if not event_wait.done():
+            event_wait.cancel()
+        await asyncio.gather(event_wait, return_exceptions=True)
+
+    cleanup = asyncio.create_task(settle())
     try:
         done, _ = await asyncio.wait({event_wait, operation}, return_when=asyncio.FIRST_COMPLETED)
         if event_wait not in done:
             await operation
             raise AssertionError(failure)
     finally:
-        if not event_wait.done():
-            event_wait.cancel()
-            await asyncio.gather(event_wait, return_exceptions=True)
+        finish_cleanup.set()
+        await await_retained(cleanup)
 
 
 def _held_oauth_handler(
-    accepted: asyncio.Event, request_shape: dict[str, bool]
+    accepted: asyncio.Event,
+    request_shape: dict[str, bool],
+    *,
+    disconnect_token: bool = False,
 ) -> tuple[
     list[str],
-    Callable[
-        [asyncio.StreamReader, asyncio.StreamWriter],
-        Coroutine[Any, Any, None],
-    ],
+    Callable[[asyncio.StreamReader, asyncio.StreamWriter], Coroutine[Any, Any, None]],
+    set[asyncio.Task[Any]],
 ]:
     host_ref: list[str] = []
+    handlers: set[asyncio.Task[Any]] = set()
 
     async def hold(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        task = asyncio.current_task()
+        if task is not None:
+            handlers.add(task)
         try:
             headers = await reader.readuntil(b"\r\n\r\n")
             if headers.startswith(b"GET "):
@@ -69,19 +83,27 @@ def _held_oauth_handler(
                 )
                 await writer.drain()
                 return
+            if not headers.startswith(b"POST "):
+                method = headers.split(b" ", 1)[0]
+                raise RuntimeError(f"oauth_request_method_unexpected:{method!r}")
             request_shape.update(
-                post=headers.startswith(b"POST "),
+                post=True,
                 credential_transport=b"authorization: basic " in headers.lower(),
             )
             accepted.set()
-            await asyncio.Event().wait()
+            if disconnect_token:
+                writer.transport.abort()
+                return
+            await reader.read()
         except (asyncio.IncompleteReadError, ConnectionError):
             return
         finally:
             writer.close()
             await writer.wait_closed()
+            if task is not None:
+                handlers.discard(task)
 
-    return host_ref, hold
+    return host_ref, hold, handlers
 
 
 def _ram_payload(secret: str = _SECRET) -> bytes:
@@ -231,7 +253,7 @@ def test_real_sdk_ram_secret_reaches_oauth_endpoint_and_is_bounded_by_child_time
 async def _exercise_sdk_ram_secret_oauth(tmp_path: Path) -> None:
     accepted = asyncio.Event()
     request_shape = {"discovery": False, "post": False, "credential_transport": False}
-    host_ref, handler = _held_oauth_handler(accepted, request_shape)
+    host_ref, handler, handlers = _held_oauth_handler(accepted, request_shape)
     server = await asyncio.start_server(handler, "127.0.0.1", 0)
     host = f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}"
     host_ref.append(host)
@@ -251,15 +273,64 @@ async def _exercise_sdk_ram_secret_oauth(tmp_path: Path) -> None:
             "post": True,
             "credential_transport": True,
         }
-        with pytest.raises(credentials.CredentialRefreshError) as error:
+        with pytest.raises(credentials.LiveQualificationIncomplete) as error:
             await task
-        assert error.value.retryable is True
+        assert error.value.reason == "qualification_workspace_identity_not_observed"
     finally:
-        if not task.done():
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-        server.close()
-        await server.wait_closed()
+
+        async def settle() -> None:
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            server.close()
+            await server.wait_closed()
+            await asyncio.gather(*handlers, return_exceptions=True)
+
+        await await_retained(asyncio.create_task(settle()))
+
+
+def test_real_sdk_connection_failure_remains_retryable(tmp_path: Path) -> None:
+    asyncio.run(_exercise_sdk_connection_failure(tmp_path))
+
+
+async def _exercise_sdk_connection_failure(tmp_path: Path) -> None:
+    accepted = asyncio.Event()
+    request_shape = {"discovery": False, "post": False, "credential_transport": False}
+    host_ref, handler, handlers = _held_oauth_handler(
+        accepted, request_shape, disconnect_token=True
+    )
+    server = await asyncio.start_server(handler, "127.0.0.1", 0)
+    host = f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+    host_ref.append(host)
+    config_file = tmp_path / "sdk-failure-profile.ini"
+    _write_oauth_profile(config_file, host)
+    task = asyncio.create_task(
+        credentials.refresh_workspace_credential_from_secret(
+            "fabricated-profile", str(config_file), _SECRET, host
+        )
+    )
+    try:
+        await _wait_event_or_operation(accepted, task, "sdk_failed_before_token_request")
+        assert request_shape == {
+            "discovery": True,
+            "post": True,
+            "credential_transport": True,
+        }
+        with pytest.raises(credentials.CredentialRefreshError) as info:
+            await task
+        assert info.value.retryable is True
+        assert str(info.value) == "identity_credential_network_transient"
+    finally:
+
+        async def settle() -> None:
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            server.close()
+            await server.wait_closed()
+            await asyncio.gather(*handlers, return_exceptions=True)
+
+        await await_retained(asyncio.create_task(settle()))
 
 
 def _write_oauth_profile(config_file: Path, host: str) -> None:

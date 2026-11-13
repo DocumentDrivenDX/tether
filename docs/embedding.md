@@ -14,14 +14,13 @@ protocol.
 
 ## Install the core
 
-This guide targets the `0.3.2` release. Published core `0.2.0`
-has an earlier client facade without `ClientHost`; it cannot replace this
-candidate. Candidate Python interface packages require the exact core cohort.
-In the checkout, `uv sync --frozen` resolves that workspace source. The registry
-install below applies after a release includes the APIs used in this guide.
+Install the published `0.3.2` core. The Python interface packages require this
+exact core cohort. Core `0.2.0` exposes an earlier facade without `ClientHost`.
+In the checkout, `uv sync --frozen` resolves the workspace source. See the
+[0.3.2 publication receipt](helix/03-test/evidence/release-032-publication-20261108.md).
 
 ```sh
-uv add novirhiza-tether
+uv add 'novirhiza-tether==0.3.2'
 ```
 
 The core package metadata requires Python 3.11 or later. Optional interfaces stay in separate

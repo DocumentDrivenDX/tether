@@ -1,12 +1,14 @@
 """Real optional PostgreSQL18 startup/persistence; all application actors are fabricated."""
 
-import asyncio
+import shutil
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from tempfile import TemporaryDirectory
-from time import perf_counter
+from tempfile import mkdtemp
 
 import pytest
+from embedded_lifetime_controls import close_embedded, close_matching, runtime_cleanup_safe
+from postgres_pending_io_controls import PendingIOControl
 from psycopg import AsyncConnection
 
 from tether.stores.postgres import PostgresSessionStore, migrate
@@ -23,26 +25,55 @@ def anyio_backend():
 
 
 @pytest.fixture
-async def config(tmp_path):
-    with TemporaryDirectory(prefix="te-", dir="/tmp") as directory:
-        configured = EmbeddedConfig(
-            bootstrap_user="fabricated_admin",
-            data_dir=tmp_path / "data",
-            runtime_dir=Path(directory),
-            startup_seconds=20,
-            shutdown_seconds=5,
-            poll_seconds=0.02,
-            max_roots=4,
-        )
-        try:
-            yield configured
-        finally:
-            from tether.stores.postgres.embedded.server import _LIVE
+def pending_io_control(monkeypatch):
+    control = PendingIOControl()
+    control.install(monkeypatch)
+    return control
 
-            for owner in tuple(_LIVE):
-                if owner.config.data_dir.resolve() == configured.data_dir.resolve():
-                    owner._seal()
-                    await asyncio.wait_for(asyncio.shield(owner._ensure_close()), 20)
+
+@pytest.fixture
+async def config(pending_io_control):
+    directory = Path(mkdtemp(prefix="te-", dir="/tmp"))
+    data_dir, runtime_dir = directory / "data", directory / "runtime"
+    runtime_dir.mkdir()
+    configured = EmbeddedConfig(
+        bootstrap_user="fabricated_admin",
+        data_dir=data_dir,
+        runtime_dir=runtime_dir,
+        startup_seconds=20,
+        shutdown_seconds=5,
+        poll_seconds=0.02,
+        max_roots=4,
+    )
+    primary = None
+    try:
+        yield configured
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        safe = False
+        cleanup_error = None
+        try:
+            await close_matching(configured.data_dir)
+            safe = not (configured.data_dir / "postmaster.pid").exists() and runtime_cleanup_safe(
+                configured.data_dir
+            )
+        except BaseException as error:
+            cleanup_error = error
+        if safe:
+            shutil.rmtree(directory)
+        else:
+            incomplete = AssertionError("embedded_runtime_preserved_with_native_owner")
+            if cleanup_error is not None:
+                incomplete = BaseExceptionGroup(
+                    "embedded_runtime_cleanup_incomplete", [incomplete, cleanup_error]
+                )
+            if primary is not None:
+                raise BaseExceptionGroup(
+                    "embedded_test_and_runtime_cleanup_incomplete", [primary, incomplete]
+                ) from primary
+            raise incomplete
 
 
 def acquisition(endpoint):
@@ -55,12 +86,10 @@ def acquisition(endpoint):
 
 
 async def test_cold_and_warm_start_preserve_sql_session_without_implicit_migration(config):
-    actor = Actor(id="fabricated-owner")
-    started = perf_counter()
     server = await EmbeddedPostgres.start(config)
-    cold_seconds = perf_counter() - started
-    source = acquisition(server.endpoint)
     try:
+        actor = Actor(id="fabricated-owner")
+        source = acquisition(server.endpoint)
         await migrate(source, actor=actor, schema="fabricated")
         root = await server.open_root(source, actor=actor, schema="fabricated")
         store = PostgresSessionStore(root).for_actor(actor)
@@ -68,11 +97,9 @@ async def test_cold_and_warm_start_preserve_sql_session_without_implicit_migrati
         async with store.turn(session.id, actor.id, turn_id="job") as log:
             await log.append([NewEntry(kind="message", key="original")])
     finally:
-        assert await server.aclose()
+        await close_embedded(server, sys.exception())
     assert (config.data_dir / "PG_VERSION").is_file()
-    started = perf_counter()
     reopened = await EmbeddedPostgres.start(config)
-    warm_seconds = perf_counter() - started
     try:
         source = acquisition(reopened.endpoint)
         root = await reopened.open_root(source, actor=actor, schema="fabricated")
@@ -84,5 +111,4 @@ async def test_cold_and_warm_start_preserve_sql_session_without_implicit_migrati
             0
         ].key == "original"
     finally:
-        assert await reopened.aclose()
-    print({"cold_seconds": cold_seconds, "warm_seconds": warm_seconds})
+        await close_embedded(reopened, sys.exception())

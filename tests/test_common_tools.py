@@ -69,14 +69,34 @@ def _assert_owned_group_absent(pgid: int) -> None:
 
 
 def _signal_owned_group(pgid: int) -> None:
-    try:
-        os.killpg(pgid, 0)
-    except ProcessLookupError:
-        return
-    except PermissionError as error:
-        raise AssertionError("owned_bash_group_absence_unconfirmed") from error
+    # Callers retain the freshly spawned process and verify its new session.
+    # A permission probe can fail before the owned group receives its signal.
     with suppress(ProcessLookupError):
         os.killpg(pgid, signal.SIGKILL)
+
+
+def test_owned_group_signal_does_not_require_a_permission_probe(monkeypatch):
+    calls = []
+
+    def killpg(pgid, sig):
+        calls.append((pgid, sig))
+        if sig == 0:
+            raise PermissionError
+
+    monkeypatch.setattr(os, "killpg", killpg)
+    _signal_owned_group(4242)
+    assert calls == [(4242, signal.SIGKILL)]
+
+
+def test_owned_group_signal_permission_failure_is_not_absence(monkeypatch):
+    def killpg(pgid, sig):
+        raise PermissionError
+
+    monkeypatch.setattr(os, "killpg", killpg)
+    with pytest.raises(PermissionError):
+        _signal_owned_group(4242)
+    with pytest.raises(AssertionError, match="owned_bash_group_absence_unconfirmed"):
+        _assert_owned_group_absent(4242)
 
 
 class _FragmentedReadiness:

@@ -1,0 +1,24 @@
+{
+  "app_managed_service_principal": "absent_verified",
+  "cleanup_plan_sha256": "0420b2175230c9fa9b7f7d513a2ebc9f76a41b6caff74560f6fa2f58e9267ca5",
+  "execution_receipt_sha256": "3858b948d0c25d48306cc9f7caa77eed2a7072cf2682be79f08dab9c3f19384d",
+  "recorded_at": "2026-11-11T01:00:56.635953+00:00",
+  "schema_version": 1,
+  "scope": "Exact temporary development qualification resources and local metadata. Prior PG17 absence checked without mutation.",
+  "status": "completed",
+  "steps_completed": 10,
+  "verified_absence_counts": {
+    "database": 1,
+    "database_branch": 1,
+    "database_endpoint": 1,
+    "database_project": 2,
+    "identity_assignment": 1,
+    "keychain_item": 1,
+    "local_config_file": 1,
+    "provider_secret": 6,
+    "service_principal": 1,
+    "workspace_app": 1,
+    "workspace_deployment": 20,
+    "workspace_source_object": 3
+  }
+}

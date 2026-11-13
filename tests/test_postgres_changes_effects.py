@@ -1,10 +1,12 @@
 """Persisted polling and unresolved-effect pages retain scoped original facts."""
 
-import asyncio
 import json
+import sys
+from collections.abc import AsyncGenerator
 from uuid import uuid4
 
 import pytest
+from postgres_pending_io_controls import close_root_and_drain, retain_cleanup
 from postgres_support import database as database
 from postgres_support import postgres_server as postgres_server
 from psycopg import sql
@@ -18,6 +20,7 @@ from tether.types.execution import Actor, NewEntry
 from tether.types.storage import (
     ChangeGap,
     IntegrityError,
+    PersistedChange,
     SessionInit,
     StorageLimits,
     StoreError,
@@ -32,42 +35,63 @@ def anyio_backend():
     return "asyncio"
 
 
+async def close_feeds_and_root(
+    root: DatabaseRoot, feeds: tuple[AsyncGenerator[PersistedChange, None], ...]
+) -> None:
+    errors: list[BaseException] = []
+    for feed in feeds:
+        try:
+            await feed.aclose()
+        except BaseException as error:
+            errors.append(error)
+    try:
+        await close_root_and_drain(root)
+    except BaseException as error:
+        errors.append(error)
+    if errors:
+        raise BaseExceptionGroup("feed_root_cleanup_failed", errors)
+
+
 async def test_filtered_feed_advances_over_unrelated_owner_changes(database):
     h = database
-    root = await DatabaseRoot.open(
-        h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(page_limit=1)
-    )
-    journal = Journal(root, h.actor)
+    root = None
+    feeds: list[AsyncGenerator[PersistedChange, None]] = []
     try:
+        root = await DatabaseRoot.open(
+            h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(page_limit=1)
+        )
+        journal = Journal(root, h.actor)
         first = await journal.create(SessionInit(), str(uuid4()))
         second = await journal.create(SessionInit(), str(uuid4()))
         await append(journal, second.id, [NewEntry(kind="message")])
         accepted, _ = await append(journal, first.id, [NewEntry(kind="message")])
         changes = Changes(root, h.actor)
         feed = changes.changes(session_id=first.id, since=1)
-        try:
-            value = await asyncio.wait_for(anext(feed), 3)
-            assert value.seq == 4
-            assert value.session_id == first.id
-            assert value.entries == accepted
-        finally:
-            await feed.aclose()
+        feeds.append(feed)
+        value = await anext(feed)
+        assert value.seq == 4
+        assert value.session_id == first.id
+        assert value.entries == accepted
         foreign = Changes(root, Actor(id="different"))
         assert await foreign.poll(0) == ((), 0)
         feed = foreign.changes(session_id=first.id, since=0)
+        feeds.append(feed)
         with pytest.raises(UnknownSession):
             await anext(feed)
     finally:
-        assert await root.aclose()
+        if root is not None:
+            await retain_cleanup(close_feeds_and_root(root, tuple(feeds)), primary=sys.exception())
 
 
 async def test_retention_floor_is_explicit_and_cannot_move_backwards(database):
     h = database
-    root = await DatabaseRoot.open(
-        h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(feed_retention=2)
-    )
-    journal = Journal(root, h.actor)
+    root = None
+    feeds: list[AsyncGenerator[PersistedChange, None]] = []
     try:
+        root = await DatabaseRoot.open(
+            h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(feed_retention=2)
+        )
+        journal = Journal(root, h.actor)
         summary = await journal.create(SessionInit(), str(uuid4()))
         for _ in range(3):
             await append(journal, summary.id, [NewEntry(kind="message")])
@@ -82,10 +106,12 @@ async def test_retention_floor_is_explicit_and_cannot_move_backwards(database):
         with pytest.raises(ChangeGap, match="too_old"):
             await changes.poll(1)
         feed = changes.changes(since=6)
+        feeds.append(feed)
         with pytest.raises(ValueError, match="invalid_sequence"):
             await anext(feed)
     finally:
-        assert await root.aclose()
+        if root is not None:
+            await retain_cleanup(close_feeds_and_root(root, tuple(feeds)), primary=sys.exception())
 
 
 async def test_feed_yields_bounded_prefixes_without_skipping_an_oversized_change(database):
@@ -94,10 +120,11 @@ async def test_feed_yields_bounded_prefixes_without_skipping_an_oversized_change
     summary = await journal.create(SessionInit(), str(uuid4()))
     for _ in range(4):
         await append(journal, summary.id, [NewEntry(kind="message", facts={"padding": "x" * 7000})])
-    root = await DatabaseRoot.open(
-        h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(max_batch_bytes=12000)
-    )
+    root = None
     try:
+        root = await DatabaseRoot.open(
+            h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(max_batch_bytes=12000)
+        )
         changes = Changes(root, h.actor)
         position, seen = 0, []
         while position < 5:
@@ -114,7 +141,8 @@ async def test_feed_yields_bounded_prefixes_without_skipping_an_oversized_change
             await changes.poll(position)
         assert await changes.watermark() == 6
     finally:
-        assert await root.aclose()
+        if root is not None:
+            await retain_cleanup(close_root_and_drain(root), primary=sys.exception())
 
 
 @pytest.mark.parametrize(
@@ -173,10 +201,11 @@ async def test_oversized_cached_feed_identity_is_not_transferred(database):
             ),
             (b"x" * 12001, journal.owner),
         )
-    root = await DatabaseRoot.open(
-        h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(max_batch_bytes=12000)
-    )
+    root = None
     try:
+        root = await DatabaseRoot.open(
+            h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(max_batch_bytes=12000)
+        )
         changes = Changes(root, h.actor)
         values, position = await changes.poll(0)
         assert [v.seq for v in values] == [1]
@@ -184,7 +213,8 @@ async def test_oversized_cached_feed_identity_is_not_transferred(database):
         with pytest.raises(StoreError, match="change_read_bytes"):
             await changes.poll(position)
     finally:
-        assert await root.aclose()
+        if root is not None:
+            await retain_cleanup(close_root_and_drain(root), primary=sys.exception())
 
 
 async def test_effect_pages_preserve_intent_positions_and_verify_index_membership(database):
@@ -244,20 +274,20 @@ async def test_filtered_feed_skips_unrelated_oversized_content_with_scoped_acqui
     unrelated = await journal.create(SessionInit(), str(uuid4()))
     await append(journal, unrelated.id, [NewEntry(kind="message", facts={"padding": "x" * 12001})])
     accepted, _ = await append(journal, selected.id, [NewEntry(kind="message")])
-    root = await DatabaseRoot.open(
-        h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(max_batch_bytes=12000)
-    )
+    root = None
+    feeds: list[AsyncGenerator[PersistedChange, None]] = []
     try:
+        root = await DatabaseRoot.open(
+            h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(max_batch_bytes=12000)
+        )
         reads = Changes(root, h.actor)
         before = len(h.calls)
         feed = reads.changes(session_id=selected.id, since=1)
-        try:
-            change = await asyncio.wait_for(anext(feed), 3)
-            assert change.seq == 4
-            assert change.entries == accepted
-            assert all(session == selected.id for _, session in h.calls[before:])
-        finally:
-            await feed.aclose()
+        feeds.append(feed)
+        change = await anext(feed)
+        assert change.seq == 4
+        assert change.entries == accepted
+        assert all(session == selected.id for _, session in h.calls[before:])
         with pytest.raises(StoreError, match="change_read_bytes"):
             await reads.poll(2, session_id=unrelated.id)
         async with h.pool.connection() as connection:
@@ -271,7 +301,8 @@ async def test_filtered_feed_skips_unrelated_oversized_content_with_scoped_acqui
         assert [v.seq for v in values] == [4]
         assert position == 4
     finally:
-        assert await root.aclose()
+        if root is not None:
+            await retain_cleanup(close_feeds_and_root(root, tuple(feeds)), primary=sys.exception())
 
 
 async def test_duplicate_effect_position_in_lookahead_cannot_repeat_the_page(database):

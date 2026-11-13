@@ -34,7 +34,7 @@ names exact versions, workloads, boundary refusals and process-fault evidence. A
 operating systems, Python versions, model servers, native media/reasoning, Gateway joins
 and the OpenTelemetry exporter require separate qualification.
 
-## Embeddable web interfaces (source only, not on PyPI)
+## Embeddable web interfaces
 
 The public `tether.client` boundary now supplies typed protocols, explicit
 `ClientHost` construction and ownership, journal-backed turn results and targeted
@@ -52,12 +52,21 @@ Optional components are separate artifacts in this repository:
 | Framework-free browser transport | `@tether/client` |
 | Injected React hooks and replaceable components | `@tether/react`, `@tether/ui` |
 
-These development artifacts are not published releases. Their source, installed
-consumer, real browser and live platform evidence is tracked in the
-[implementation plan](docs/helix/04-build/web-platform-implementation-plan.md).
-The platform-neutral browser journey uses fabricated model/tool data. Databricks
-Apps and Lakebase qualification remains separately recorded; local proof does
-not qualify a hosted profile.
+The three optional Python distributions are published on PyPI at 0.3.2. The
+browser packages in this checkout use the `0.2.0-dev.0` development version.
+See the [0.3.2 publication receipt](docs/helix/03-test/evidence/release-032-publication-20261108.md).
+
+The implementation plan tracks source, installed consumer, browser and live
+platform evidence for the current candidate. The platform-neutral browser
+journey uses fabricated model and tool data. Databricks Apps and Lakebase
+qualification has its own live receipts. Actual performance measurements are
+optional for release acceptance. See the [implementation plan](docs/helix/04-build/web-platform-implementation-plan.md).
+
+For 0.3.x, append a new turn to correct a committed turn and keep existing
+sessions in their original runtime. Cross-process followers receive committed
+entries as each step commits. A consumer that needs provisional text routes to
+the owning worker. Synchronous callers supply their own event-loop bridge, and
+approvals are answered one at a time. See the [recorded consumer decisions](docs/helix/01-frame/prd.md#consumer-decisions-recorded-2026-11-08).
 
 ## Offline reference client
 

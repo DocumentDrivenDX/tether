@@ -3,6 +3,7 @@
 from typing import cast
 
 import pytest
+from functional_watchdog import MAX_FUNCTIONAL_WATCHDOG_MS
 from test_agent_summaries import configuration, fixture, response, turn
 
 from tether.context import SummarizingContext
@@ -208,7 +209,9 @@ async def test_summarizing_builtin_passes_public_logical_suite():
     async def factory():
         yield SummarizingContext()
 
-    report = await context_strategy_suite(factory)
+    report = await context_strategy_suite(
+        factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0
+    )
     assert "context_input_immutable" in report.checks
     with pytest.raises(ValueError, match="context_summary_options"):
         SummarizingContext(summarize_user_messages=cast(bool, 1))

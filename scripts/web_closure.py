@@ -8,7 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import TypedDict
 
-from web_artifacts import inventory
+from web_artifacts import MATRIX, inventory
 
 PLAN = "docs/helix/04-build/web-platform-implementation-plan.md"
 STP = "docs/helix/03-test/test-plans/STP-001-web-platform-acceptance.md"
@@ -18,6 +18,7 @@ REQUIREMENTS = {*(f"FR-{number}" for number in range(65, 71)), "NFR-9"}
 # These run this audit or prepare the subsequent authorized disposition; requiring
 # their own completed checkboxes here would make the release gate circular.
 CONTROL_TASKS = {"WP-39", "WP-40", "WP-44"}
+INSTALLED_COMMAND = "make web-package-check / clean build and installed matrix"
 
 
 class AuditResult(TypedDict):
@@ -194,11 +195,12 @@ def read_receipt(root: Path, value: str, current: dict[str, str]) -> dict[str, s
 def _validate_bound_receipt(
     root: Path, path: Path, data: dict, current: dict[str, str], observed: dict, value: str
 ) -> None:
-    python_test_nodes = any(
-        Path(node.split("::", 1)[0]).suffix == ".py"
-        and Path(node.split("::", 1)[0]).parts[0] in {"tests", "packages", "examples"}
+    python_test_nodes = {
+        node
         for node in observed
-    )
+        if Path(node.split("::", 1)[0]).suffix == ".py"
+        and Path(node.split("::", 1)[0]).parts[0] in {"tests", "packages", "examples"}
+    }
     python_markers = (
         data.get("schema_version") == 2
         or data.get("profile") == "local-deterministic"
@@ -206,10 +208,13 @@ def _validate_bound_receipt(
         or "groups" in data
         or "coverage_returncode" in data
     )
-    if python_test_nodes or python_markers:
+    installed_matrix = data.get("command") == INSTALLED_COMMAND
+    if python_markers or (python_test_nodes and not installed_matrix):
         from test_evidence import validate_python_receipt
 
         validate_python_receipt(data, current)
+    elif installed_matrix:
+        _validate_installed_embedder(data, current, observed, python_test_nodes)
     if "scripts/web_quality.py::python-quality" in observed and "python_quality" not in data:
         raise ValueError("aggregate_python_evidence_binding_missing:" + value)
     if "python_quality" in data:
@@ -220,6 +225,72 @@ def _validate_bound_receipt(
         from web_performance_receipt import verify_reference_ratchet
 
         verify_reference_ratchet(root, path, data, current)
+
+
+def _validate_installed_embedder(
+    data: dict, current: dict[str, str], observed: dict[str, str], python_nodes: set[str]
+) -> None:
+    """Validate the standalone pytest outcomes carried by the installed matrix."""
+    matrix = data.get("installed_profiles")
+    if (
+        type(data.get("schema_version")) is not int
+        or data["schema_version"] != 1
+        or set(data)
+        != {
+            "status",
+            "schema_version",
+            "command",
+            "recorded_at",
+            "python",
+            "build_constraints",
+            "runtime_constraints",
+            "source_sha256",
+            "artifacts",
+            "wheel_metadata",
+            "installed_profiles",
+            "independent_embedder",
+            "compatibility",
+            "test_results",
+            "limits",
+        }
+        or not isinstance(matrix, dict)
+        or set(matrix) != set(MATRIX)
+        or observed.get("installed::cohort::reproducible-archives") != "passed"
+        or any(observed.get(f"installed::{name}::closure") != "passed" for name in MATRIX)
+    ):
+        raise ValueError("installed_matrix_receipt_invalid")
+    embedder = data["independent_embedder"]
+    if (
+        not isinstance(embedder, dict)
+        or set(embedder)
+        != {
+            "status",
+            "sbom",
+            "lock_sha256",
+            "consumer_source",
+            "wheel_backed_sources",
+            "test_results",
+            "strict_installed_typing",
+            "limits",
+        }
+        or embedder["status"] != "passed"
+        or embedder["consumer_source"] != "examples/embed"
+        or embedder["strict_installed_typing"] is not True
+        or not isinstance(embedder["lock_sha256"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", embedder["lock_sha256"]) is None
+        or not isinstance(embedder["test_results"], list)
+        or not python_nodes
+        or any(
+            not node.startswith("examples/embed/tests/")
+            or "::" not in node
+            or node.split("::", 1)[0] not in current
+            or observed[node] != "passed"
+            for node in python_nodes
+        )
+        or embedder["test_results"]
+        != [{"node_id": node, "outcome": "passed"} for node in observed if node in python_nodes]
+    ):
+        raise ValueError("installed_embedder_receipt_invalid")
 
 
 def case_inputs(root: Path, case: dict, current: dict[str, str]) -> tuple[list, list]:
@@ -374,7 +445,7 @@ def _audit_runtime_evidence(
                 cases,
                 proofs,
                 current,
-                required=tasks.get("WP-36", {}).get("completed") is True,
+                required=False,
             )
         )
     return result

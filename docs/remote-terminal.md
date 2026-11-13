@@ -24,18 +24,18 @@ back to local storage.
 
 ## Install
 
-The remote client and CLI profile flags target the `0.3.2`
-candidate. Published core `0.2.0` is a different, unqualified client cohort.
-From this checkout, run with the locked environment and explicit extras:
+The remote client and CLI profile flags use the published `0.3.2` core.
+Core `0.2.0` exposes an earlier client facade. From this checkout, run with the
+locked environment and explicit extras:
 
 ```sh
 uv run --frozen --extra tui --extra remote tether --help
 ```
 
-After a release includes the remote profile, the installed-command recipe is:
+For an installed command, select both extras on the exact published version:
 
 ```sh
-uv tool install 'novirhiza-tether[tui,remote]'
+uv tool install 'novirhiza-tether[tui,remote]==0.3.2'
 ```
 
 The `remote` extra installs HTTPX. The `tui` extra installs Textual. A Databricks

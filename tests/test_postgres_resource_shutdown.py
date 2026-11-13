@@ -1,12 +1,19 @@
 """Real PostgreSQL connection/worker ownership through public resource shutdown."""
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 from threading import Event
 
 import pytest
 from postgres_support import database as database
 from postgres_support import postgres_server as postgres_server
+from resource_lifetime_controls import (
+    cancel_and_expect_cancellation,
+    close_after_release,
+    wait_closed_entry,
+)
+from tui_event_waits import wait_for_event_or_operation
 
 from tether.client import HistoryRecord, Message
 from tether.client.postgres import PostgresResources, StorageLimits
@@ -18,13 +25,6 @@ pytestmark = pytest.mark.anyio
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
-
-
-async def cancel_waiter(waiter):
-    await asyncio.sleep(0)
-    waiter.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await waiter
 
 
 async def test_public_postgres_resources_wait_for_real_borrowed_connection_release(database):
@@ -48,33 +48,37 @@ async def test_public_postgres_resources_wait_for_real_borrowed_connection_relea
         schema=h.schema,
         limits=StorageLimits(io_seconds=1, shutdown_seconds=0.01),
     )
-    with pytest.raises(RuntimeError, match="postgres_resources_not_closing"):
-        await resources.wait_closed()
-    history = resources.storage.history
-    operation = asyncio.create_task(
-        history.put(
-            actor=h.actor,
-            session_id="held-session",
-            key="held-content",
-            record=HistoryRecord(
-                kind="message", message=Message(role="user", content="Fabricated")
-            ),
-        )
-    )
+    operation = None
+    waiter = None
     try:
-        await asyncio.wait_for(entered.wait(), 3)
-        operation.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await operation
+        with pytest.raises(RuntimeError, match="postgres_resources_not_closing"):
+            await resources.wait_closed()
+        history = resources.storage.history
+        operation = asyncio.create_task(
+            history.put(
+                actor=h.actor,
+                session_id="held-session",
+                key="held-content",
+                record=HistoryRecord(
+                    kind="message", message=Message(role="user", content="Fabricated")
+                ),
+            )
+        )
+        await wait_for_event_or_operation(entered, operation)
+        await cancel_and_expect_cancellation(operation)
         assert await resources.aclose() is False
-        await cancel_waiter(asyncio.create_task(resources.wait_closed()))
+        waiter = await wait_closed_entry(resources)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
         assert not exited.is_set()
         assert not h.pool.closed
         with pytest.raises(RuntimeError, match="postgres_resources_closed"):
             _ = resources.storage
     finally:
-        release.set()
-        assert await asyncio.wait_for(resources.wait_closed(), 3)
+        await close_after_release(
+            resources, release.set, operation, waiter, primary=sys.exception()
+        )
     assert exited.is_set()
     assert await resources.aclose()
     assert not h.pool.closed
@@ -94,25 +98,27 @@ async def test_database_wait_closed_preserves_real_executor_worker_after_waiter_
         schema=h.schema,
         limits=StorageLimits(io_seconds=1, shutdown_seconds=0.01),
     )
-    with pytest.raises(RuntimeError, match="database_root_not_closing"):
-        await root.wait_closed()
 
     def held():
         loop.call_soon_threadsafe(entered.set)
         release.wait()
         return "Fabricated completed worker"
 
-    operation = asyncio.create_task(root.prepare("held-session", held))
+    operation = None
+    waiter = None
     try:
-        await asyncio.wait_for(entered.wait(), 3)
-        operation.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await operation
+        with pytest.raises(RuntimeError, match="database_root_not_closing"):
+            await root.wait_closed()
+        operation = asyncio.create_task(root.prepare("held-session", held))
+        await wait_for_event_or_operation(entered, operation)
+        await cancel_and_expect_cancellation(operation)
         assert await root.aclose() is False
-        await cancel_waiter(asyncio.create_task(root.wait_closed()))
+        waiter = await wait_closed_entry(root)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
         assert root.workers.busy("held-session")
     finally:
-        release.set()
-        assert await asyncio.wait_for(root.wait_closed(), 3)
+        await close_after_release(root, release.set, operation, waiter, primary=sys.exception())
     assert not root.workers.busy("held-session")
     assert not h.pool.closed

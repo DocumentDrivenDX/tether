@@ -1,13 +1,16 @@
 """Durable Agent resume and shutdown keep read observations outside storage authority."""
 
 import asyncio
+import sys
 from contextlib import suppress
 
 import pytest
+from selected_profiles_process import await_retained
 from test_gated_execution import final, proposal
 from test_resume_engine import build, interrupted
 from test_resume_engine import recovery as recovery
 from test_retrieval_observers import ReadTool, observers, retrievals
+from test_telemetry_ports import _start_hung_sink_cleanup, _wait_for_sink_entry
 
 from tether import Tether
 from tether.context.testing import fabricated_context
@@ -99,23 +102,26 @@ async def test_retrieval_with_hung_sink_finishes_and_releases_storage_root(
         ),
     )
     app = Tether(engine=engine, store=store, history=history, limits=client_limits, resume="off")
-    await app.__aenter__()
     try:
+        await app.__aenter__()
         client = app.client(Actor(id="owner"))
         made = await client.create(spec=spec.id)
         handle = await client.send(made.id, "Fabricated")
-        assert (await asyncio.wait_for(handle.result(), 2)).stop_reason == "final"
+        assert (await handle.result()).stop_reason == "final"
         assert len(tool.calls) == 1
-        await asyncio.wait_for(entered.wait(), 1)
+        await _wait_for_sink_entry(entered, engine.observers.delivery)
         assert not await app.aclose()
         reopened = await JsonlRoot.open(tmp_path)
         assert await reopened.aclose()
     finally:
-        release.set()
-        if not app.closed:
-            await app.aclose()
-        await asyncio.wait_for(engine.wait_observers_closed(), 1)
-        if app._cleanup is not None:
-            await asyncio.wait_for(app._cleanup, 1)
-        assert app.drained
-        assert await root.aclose()
+        primary_failure = sys.exception()
+        cleanup_task = _start_hung_sink_cleanup(release, app, engine, root)
+        try:
+            await await_retained(cleanup_task)
+        except BaseException as cleanup_failure:
+            if primary_failure is not None:
+                raise BaseExceptionGroup(
+                    "retrieval_test_and_cleanup_failed",
+                    [primary_failure, cleanup_failure],
+                ) from cleanup_failure
+            raise

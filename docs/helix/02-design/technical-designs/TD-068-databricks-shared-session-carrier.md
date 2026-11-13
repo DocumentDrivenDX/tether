@@ -145,8 +145,16 @@ coverage.
 
 ## Performance
 
+PRD NFR-7's 2026-11-09 owner decision makes actual performance qualification
+optional and nonblocking for implementation, functional carrier acceptance and
+release. The isolated workflow and deterministic admission/rejection/privacy/
+cleanup controls remain required. Optional measurements retain their actual
+outcome and the existing six-profile/54-metric admission contract; Apps latency
+remains observational. This changes no identity, lifecycle, caller deadline,
+genuine-expiry or storage support requirement.
+
 - **Expected Load**: No tenant, request-rate or session-volume profile has been supplied; do not invent a capacity claim.
-- **Response Target**: No latency SLO is selected here. Measure API operation latency, stream batch latency/size, connection acquisition and shutdown report time in the named deployment profile before support claims.
+- **Response Target**: No latency SLO is selected here. Measure API operation latency, stream batch latency/size, connection acquisition and shutdown report time in the named deployment profile before performance support claims.
 - **Optimizations**: Bound SSE batches and queues; reuse only qualified external connection pools; do not cache authorization across current identity or credential changes.
 
 ## Testing

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 
 import pytest
+from functional_watchdog import MAX_FUNCTIONAL_WATCHDOG_MS
 from pydantic import ValidationError
 from test_resume_engine import recovery as recovery
 
@@ -44,7 +45,9 @@ async def test_public_companion_suite_on_local_and_volatile_dummy(recovery):
     async def factory():
         yield LiveStoreFixture(h.store, h.actor, Actor(id="foreign"))
 
-    report = await mutation_receipt_suite(factory)
+    report = await mutation_receipt_suite(
+        factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0
+    )
     assert report.suite == "mutation_receipts"
     assert "one_genesis" in report.checks
     assert "exact_accepted_metadata" in report.checks
@@ -302,7 +305,7 @@ async def test_conformance_detects_duplicate_genesis_negative_control(recovery):
         yield LiveStoreFixture(h.store, h.actor, Actor(id="foreign"))
 
     with pytest.raises(ConformanceFailure, match="one_genesis"):
-        await mutation_receipt_suite(factory)
+        await mutation_receipt_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)
 
 
 async def test_conformance_detects_wrong_receipt_sequence_negative_control(recovery):
@@ -326,4 +329,4 @@ async def test_conformance_detects_wrong_receipt_sequence_negative_control(recov
         yield LiveStoreFixture(h.store, h.actor, Actor(id="foreign"))
 
     with pytest.raises(ConformanceFailure, match="receipt_commit_scope"):
-        await mutation_receipt_suite(factory)
+        await mutation_receipt_suite(factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0)

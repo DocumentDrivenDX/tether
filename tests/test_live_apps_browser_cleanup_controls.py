@@ -57,7 +57,6 @@ async def _await_pipe_pressure(
 async def _kill_and_drain_fixture_process(process: asyncio.subprocess.Process) -> None:
     async def cleanup() -> None:
         communication = asyncio.create_task(process.communicate())
-        await asyncio.sleep(0)
         if process.returncode is None:
             process.kill()
         await communication
@@ -83,9 +82,8 @@ def test_failed_capture_drain_starts_before_reaping_pipe_pressured_child() -> No
                 raise RuntimeError("fabricated_reader_failure")
 
             failed = asyncio.create_task(failed_capture())
-            await asyncio.sleep(0)
-            assert failed.done()
-            failed.exception()
+            with pytest.raises(RuntimeError, match="fabricated_reader_failure"):
+                await failed
             drained = asyncio.Event()
             owned = _DrainGatedProcess(process, drained)
             await _stop_browser_group(cast(asyncio.subprocess.Process, owned), (failed,))
@@ -200,70 +198,86 @@ class _CloseControl:
         self.closed = True
 
 
+class _HeldUnknownCleanup:
+    def __init__(self) -> None:
+        self.client, self.http, self.monitor = _CloseControl(), _CloseControl(), _CloseControl()
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def prepare(self, *_args: object) -> tuple[dict[str, Any], object]:
+        return {"session_id": "s", "invocation_id": "i"}, self.monitor
+
+    async def restart(self, *_args: object) -> dict[str, Any]:
+        raise LiveQualificationIncomplete("live_app_state_not_observed")
+
+    async def close(
+        self,
+        owned_client: object,
+        owned_http: object,
+        owned_monitor: object,
+        *_args: object,
+    ) -> None:
+        self.entered.set()
+        await self.release.wait()
+        for resource in (owned_client, owned_http, owned_monitor):
+            await cast(Any, resource).aclose()
+
+
+async def _exercise_unknown_cleanup(
+    state: _HeldUnknownCleanup, monkeypatch: pytest.MonkeyPatch, cancel_cleanup: bool
+) -> None:
+    import qualify_live_apps as live
+    import qualify_live_apps_cleanup as cleanup
+    import selected_profiles_process
+    from context_lifetime_controls import wait_event_or_task
+    from process_lifetime_controls import ShieldCancellationObserver
+
+    observer = ShieldCancellationObserver(2)
+    if cancel_cleanup:
+        observer.install(selected_profiles_process, monkeypatch)
+    monkeypatch.setattr(live, "_prepare_unknown_effect", state.prepare)
+    monkeypatch.setattr(live, "_restart_unknown_effect", state.restart)
+    monkeypatch.setattr(cleanup, "cleanup_case_resources", state.close)
+    task = asyncio.create_task(
+        _qualify_unknown_effect(
+            cast(Any, state.client),
+            cast(Any, state.http),
+            cast(Any, object()),
+            "admin",
+            None,
+            {},
+            LiveSettings("app", "https://apps.example", "", "/api/v1"),
+            False,
+            cast(Any, object()),
+            cast(Any, object()),
+        )
+    )
+    observer.target = task
+    try:
+        await wait_event_or_task(state.entered, task)
+        if cancel_cleanup:
+            task.cancel()
+            await wait_event_or_task(observer.acknowledged[0], task)
+            task.cancel()
+            await wait_event_or_task(observer.acknowledged[1], task)
+            assert not task.done()
+        state.release.set()
+        expected_error = asyncio.CancelledError if cancel_cleanup else LiveQualificationIncomplete
+        with pytest.raises(expected_error):
+            await task
+    finally:
+        state.release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 @pytest.mark.parametrize("cancel_cleanup", [False, True], ids=["incomplete", "repeat-cancel"])
 def test_unknown_effect_incomplete_waits_for_retained_resource_cleanup(
     monkeypatch: pytest.MonkeyPatch, cancel_cleanup: bool
 ) -> None:
-    import qualify_live_apps as live
-    import qualify_live_apps_cleanup as cleanup
-
-    client, http, monitor = _CloseControl(), _CloseControl(), _CloseControl()
-    entered = asyncio.Event()
-    release = asyncio.Event()
-
-    async def prepare(*_args: object) -> tuple[dict[str, Any], object]:
-        return {"session_id": "s", "invocation_id": "i"}, monitor
-
-    async def restart(*_args: object) -> dict[str, Any]:
-        raise LiveQualificationIncomplete("live_app_state_not_observed")
-
-    async def held_close(
-        owned_client: object, owned_http: object, owned_monitor: object, *_args: object
-    ) -> None:
-        entered.set()
-        await release.wait()
-        for resource in (owned_client, owned_http, owned_monitor):
-            await cast(Any, resource).aclose()
-
-    monkeypatch.setattr(live, "_prepare_unknown_effect", prepare)
-    monkeypatch.setattr(live, "_restart_unknown_effect", restart)
-    monkeypatch.setattr(cleanup, "cleanup_case_resources", held_close)
-
-    async def run() -> None:
-        task = asyncio.create_task(
-            _qualify_unknown_effect(
-                cast(Any, client),
-                cast(Any, http),
-                cast(Any, object()),
-                "admin",
-                None,
-                {},
-                LiveSettings("app", "https://apps.example", "", "/api/v1"),
-                False,
-                cast(Any, object()),
-                cast(Any, object()),
-            )
-        )
-        entered_wait = asyncio.create_task(entered.wait())
-        done, _ = await asyncio.wait({entered_wait, task}, return_when=asyncio.FIRST_COMPLETED)
-        if task in done:
-            entered_wait.cancel()
-            await task
-        await entered_wait
-        if cancel_cleanup:
-            task.cancel()
-            await asyncio.sleep(0)
-            task.cancel()
-            assert not task.done()
-        release.set()
-        if cancel_cleanup:
-            with pytest.raises(asyncio.CancelledError):
-                await task
-        else:
-            with pytest.raises(LiveQualificationIncomplete):
-                await task
-
-    asyncio.run(run())
-    assert client.closed
-    assert http.closed
-    assert monitor.closed
+    state = _HeldUnknownCleanup()
+    asyncio.run(_exercise_unknown_cleanup(state, monkeypatch, cancel_cleanup))
+    assert state.client.closed
+    assert state.http.closed
+    assert state.monitor.closed

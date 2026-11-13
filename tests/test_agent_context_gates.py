@@ -3,6 +3,7 @@
 import asyncio
 
 import pytest
+from context_lifetime_controls import ContextClock, settle_tasks, wait_event_or_task
 from test_agent_context import fixture, run
 from test_gated_execution import final
 
@@ -26,18 +27,10 @@ def anyio_backend():
 
 
 @pytest.fixture
-def context_timers(monkeypatch):
-    timers: list[asyncio.Timeout] = []
-
-    def timeout_at(_deadline):
-        timer = asyncio.Timeout(None)
-        timers.append(timer)
-        return timer
-
-    # Arm the real deadline at the target phase's entry barrier, so preparation
-    # speed cannot race away the hydration/worker behavior being observed.
-    monkeypatch.setattr(context_step.asyncio, "timeout_at", timeout_at)
-    return timers
+def context_clock(monkeypatch):
+    clock = ContextClock()
+    clock.install(context_step, monkeypatch)
+    return clock
 
 
 @pytest.mark.parametrize("kind", ["context_preparation", "context_use"])
@@ -65,7 +58,7 @@ async def test_rejected_or_unknown_context_facts_never_enter_model_port(limits, 
         assert not [e for e in h.log.entries if e.kind == "model_attempt"]
 
 
-async def test_initial_history_hydration_is_inside_context_deadline(limits, context_timers):
+async def test_initial_history_hydration_is_inside_context_deadline(limits, context_clock):
     entered, finished = asyncio.Event(), asyncio.Event()
     config = fabricated_context()["context_config"]
     async with fixture(limits, context_config=config) as h:
@@ -74,29 +67,40 @@ async def test_initial_history_hydration_is_inside_context_deadline(limits, cont
         async def read(*args, **kwargs):
             entered.set()
             try:
-                context_timers[-1].reschedule(asyncio.get_running_loop().time())
                 await asyncio.Event().wait()
             finally:
                 finished.set()
             return await original(*args, **kwargs)
 
         h.history.read = read
-        result = await asyncio.wait_for(run(h), 1)
-        assert entered.is_set()
-        assert any(timer.expired() for timer in context_timers)
-        assert finished.is_set()
-        assert (result.stop_reason, result.reason) == ("context_unavailable", "context_failed")
-        assert not h.model.requests
+        task = asyncio.create_task(run(h))
+        try:
+            await wait_event_or_task(entered, task)
+            deadline = context_clock.deadlines[-1]
+            context_clock.advance_past(deadline)
+            timer = context_clock.timers[-1]
+            timer.reschedule(asyncio.get_running_loop().time())
+            result = await task
+            assert timer.expired()
+            assert finished.is_set()
+            assert (result.stop_reason, result.reason) == (
+                "context_unavailable",
+                "context_failed",
+            )
+            assert not h.model.requests
+        finally:
+            if not task.done():
+                task.cancel()
+            await settle_tasks((task, *tuple(h.engine.workers.active)))
 
 
-async def test_timed_out_estimator_retains_its_actual_worker_until_exit(limits, context_timers):
+async def test_timed_out_estimator_retains_its_actual_worker_until_exit(limits, context_clock):
     entered, release, exited = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
     class Blocked:
         async def estimate(self, request):
             entered.set()
             try:
-                context_timers[-1].reschedule(asyncio.get_running_loop().time())
                 try:
                     await release.wait()
                 except asyncio.CancelledError:
@@ -109,17 +113,25 @@ async def test_timed_out_estimator_retains_its_actual_worker_until_exit(limits, 
 
     config = fabricated_context()["context_config"]
     async with fixture(limits, context_config=config, estimator=Blocked()) as h:
+        task = asyncio.create_task(run(h))
+        owned_workers = ()
         try:
-            result = await asyncio.wait_for(run(h), 1)
-            assert entered.is_set()
-            assert any(timer.expired() for timer in context_timers)
+            await wait_event_or_task(entered, task)
+            deadline = context_clock.deadlines[-1]
+            context_clock.advance_past(deadline)
+            timer = context_clock.timers[-1]
+            timer.reschedule(asyncio.get_running_loop().time())
+            result = await task
+            assert timer.expired()
             assert not exited.is_set()
             assert result.reason == "context_failed"
             assert not h.model.requests
             assert h.engine.workers.busy(h.log.session.id)
+            owned_workers = tuple(h.engine.workers.active)
         finally:
             release.set()
-        await asyncio.wait_for(exited.wait(), 1)
+            await settle_tasks((task, *owned_workers, *tuple(h.engine.workers.active)))
+        assert exited.is_set()
 
 
 @pytest.mark.parametrize("kind", ["estimator", "strategy"])
@@ -236,7 +248,7 @@ async def test_physical_retry_rechecks_frozen_use_without_replanning(limits, cha
         assert len([e for e in h.log.entries if e.kind == "context_preparation"]) == 1
 
 
-async def test_cancellation_during_strategy_propagates_without_context_use(limits):
+async def test_cancellation_during_strategy_propagates_without_context_use(limits, context_clock):
     entered, release, exited = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
     class Blocked(FullContext):
@@ -250,17 +262,20 @@ async def test_cancellation_during_strategy_propagates_without_context_use(limit
 
     async with fixture(limits, context=Blocked()) as h:
         task = asyncio.create_task(run(h))
-        await asyncio.wait_for(entered.wait(), 1)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
-        assert not h.model.requests
-        assert not [e for e in h.log.entries if e.kind == "context_use"]
-        assert [e for e in h.log.entries if e.kind == "turn_ended"][-1].facts[
-            "stop_reason"
-        ] == "cancelled"
-        release.set()
-        await asyncio.wait_for(exited.wait(), 1)
+        try:
+            await wait_event_or_task(entered, task)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert exited.is_set()
+            assert not h.model.requests
+            assert not [e for e in h.log.entries if e.kind == "context_use"]
+            assert [e for e in h.log.entries if e.kind == "turn_ended"][-1].facts[
+                "stop_reason"
+            ] == "cancelled"
+        finally:
+            release.set()
+            await settle_tasks((task, *tuple(h.engine.workers.active)))
 
 
 @pytest.mark.parametrize("custom", [False, True])
@@ -307,7 +322,9 @@ async def test_read_revocation_during_final_estimate_stops_physical_attempt(limi
 
 
 @pytest.mark.parametrize("custom", [False, True])
-async def test_final_policy_wait_cannot_admit_physical_start_after_context_deadline(limits, custom):
+async def test_final_policy_wait_cannot_admit_physical_start_after_context_deadline(
+    limits, custom, context_clock
+):
     from tether.models.testing import ListAttemptRecorder
 
     class Policy(AllowAll):
@@ -341,15 +358,14 @@ async def test_final_policy_wait_cannot_admit_physical_start_after_context_deadl
     ) as h:
         task = asyncio.create_task(run(h))
         try:
-            await asyncio.wait_for(entered.wait(), 1)
+            await wait_event_or_task(entered, task)
             deadline = h.engine._runs[h.log.session.id].preparation.deadline
-            remaining = max(0, deadline - asyncio.get_running_loop().time()) + 0.02
-            with pytest.raises(TimeoutError):
-                async with asyncio.timeout(remaining):
-                    await asyncio.Event().wait()
+            context_clock.advance_past(deadline)
+            release.set()
+            result = await task
         finally:
             release.set()
-        result = await asyncio.wait_for(task, 1)
+            await settle_tasks((task, *tuple(h.engine.workers.active)))
         assert (result.stop_reason, result.reason) == ("context_unavailable", "context_failed")
         assert model.egress == 0
 

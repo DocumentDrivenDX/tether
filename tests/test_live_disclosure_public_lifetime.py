@@ -8,6 +8,7 @@ from contextlib import aclosing
 from typing import Any, cast
 
 import pytest
+from selected_profiles_process import await_retained
 
 from tether.types import ModelResponse, TextDelta
 from tether.types.client import ReplyText
@@ -21,7 +22,12 @@ def anyio_backend():
     return "asyncio"
 
 
-async def _wait_for_follower(harness, key: tuple[str, str | None], monkeypatch) -> None:
+async def _wait_for_follower(
+    harness,
+    key: tuple[str, str | None],
+    monkeypatch,
+    consumer: asyncio.Task[None],
+) -> None:
     ready = asyncio.Event()
     followers = harness.app.followers
     original = followers._subscribe
@@ -33,16 +39,29 @@ async def _wait_for_follower(harness, key: tuple[str, str | None], monkeypatch) 
 
     monkeypatch.setattr(followers, "_subscribe", subscribe)
     if key not in followers.live:
-        async with asyncio.timeout(2):
-            await ready.wait()
+        waiter = asyncio.create_task(ready.wait())
+        try:
+            done, _ = await asyncio.wait((waiter, consumer), return_when=asyncio.FIRST_COMPLETED)
+            if consumer in done:
+                await consumer
+                raise AssertionError("follower_consumer_ended_before_subscription")
+            await waiter
+        finally:
+            if not waiter.done():
+                waiter.cancel()
+            await await_retained(asyncio.create_task(_settle_future(waiter)))
 
 
 async def _finish_reply(client, session_id: str, content: str):
     handle = await client.send(session_id, "Fabricated repeated request", spec="demo")
-    result = await asyncio.wait_for(handle.result(), 2)
+    result = await handle.result()
     assert result.stop_reason == "final"
     assert result.messages[-1].content == content
     return handle
+
+
+async def _settle_future(future: asyncio.Future) -> None:
+    await asyncio.gather(future, return_exceptions=True)
 
 
 class _OwnerFollower:
@@ -53,20 +72,33 @@ class _OwnerFollower:
         self.waiters: dict[str, asyncio.Future[None]] = {}
         self.stream: AsyncGenerator[Any, None] | None = None
         self.consumer: asyncio.Task[None] | None = None
+        self.cleanup: asyncio.Task[None] | None = None
 
     async def __aenter__(self):
-        h = self.h
-        initial = await h.client.pending(h.session.id)
-        assert initial is not None
-        first = await h.client.confirm(h.session.id, initial.invocation_id, Answer(approved=True))
-        assert first is not None
-        assert (await first.result()).stop_reason == "final"
-        h.app.access.limits = h.app.access.limits.model_copy(update={"follower_queue_size": 2})
-        baseline = await h.client.snapshot(h.session.id)
-        self.stream = cast(AsyncGenerator[Any, None], h.client.follow(since=baseline.seq))
-        self.consumer = asyncio.create_task(self._consume())
-        await _wait_for_follower(h, (h.actor.id, None), self.monkeypatch)
-        return self
+        try:
+            h = self.h
+            initial = await h.client.pending(h.session.id)
+            assert initial is not None
+            first = await h.client.confirm(
+                h.session.id, initial.invocation_id, Answer(approved=True)
+            )
+            assert first is not None
+            assert (await first.result()).stop_reason == "final"
+            h.app.access.limits = h.app.access.limits.model_copy(update={"follower_queue_size": 2})
+            baseline = await h.client.snapshot(h.session.id)
+            self.stream = cast(AsyncGenerator[Any, None], h.client.follow(since=baseline.seq))
+            self.consumer = asyncio.create_task(self._consume())
+            await _wait_for_follower(h, (h.actor.id, None), self.monkeypatch, self.consumer)
+            return self
+        except BaseException as primary:
+            cleanup = asyncio.create_task(self._cleanup())
+            try:
+                await await_retained(cleanup)
+            except BaseException as cleanup_error:
+                raise BaseExceptionGroup(
+                    "owner_follower_enter_and_cleanup_failed", [primary, cleanup_error]
+                ) from primary
+            raise
 
     async def _consume(self) -> None:
         assert self.stream is not None
@@ -91,10 +123,20 @@ class _OwnerFollower:
         if handle.turn_id not in self.replies:
             waiter = asyncio.get_running_loop().create_future()
             self.waiters[handle.turn_id] = waiter
-            if handle.turn_id in self.replies:
-                waiter.set_result(None)
-            await asyncio.wait_for(waiter, 2)
-            self.waiters.pop(handle.turn_id, None)
+            try:
+                if handle.turn_id in self.replies:
+                    waiter.set_result(None)
+                consumer = self.consumer
+                assert consumer is not None
+                done, _ = await asyncio.wait(
+                    (waiter, consumer), return_when=asyncio.FIRST_COMPLETED
+                )
+                if consumer in done and not waiter.done():
+                    await consumer
+                    raise AssertionError("follower_consumer_ended_before_reply")
+                await waiter
+            finally:
+                self.waiters.pop(handle.turn_id, None)
         assert self.replies[handle.turn_id] == content
         assert not h.app.followers.active
         buffers = h.app.followers.live[(h.actor.id, None)]
@@ -103,13 +145,37 @@ class _OwnerFollower:
         assert not buffer.blocked
         assert not buffer.closed_attempts
 
-    async def __aexit__(self, *exc: object) -> None:
-        assert self.consumer is not None
-        self.consumer.cancel()
-        await asyncio.gather(self.consumer, return_exceptions=True)
+    async def _cleanup(self) -> None:
+        errors: list[BaseException] = []
+        if self.consumer is not None:
+            self.consumer.cancel()
+            outcome = await asyncio.gather(self.consumer, return_exceptions=True)
+            errors.extend(
+                item
+                for item in outcome
+                if isinstance(item, BaseException) and not isinstance(item, asyncio.CancelledError)
+            )
         if self.stream is not None:
-            await aclosing(self.stream).__aexit__(*exc)
-        if not exc[0]:
+            try:
+                await aclosing(self.stream).__aexit__(None, None, None)
+            except BaseException as error:
+                errors.append(error)
+        if errors:
+            raise BaseExceptionGroup("owner_follower_cleanup_failed", errors)
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        cleanup = asyncio.create_task(self._cleanup())
+        try:
+            await await_retained(cleanup)
+        except BaseException as error:
+            if exc is not None:
+                primary = exc
+                assert isinstance(primary, BaseException)
+                raise BaseExceptionGroup(
+                    "owner_follower_test_and_cleanup_failed", [primary, error]
+                ) from error
+            raise
+        if exc is None:
             assert sum(isinstance(event, ReplyText) for event in self.events) == 8
 
 
@@ -125,17 +191,28 @@ class _ContinuationProbe:
         self.stream: AsyncGenerator[Any, None] | None = None
         self.run_state = None
         self.old_recorder = None
+        self.cleanup: asyncio.Task[None] | None = None
 
     async def __aenter__(self):
-        h = self.h
-        baseline = await h.client.snapshot(h.session.id)
-        self.stream = cast(
-            AsyncGenerator[Any, None],
-            h.client.follow(session_id=h.session.id, since=baseline.seq),
-        )
-        self.consumer = asyncio.create_task(self._consume())
-        await _wait_for_follower(h, (h.actor.id, h.session.id), self.monkeypatch)
-        return self
+        try:
+            h = self.h
+            baseline = await h.client.snapshot(h.session.id)
+            self.stream = cast(
+                AsyncGenerator[Any, None],
+                h.client.follow(session_id=h.session.id, since=baseline.seq),
+            )
+            self.consumer = asyncio.create_task(self._consume())
+            await _wait_for_follower(h, (h.actor.id, h.session.id), self.monkeypatch, self.consumer)
+            return self
+        except BaseException as primary:
+            cleanup = asyncio.create_task(self._cleanup())
+            try:
+                await await_retained(cleanup)
+            except BaseException as cleanup_error:
+                raise BaseExceptionGroup(
+                    "continuation_enter_and_cleanup_failed", [primary, cleanup_error]
+                ) from primary
+            raise
 
     async def _consume(self) -> None:
         assert self.stream is not None
@@ -171,7 +248,35 @@ class _ContinuationProbe:
         self.late = asyncio.create_task(
             old_recorder.disclose_delta(old_identity, "stale old phase")
         )
-        await asyncio.wait_for(self.auth_started.wait(), 2)
+        assert self.late is not None
+        await self._wait_event_or_terminal(
+            self.auth_started,
+            self.late,
+            message="old_callback_ended_before_authorization",
+        )
+
+    @staticmethod
+    async def _wait_event_or_terminal(
+        event: asyncio.Event | asyncio.Future, *tasks: asyncio.Task, message: str
+    ) -> None:
+        waiter = (
+            asyncio.create_task(event.wait())
+            if isinstance(event, asyncio.Event)
+            else asyncio.ensure_future(asyncio.shield(event))
+        )
+        try:
+            done, _ = await asyncio.wait((waiter, *tasks), return_when=asyncio.FIRST_COMPLETED)
+            if waiter in done:
+                await waiter
+                return
+            for task in tasks:
+                if task in done:
+                    await task
+            raise AssertionError(message)
+        finally:
+            if not waiter.done():
+                waiter.cancel()
+            await await_retained(asyncio.create_task(_settle_future(waiter)))
 
     async def run(self) -> None:
         h = self.h
@@ -188,35 +293,74 @@ class _ContinuationProbe:
         assert pending is not None
         handle = await h.client.confirm(session_id, pending.invocation_id, Answer(approved=True))
         assert handle is not None
-        await asyncio.wait_for(self.new_delta_ready.wait(), 2)
+        assert handle._task is not None
+        consumer = self.consumer
+        assert consumer is not None
+        await self._wait_event_or_terminal(
+            self.new_delta_ready,
+            consumer,
+            handle._task,
+            message="turn_or_consumer_ended_before_new_delta",
+        )
         self.release_auth.set()
         late = self.late
         assert late is not None
-        await asyncio.wait_for(late, 2)
+        await late
         self.release_model.set()
-        result = await asyncio.wait_for(handle.result(), 2)
+        result = await handle.result()
         assert result.stop_reason == "final"
         assert result.messages[-1].content == "Fabricated done"
         assert run.recorder is not None
         assert run.recorder is not old_recorder
         assert run.recorder.live_text is not None
-        await asyncio.wait_for(self.reply_received, 2)
+        await self._wait_event_or_terminal(
+            self.reply_received, consumer, message="consumer_ended_before_reply"
+        )
         assert [(event.text, event.offset) for event in self.received] == [("Fabricated done", 0)]
         assert not h.app.followers.active
         buffer = next(iter(h.app.followers.live[(h.actor.id, session_id)]))
         assert not buffer.blocked
         assert not buffer.closed_attempts
 
-    async def __aexit__(self, *exc: object) -> None:
+    async def _cleanup(self) -> None:
+        errors: list[BaseException] = []
         self.release_auth.set()
         self.release_model.set()
         if self.late is not None:
-            await asyncio.gather(self.late, return_exceptions=True)
+            outcome = await asyncio.gather(self.late, return_exceptions=True)
+            errors.extend(
+                item
+                for item in outcome
+                if isinstance(item, BaseException) and not isinstance(item, asyncio.CancelledError)
+            )
         if self.consumer is not None:
             self.consumer.cancel()
-            await asyncio.gather(self.consumer, return_exceptions=True)
+            outcome = await asyncio.gather(self.consumer, return_exceptions=True)
+            errors.extend(
+                item
+                for item in outcome
+                if isinstance(item, BaseException) and not isinstance(item, asyncio.CancelledError)
+            )
         if self.stream is not None:
-            await aclosing(self.stream).__aexit__(*exc)
+            try:
+                await aclosing(self.stream).__aexit__(None, None, None)
+            except BaseException as error:
+                errors.append(error)
+        if errors:
+            raise BaseExceptionGroup("continuation_probe_cleanup_failed", errors)
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        cleanup = asyncio.create_task(self._cleanup())
+        try:
+            await await_retained(cleanup)
+        except BaseException as error:
+            if exc is not None:
+                primary = exc
+                assert isinstance(primary, BaseException)
+                raise BaseExceptionGroup(
+                    "continuation_test_and_cleanup_failed", [primary, error]
+                ) from error
+            raise
 
 
 async def test_public_owner_follower_retires_markers_after_more_than_capacity(harness, monkeypatch):

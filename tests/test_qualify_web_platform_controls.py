@@ -13,6 +13,8 @@ from types import SimpleNamespace
 from typing import BinaryIO, cast
 
 import pytest
+import selected_profiles_process
+from process_lifetime_controls import ShieldCancellationObserver
 from qualify_live_apps_incomplete import LiveQualificationIncomplete
 from qualify_web_platform_logs import (
     OwnedLogFollower,
@@ -136,8 +138,10 @@ def test_owned_thread_observation_keeps_worker_until_terminal() -> None:
     asyncio.run(run())
 
 
-def test_owned_thread_survives_repeated_cancellation() -> None:
+def test_owned_thread_survives_repeated_cancellation(monkeypatch: pytest.MonkeyPatch) -> None:
     release = threading.Event()
+    observer = ShieldCancellationObserver(1)
+    observer.install(selected_profiles_process, monkeypatch)
 
     async def run() -> None:
         entered = asyncio.Event()
@@ -156,11 +160,13 @@ def test_owned_thread_survives_repeated_cancellation() -> None:
                 reason="qualification_app_state_not_observed",
             )
         )
+        observer.target = task
         try:
             await _wait_for_entry_or_operation_terminal(entered, task)
             task.cancel()
-            await asyncio.sleep(0)
+            await _wait_for_entry_or_operation_terminal(observer.entered, task)
             task.cancel()
+            await _wait_for_entry_or_operation_terminal(observer.acknowledged[0], task)
             assert not task.done()
             release.set()
             with pytest.raises(asyncio.CancelledError):

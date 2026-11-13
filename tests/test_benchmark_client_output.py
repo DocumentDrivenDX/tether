@@ -8,6 +8,9 @@ from pathlib import Path
 import benchmark_client_environment as child_env
 import benchmark_client_support as support
 import pytest
+import selected_profiles_process
+from context_lifetime_controls import wait_event_or_task
+from process_lifetime_controls import ShieldCancellationObserver, unarmed_timeouts
 
 
 @pytest.mark.skipif(os.name != "posix", reason="console-script shebang control is POSIX-only")
@@ -87,6 +90,8 @@ def test_first_output_sample_retains_process_cleanup_after_repeated_cancellation
         spawn_entered = asyncio.Event()
         release_spawn = asyncio.Event()
         children: list[asyncio.subprocess.Process] = []
+        observer = ShieldCancellationObserver(2)
+        observer.install(selected_profiles_process, monkeypatch)
         executable = tmp_path / "tether-held-spawn"
         executable.write_text(
             f"#!{sys.executable}\nimport sys\nsys.stdout.write('fabricated\\n')\n",
@@ -102,14 +107,22 @@ def test_first_output_sample_retains_process_cleanup_after_repeated_cancellation
             return child
 
         monkeypatch.setattr(child_env.asyncio, "create_subprocess_exec", delayed_spawn)
-        task = asyncio.create_task(support._first_output_sample(executable, tmp_path, 3))
-        await spawn_entered.wait()
-        task.cancel()
-        await asyncio.sleep(0)
-        task.cancel()
-        release_spawn.set()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        with unarmed_timeouts(support) as selected_timeouts:
+            task = asyncio.create_task(support._first_output_sample(executable, tmp_path, 3))
+            observer.target = task
+            try:
+                await wait_event_or_task(spawn_entered, task)
+                task.cancel()
+                await wait_event_or_task(observer.acknowledged[0], task)
+                task.cancel()
+                await wait_event_or_task(observer.acknowledged[1], task)
+                release_spawn.set()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                assert selected_timeouts == [3]
+            finally:
+                release_spawn.set()
+                await asyncio.gather(task, return_exceptions=True)
         assert len(children) == 1
         assert children[0].returncode is not None
 
@@ -124,6 +137,8 @@ def test_clean_capture_waits_through_repeated_cancellation_during_spawn(
         spawn_entered = asyncio.Event()
         release_spawn = asyncio.Event()
         children: list[asyncio.subprocess.Process] = []
+        observer = ShieldCancellationObserver(2)
+        observer.install(selected_profiles_process, monkeypatch)
 
         async def blocked_spawn(*args, **kwargs):
             spawn_entered.set()
@@ -134,18 +149,26 @@ def test_clean_capture_waits_through_repeated_cancellation_during_spawn(
 
         monkeypatch.setattr(child_env.asyncio, "create_subprocess_exec", blocked_spawn)
         environment = child_env.child_environment({"PATH": os.defpath, "HOME": str(Path.home())})
-        task = asyncio.create_task(
-            child_env.run_clean_capture(
-                (sys.executable, "-c", "pass"), environment=environment, timeout_seconds=2
+        with unarmed_timeouts(child_env) as selected_timeouts:
+            task = asyncio.create_task(
+                child_env.run_clean_capture(
+                    (sys.executable, "-c", "pass"), environment=environment, timeout_seconds=2
+                )
             )
-        )
-        await spawn_entered.wait()
-        task.cancel()
-        await asyncio.sleep(0)
-        task.cancel()
-        release_spawn.set()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+            observer.target = task
+            try:
+                await wait_event_or_task(spawn_entered, task)
+                task.cancel()
+                await wait_event_or_task(observer.acknowledged[0], task)
+                task.cancel()
+                await wait_event_or_task(observer.acknowledged[1], task)
+                release_spawn.set()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                assert selected_timeouts == [2]
+            finally:
+                release_spawn.set()
+                await asyncio.gather(task, return_exceptions=True)
         assert len(children) == 1
         assert children[0].returncode is not None
 

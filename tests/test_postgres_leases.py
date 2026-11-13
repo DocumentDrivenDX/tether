@@ -1,12 +1,20 @@
 """Server-time generations fence actual competing database connections."""
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from threading import Event
 from uuid import uuid4
 
 import pytest
+from context_lifetime_controls import settle_tasks, wait_event_or_task
+from postgres_pending_io_controls import (
+    close_root_and_drain,
+    close_root_settle_and_finalize,
+    release_settle_future_and_close_root,
+    retain_cleanup,
+)
 from postgres_support import database as database
 from postgres_support import postgres_server as postgres_server
 from psycopg import sql
@@ -58,13 +66,83 @@ def start(turn="phase"):
     )
 
 
+class LeaseClockControl:
+    def __init__(self) -> None:
+        self.sample = None
+        self.expired = False
+        self.deadline = None
+        self.post_hook_samples = []
+
+    def install(self, leases, monkeypatch) -> None:
+        original = leases.clock
+
+        async def controlled(connection):
+            if self.expired:
+                sample = await original(connection)
+                self.post_hook_samples.append(sample)
+                return sample
+            if self.sample is None:
+                self.sample = await original(connection)
+            return self.sample
+
+        monkeypatch.setattr(leases, "clock", controlled)
+
+    async def reach_expiry(self, connection, deadline: datetime, entered: asyncio.Event) -> None:
+        self.deadline = deadline
+        entered.set()
+        while True:
+            cursor = await connection.execute("SELECT clock_timestamp()")
+            row = await cursor.fetchone()
+            assert row is not None
+            assert isinstance(row[0], datetime)
+            if row[0] > deadline:
+                self.expired = True
+                return
+
+
+def assert_expiry_was_observed(control: LeaseClockControl, stage: str) -> None:
+    assert control.expired
+    if stage == "renew":
+        assert control.post_hook_samples == []
+    else:
+        assert control.deadline is not None
+        assert control.post_hook_samples
+        assert all(sample > control.deadline for sample in control.post_hook_samples)
+
+
+async def test_root_cleanup_waits_for_physical_drain_after_initial_close_false():
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    class HeldRoot:
+        async def aclose(self) -> bool:
+            return False
+
+        async def wait_closed(self) -> bool:
+            entered.set()
+            await release.wait()
+            return True
+
+    cleanup = None
+    try:
+        cleanup = asyncio.create_task(close_root_and_drain(HeldRoot()))
+        await wait_event_or_task(entered, cleanup)
+        assert not cleanup.done()
+        release.set()
+        assert await cleanup is False
+    finally:
+        release.set()
+        if cleanup is not None:
+            await settle_tasks((cleanup,))
+
+
 async def test_independent_roots_compete_and_stale_tokens_cannot_write_or_release(database):
     h = database
     leases = Leases(h.root, h.actor)
     summary = await leases.create(SessionInit(), str(uuid4()))
-    other = await DatabaseRoot.open(h.source, actor=h.actor, schema=h.schema)
-    competing = Leases(other, h.actor)
+    other = None
     try:
+        other = await DatabaseRoot.open(h.source, actor=h.actor, schema=h.schema)
+        competing = Leases(other, h.actor)
         outcomes = await asyncio.gather(
             leases.acquire(summary.id, turn_id="job-a"),
             competing.acquire(summary.id, turn_id="job-b"),
@@ -93,7 +171,8 @@ async def test_independent_roots_compete_and_stale_tokens_cannot_write_or_releas
         assert entries[-1].turn_id == "replacement-phase"
         assert frame.generation == replacement.generation
     finally:
-        assert await other.aclose()
+        if other is not None:
+            await retain_cleanup(close_root_and_drain(other), primary=sys.exception())
 
 
 async def test_confirmation_recovery_reports_logical_phase_not_new_lease_job(database):
@@ -148,49 +227,82 @@ async def test_expiry_during_entry_apply_rolls_back_facts_projection_and_feed(
     database, monkeypatch
 ):
     h = database
-    root = await DatabaseRoot.open(
-        h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(lease_seconds=0.2)
-    )
-    leases = Leases(root, h.actor)
-    original = leases.apply
-
-    async def delayed(connection, frame, entry):
-        await original(connection, frame, entry)
-        await connection.execute("SELECT pg_sleep(0.25)")
-
+    root = None
+    token = None
+    operation = None
     try:
+        root = await DatabaseRoot.open(
+            h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(lease_seconds=0.2)
+        )
+        leases = Leases(root, h.actor)
+        control = LeaseClockControl()
+        control.install(leases, monkeypatch)
         summary = await leases.create(SessionInit(), str(uuid4()))
         token, _ = await leases.acquire(summary.id, turn_id="job")
         before = await contents(leases, summary.id)
+        original = leases.apply
+        entered = asyncio.Event()
+
+        async def delayed(connection, frame, entry):
+            result = await original(connection, frame, entry)
+            deadline = frame.lease_until
+            assert deadline is not None
+            await control.reach_expiry(connection, deadline, entered)
+            return result
+
         monkeypatch.setattr(leases, "apply", delayed)
+        operation = asyncio.create_task(leases.append_fenced(token, [NewEntry(kind="message")]))
+        await wait_event_or_task(entered, operation)
         with pytest.raises(LeaseLost):
-            await leases.append_fenced(token, [NewEntry(kind="message")])
+            await operation
+        assert_expiry_was_observed(control, "apply")
         assert await contents(leases, summary.id) == before
     finally:
-        assert await root.aclose()
+        if root is not None:
+            finalize = None if token is None else lambda: Leases(h.root, h.actor).release(token)
+            await retain_cleanup(
+                close_root_settle_and_finalize(root, (operation,), finalize),
+                primary=sys.exception(),
+            )
 
 
 async def test_heartbeat_checks_server_clock_after_waiting_for_frame(database, monkeypatch):
     h = database
-    root = await DatabaseRoot.open(
-        h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(lease_seconds=0.2)
-    )
-    leases = Leases(root, h.actor)
-    original = leases.frame
-
-    async def delayed(connection, session_id, *, write):
-        frame = await original(connection, session_id, write=write)
-        await connection.execute("SELECT pg_sleep(0.25)")
-        return frame
-
+    root = None
+    token = None
+    heartbeat = None
     try:
+        root = await DatabaseRoot.open(
+            h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(lease_seconds=0.2)
+        )
+        leases = Leases(root, h.actor)
+        control = LeaseClockControl()
+        control.install(leases, monkeypatch)
         summary = await leases.create(SessionInit(), str(uuid4()))
         token, _ = await leases.acquire(summary.id, turn_id="job")
+        original = leases.frame
+        entered = asyncio.Event()
+
+        async def delayed(connection, session_id, *, write):
+            frame = await original(connection, session_id, write=write)
+            deadline = frame.lease_until
+            assert deadline is not None
+            await control.reach_expiry(connection, deadline, entered)
+            return frame
+
         monkeypatch.setattr(leases, "frame", delayed)
+        heartbeat = asyncio.create_task(leases.heartbeat(token))
+        await wait_event_or_task(entered, heartbeat)
         with pytest.raises(LeaseLost):
-            await leases.heartbeat(token)
+            await heartbeat
+        assert_expiry_was_observed(control, "frame")
     finally:
-        assert await root.aclose()
+        if root is not None:
+            finalize = None if token is None else lambda: Leases(h.root, h.actor).release(token)
+            await retain_cleanup(
+                close_root_settle_and_finalize(root, (heartbeat,), finalize),
+                primary=sys.exception(),
+            )
 
 
 async def test_unknown_acquisition_does_not_grant_a_second_handle(database):
@@ -206,8 +318,9 @@ async def test_unknown_acquisition_does_not_grant_a_second_handle(database):
         if fail:
             raise RuntimeError("fabricated_ack_loss")
 
-    root = await DatabaseRoot.open(source, actor=h.actor, schema=h.schema)
+    root = None
     try:
+        root = await DatabaseRoot.open(source, actor=h.actor, schema=h.schema)
         fail = True
         with pytest.raises(CommitUnknown):
             await Leases(root, h.actor).acquire(summary.id, turn_id="unknown")
@@ -219,14 +332,15 @@ async def test_unknown_acquisition_does_not_grant_a_second_handle(database):
         assert replacement.generation == 2
         await leases.release(replacement)
     finally:
-        assert await root.aclose()
+        if root is not None:
+            await retain_cleanup(close_root_and_drain(root), primary=sys.exception())
 
 
 async def test_unknown_append_can_be_reconciled_by_original_key_without_a_new_commit(database):
     h = database
     leases = Leases(h.root, h.actor)
     summary = await leases.create(SessionInit(), str(uuid4()))
-    token, _ = await leases.acquire(summary.id, turn_id="job")
+    token = None
     fail = False
 
     @asynccontextmanager
@@ -236,8 +350,10 @@ async def test_unknown_append_can_be_reconciled_by_original_key_without_a_new_co
         if fail:
             raise RuntimeError("fabricated_ack_loss")
 
-    root = await DatabaseRoot.open(source, actor=h.actor, schema=h.schema)
+    root = None
     try:
+        root = await DatabaseRoot.open(source, actor=h.actor, schema=h.schema)
+        token, _ = await leases.acquire(summary.id, turn_id="job")
         values = [NewEntry(kind="message", key="original")]
         fail = True
         with pytest.raises(CommitUnknown):
@@ -249,31 +365,41 @@ async def test_unknown_append_can_be_reconciled_by_original_key_without_a_new_co
         assert await contents(leases, summary.id) == before
         await leases.release(token)
     finally:
-        assert await root.aclose()
+        if root is not None:
+            finalize = None if token is None else lambda: leases.release(token)
+            await retain_cleanup(
+                close_root_settle_and_finalize(root, (), finalize),
+                primary=sys.exception(),
+            )
 
 
 async def test_actual_worker_retention_refuses_expired_takeover_across_roots(database):
     h = database
     leases = Leases(h.root, h.actor)
     summary = await leases.create(SessionInit(), str(uuid4()))
-    token, _ = await leases.acquire(summary.id, turn_id="job")
-    await leases.append_fenced(token, [start()])
-    root = await DatabaseRoot.open(h.source, actor=h.actor, schema=h.schema)
-    started, release = Event(), Event()
+    token = None
+    root = None
+    future = None
+    token_released = False
+    started, release = asyncio.Event(), Event()
+    loop = asyncio.get_running_loop()
 
     def work():
-        started.set()
-        if not release.wait(5):
-            raise RuntimeError("fabricated_worker_deadline")
+        loop.call_soon_threadsafe(started.set)
+        release.wait()
 
-    future = asyncio.get_running_loop().run_in_executor(None, work)
-    h.root.workers.retain(summary.id, future)
     try:
-        assert await asyncio.to_thread(started.wait, 3)
+        token, _ = await leases.acquire(summary.id, turn_id="job")
+        await leases.append_fenced(token, [start()])
+        root = await DatabaseRoot.open(h.source, actor=h.actor, schema=h.schema)
+        future = loop.run_in_executor(None, work)
+        h.root.workers.retain(summary.id, future)
+        await wait_event_or_task(started, future)
         await expire(h, summary.id)
         with pytest.raises(WorkerOutstanding):
             await Leases(root, h.actor).acquire(summary.id, turn_id="replacement")
         await leases.release(token)
+        token_released = True
         assert root.workers.active is h.root.workers.active
         assert root.workers.busy(summary.id)
         view = (await Changes(root, h.actor).snapshot(summary.id)).view
@@ -282,13 +408,15 @@ async def test_actual_worker_retention_refuses_expired_takeover_across_roots(dat
         with pytest.raises(WorkerOutstanding):
             await Leases(root, h.actor).acquire(summary.id, turn_id="replacement")
         release.set()
-        await asyncio.wait_for(asyncio.shield(future), 3)
+        await asyncio.shield(future)
         replacement, _ = await Leases(root, h.actor).acquire(summary.id, turn_id="replacement")
         await Leases(root, h.actor).release(replacement)
     finally:
-        release.set()
-        await asyncio.wait_for(asyncio.shield(future), 3)
-        assert await root.aclose()
+        finalize = None if token is None or token_released else lambda: leases.release(token)
+        await retain_cleanup(
+            release_settle_future_and_close_root(root, future, release.set, finalize),
+            primary=sys.exception(),
+        )
 
 
 async def test_closed_and_foreign_sessions_refuse_lease_acquisition(database):
@@ -309,40 +437,56 @@ async def test_expiry_at_final_mutation_cannot_commit_or_resurrect_ownership(
     database, monkeypatch, stage
 ):
     h = database
-    root = await DatabaseRoot.open(
-        h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(lease_seconds=0.2)
-    )
-    leases = Leases(root, h.actor)
-    summary = await leases.create(SessionInit(), str(uuid4()))
+    root = None
     token = None
-    if stage != "write_lease":
-        token, _ = await leases.acquire(summary.id, turn_id="job")
-    original = getattr(leases, stage)
-
-    async def delayed(*args):
-        if stage == "renew":
-            await args[0].execute("SELECT pg_sleep(0.25)")
-        result = await original(*args)
-        if stage != "renew":
-            await args[0].execute("SELECT pg_sleep(0.25)")
-        return result
-
-    before = await snapshot(h)
-    monkeypatch.setattr(leases, stage, delayed)
+    request: asyncio.Task | None = None
     try:
-        request = (
+        root = await DatabaseRoot.open(
+            h.source, actor=h.actor, schema=h.schema, limits=StorageLimits(lease_seconds=0.2)
+        )
+        leases = Leases(root, h.actor)
+        control = LeaseClockControl()
+        control.install(leases, monkeypatch)
+        summary = await leases.create(SessionInit(), str(uuid4()))
+        if stage != "write_lease":
+            token, _ = await leases.acquire(summary.id, turn_id="job")
+        original = getattr(leases, stage)
+        entered = asyncio.Event()
+
+        async def delayed(*args):
+            connection, frame = args[0], args[1]
+            if stage == "renew":
+                deadline = frame.lease_until
+                assert deadline is not None
+                await control.reach_expiry(connection, deadline, entered)
+                return await original(*args)
+            result = await original(*args)
+            deadline = frame.lease_until
+            assert deadline is not None
+            await control.reach_expiry(connection, deadline, entered)
+            return result
+
+        before = await snapshot(h)
+        monkeypatch.setattr(leases, stage, delayed)
+        request = asyncio.create_task(
             leases.acquire(summary.id, turn_id="job")
             if token is None
             else leases.heartbeat(token)
             if stage == "renew"
             else leases.append_fenced(token, [NewEntry(kind="message")])
         )
+        await wait_event_or_task(entered, request)
         with pytest.raises(LeaseLost):
             await request
+        assert_expiry_was_observed(control, stage)
         assert await snapshot(h) == before
-        monkeypatch.setattr(leases, stage, original)
-        replacement, _ = await leases.acquire(summary.id, turn_id="replacement")
+        replacement, _ = await Leases(h.root, h.actor).acquire(summary.id, turn_id="replacement")
         assert replacement.generation == (token.generation + 1 if token is not None else 1)
-        await leases.release(replacement)
+        await Leases(h.root, h.actor).release(replacement)
     finally:
-        assert await root.aclose()
+        if root is not None:
+            finalize = None if token is None else lambda: Leases(h.root, h.actor).release(token)
+            await retain_cleanup(
+                close_root_settle_and_finalize(root, (request,), finalize),
+                primary=sys.exception(),
+            )

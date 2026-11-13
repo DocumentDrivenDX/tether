@@ -5,11 +5,19 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncGenerator
+from types import SimpleNamespace
 from typing import cast
 
+import loopback_lifetime_controls
 import pytest
+from loopback_lifetime_controls import (
+    DeferredRequestTimeout,
+    HeldCleanupLoopback,
+    OwnedLoopback,
+)
 
 from tether.adapters.openai_compat import OpenAICompatModel
+from tether.adapters.pydantic_ai import compatible as compatible_module
 from tether.adapters.pydantic_ai.wire import StreamingWireValidator
 from tether.models import complete
 from tether.models.testing import ListAttemptRecorder
@@ -293,40 +301,168 @@ def assert_exchange(
     assert recorder.observed[-1][1].provider_request_id == "fabricated-success"
 
 
+def test_owned_loopback_surfaces_handler_failure_and_joins_handler() -> None:
+    async def scenario() -> None:
+        sentinel = RuntimeError("synthetic_handler_failure")
+
+        async def fail_handler(reader, writer):
+            raise sentinel
+
+        owned = OwnedLoopback(fail_handler)
+        async with owned:
+            _, client_writer = await asyncio.open_connection("127.0.0.1", owned.port)
+            owned.writers.add(client_writer)
+            with pytest.raises(RuntimeError) as failure:
+                await owned.wait_event(asyncio.Event())
+            assert failure.value is sentinel
+        assert owned.handlers
+        assert all(task.done() for task in owned.handlers)
+        assert client_writer.is_closing()
+
+    asyncio.run(scenario())
+
+
+def test_owned_loopback_retains_physical_cleanup_through_repeated_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        owned, client_writer = await _held_cleanup_owner()
+        acknowledgements: asyncio.Queue[None] = asyncio.Queue()
+        original_shield = asyncio.shield
+
+        async def acknowledged_shield(awaitable):
+            try:
+                return await original_shield(awaitable)
+            except asyncio.CancelledError:
+                acknowledgements.put_nowait(None)
+                raise
+
+        monkeypatch.setattr(asyncio, "shield", acknowledged_shield)
+        exit_task = asyncio.create_task(owned.__aexit__(None, None, None))
+        try:
+            await owned.wait_event(owned.cleanup_started, exit_task)
+            handler_task = next(iter(owned.handlers))
+            await _cancel_cleanup_twice(
+                owned, exit_task, handler_task, client_writer, acknowledgements
+            )
+            owned.release_cleanup.set()
+            with pytest.raises(asyncio.CancelledError):
+                await exit_task
+            _assert_cleanup_finished(owned, handler_task, client_writer)
+        finally:
+            finalizer = asyncio.create_task(_settle_owned_loopback(owned, exit_task))
+            await loopback_lifetime_controls.await_retained(finalizer)
+
+    asyncio.run(scenario())
+
+
+async def _held_cleanup_owner():
+    handler_started = asyncio.Event()
+
+    async def wait_for_client_eof(reader, writer):
+        handler_started.set()
+        try:
+            await reader.read()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    owned = HeldCleanupLoopback(wait_for_client_eof)
+    try:
+        await owned.__aenter__()
+        _, client_writer = await asyncio.open_connection("127.0.0.1", owned.port)
+        owned.writers.add(client_writer)
+        await owned.wait_event(handler_started)
+    except BaseException:
+        owned.release_cleanup.set()
+        cleanup = asyncio.create_task(owned._cleanup())
+        await loopback_lifetime_controls.await_retained(cleanup)
+        raise
+
+    return owned, client_writer
+
+
+async def _cancel_cleanup_twice(owned, exit_task, handler_task, client_writer, acknowledgements):
+    for _ in range(2):
+        exit_task.cancel()
+        ack = asyncio.create_task(acknowledgements.get())
+        try:
+            done, _ = await asyncio.wait((ack, exit_task), return_when=asyncio.FIRST_COMPLETED)
+            if exit_task in done:
+                await exit_task
+                raise AssertionError("cleanup_caller_ended_before_cancel_ack")
+            await ack
+        finally:
+            if not ack.done():
+                ack.cancel()
+            await asyncio.gather(ack, return_exceptions=True)
+        assert not exit_task.done()
+        assert owned.cleanup_task is not None
+        assert not owned.cleanup_task.done()
+        assert not handler_task.done()
+        assert not client_writer.is_closing()
+
+
+def _assert_cleanup_finished(owned, handler_task, client_writer) -> None:
+    assert owned.cleanup_task is not None
+    assert owned.cleanup_task.done()
+    assert owned.server is not None
+    assert not owned.server.is_serving()
+    assert handler_task.done()
+    assert client_writer.is_closing()
+
+
+async def _settle_owned_loopback(owned, exit_task) -> None:
+    failures: list[BaseException] = []
+    owned.release_cleanup.set()
+    exit_outcomes = await asyncio.gather(exit_task, return_exceptions=True)
+    failures.extend(
+        error
+        for error in exit_outcomes
+        if isinstance(error, BaseException) and not isinstance(error, asyncio.CancelledError)
+    )
+    if owned.cleanup_task is not None:
+        cleanup_outcomes = await asyncio.gather(owned.cleanup_task, return_exceptions=True)
+        failures.extend(
+            error
+            for error in cleanup_outcomes
+            if isinstance(error, BaseException) and not isinstance(error, asyncio.CancelledError)
+        )
+    if failures:
+        raise BaseExceptionGroup("owned_loopback_settlement_failed", failures)
+
+
 def test_real_loopback_retry_refreshes_identity_and_receipts(
     model_request: ModelRequest, limits: ModelExecutionLimits
 ) -> None:
     async def scenario() -> None:
         peer = LoopbackPeer()
-        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
-        credential = FreshCredential()
-        recorder = model_request.attempts
-        assert isinstance(recorder, ListAttemptRecorder)
-        port = server.sockets[0].getsockname()[1]
-        model = OpenAICompatModel(
-            base_url=f"http://127.0.0.1:{port}/v1",
-            tiers={"demo": "fabricated-wire-model"},
-            limits=limits,
-            output_limit_field="max_tokens",
-        )
-        try:
-            response = await complete(
-                model,
-                model_request.model_copy(
-                    update={"identity_mode": "caller", "credential": credential}
-                ),
+        async with OwnedLoopback(peer.handle) as owned:
+            credential = FreshCredential()
+            recorder = model_request.attempts
+            assert isinstance(recorder, ListAttemptRecorder)
+            model = OpenAICompatModel(
+                base_url=f"http://127.0.0.1:{owned.port}/v1",
+                tiers={"demo": "fabricated-wire-model"},
+                limits=limits,
+                output_limit_field="max_tokens",
             )
-        finally:
-            await model.aclose()
-            server.close()
-            await server.wait_closed()
-        assert_exchange(peer.seen, credential, recorder, response, model_request)
+            owned.model = model
+            response = await owned.wait(
+                complete(
+                    model,
+                    model_request.model_copy(
+                        update={"identity_mode": "caller", "credential": credential}
+                    ),
+                )
+            )
+            assert_exchange(peer.seen, credential, recorder, response, model_request)
 
     asyncio.run(scenario())
 
 
 def test_real_loopback_cancelled_retry_delay_never_sends_second_request(
-    model_request: ModelRequest, limits: ModelExecutionLimits
+    model_request: ModelRequest, limits: ModelExecutionLimits, monkeypatch
 ) -> None:
     async def scenario() -> None:
         peer = RetryAfterPeer()
@@ -338,30 +474,42 @@ def test_real_loopback_cancelled_retry_delay_never_sends_second_request(
                 observed.set()
 
         recorder = Recorder(model_request.tags)
-        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
-        port = server.sockets[0].getsockname()[1]
-        model = OpenAICompatModel(
-            base_url=f"http://127.0.0.1:{port}/v1",
-            tiers={"demo": "fabricated-wire-model"},
-            limits=limits.model_copy(update={"max_retry_delay_seconds": 30}),
-            output_limit_field="max_tokens",
-        )
-        request = model_request.model_copy(update={"attempts": recorder})
-        task = asyncio.create_task(complete(model, request))
-        try:
-            await asyncio.wait_for(observed.wait(), 2)
-            task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await task
-        finally:
-            if not task.done():
+        async with OwnedLoopback(peer.handle) as owned:
+            model = OpenAICompatModel(
+                base_url=f"http://127.0.0.1:{owned.port}/v1",
+                tiers={"demo": "fabricated-wire-model"},
+                limits=limits.model_copy(update={"max_retry_delay_seconds": 30}),
+                output_limit_field="max_tokens",
+            )
+            owned.model = model
+            request = model_request.model_copy(update={"attempts": recorder})
+            retry_delay = []
+            original_sleep = asyncio.sleep
+
+            async def observed_sleep(seconds, result=None):
+                retry_delay.append(seconds)
+                if seconds == 30:
+                    retry_sleep_started.set()
+                return await original_sleep(seconds, result)
+
+            retry_sleep_started = asyncio.Event()
+            monkeypatch.setattr(
+                compatible_module,
+                "asyncio",
+                SimpleNamespace(timeout=asyncio.timeout, sleep=observed_sleep),
+            )
+            task = owned.own_task(asyncio.create_task(complete(model, request)))
+            try:
+                await owned.wait_event(observed, task)
+                await owned.wait_event(retry_sleep_started, task)
+                assert retry_delay == [30]
                 task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
-            await model.aclose()
-            server.close()
-            await server.wait_closed()
-        assert peer.requests == 1
-        assert len(recorder.started) == 1
+                with pytest.raises(asyncio.CancelledError):
+                    await owned.wait(task)
+            finally:
+                monkeypatch.undo()
+            assert peer.requests == 1
+            assert len(recorder.started) == 1
 
     asyncio.run(scenario())
 
@@ -371,35 +519,32 @@ def test_real_loopback_stream_discloses_text_before_terminal(
 ) -> None:
     async def scenario() -> None:
         peer = StreamingPeer()
-        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
-        port = server.sockets[0].getsockname()[1]
-        model = OpenAICompatModel(
-            base_url=f"http://127.0.0.1:{port}/v1",
-            tiers={"demo": "fabricated-wire-model"},
-            limits=limits,
-            output_limit_field="max_tokens",
-        )
-        stream = cast(AsyncGenerator, model.stream(model_request))
-        try:
-            first = await asyncio.wait_for(anext(stream), 2)
+        async with OwnedLoopback(peer.handle) as owned:
+            model = OpenAICompatModel(
+                base_url=f"http://127.0.0.1:{owned.port}/v1",
+                tiers={"demo": "fabricated-wire-model"},
+                limits=limits,
+                output_limit_field="max_tokens",
+            )
+            owned.model = model
+            stream = owned.own_stream(cast(AsyncGenerator, model.stream(model_request)))
+            first = await owned.wait(anext(stream))
             assert isinstance(first, TextDelta)
             assert first.text == "Fabricated "
             assert peer.first_sent.is_set()
             assert not peer.release.is_set()
             peer.release.set()
-            remaining = [item async for item in stream]
+
+            async def collect_remaining():
+                return [item async for item in stream]
+
+            remaining = await owned.wait(collect_remaining())
             assert [item.text for item in remaining if isinstance(item, TextDelta)] == ["answer."]
             assert isinstance(remaining[-1], ModelResponse)
             assert remaining[-1].content == "Fabricated answer."
             assert remaining[-1].request_id == "fabricated-stream-header"
             assert peer.request is not None
             assert peer.request[2]["stream"] is True
-        finally:
-            peer.release.set()
-            await stream.aclose()
-            await model.aclose()
-            server.close()
-            await server.wait_closed()
 
     asyncio.run(scenario())
 
@@ -409,33 +554,32 @@ def test_real_loopback_fragmented_tool_arguments_finish_once(
 ) -> None:
     async def scenario() -> None:
         peer = FragmentedToolPeer()
-        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
-        port = server.sockets[0].getsockname()[1]
-        model = OpenAICompatModel(
-            base_url=f"http://127.0.0.1:{port}/v1",
-            tiers={"demo": "fabricated-wire-model"},
-            limits=limits,
-            output_limit_field="max_tokens",
-        )
-        request = model_request.model_copy(update={"tools": (tool_spec,)})
-        try:
-            items = [item async for item in model.stream(request)]
-        finally:
-            await model.aclose()
-            server.close()
-            await server.wait_closed()
-        assert len(items) == 1
-        response = items[0]
-        assert isinstance(response, ModelResponse)
-        assert response.finish_reason == "tool_calls"
-        assert [(call.id, call.name, call.arguments) for call in response.tool_calls] == [
-            ("fabricated-tool-id", "lookup", {"count": 2})
-        ]
-        assert peer.request is not None
-        assert peer.request[2]["stream"] is True
-        recorder = model_request.attempts
-        assert isinstance(recorder, ListAttemptRecorder)
-        assert len(recorder.started) == 1
+        async with OwnedLoopback(peer.handle) as owned:
+            model = OpenAICompatModel(
+                base_url=f"http://127.0.0.1:{owned.port}/v1",
+                tiers={"demo": "fabricated-wire-model"},
+                limits=limits,
+                output_limit_field="max_tokens",
+            )
+            owned.model = model
+            request = model_request.model_copy(update={"tools": (tool_spec,)})
+
+            async def collect():
+                return [item async for item in model.stream(request)]
+
+            items = await owned.wait(collect())
+            assert len(items) == 1
+            response = items[0]
+            assert isinstance(response, ModelResponse)
+            assert response.finish_reason == "tool_calls"
+            assert [(call.id, call.name, call.arguments) for call in response.tool_calls] == [
+                ("fabricated-tool-id", "lookup", {"count": 2})
+            ]
+            assert peer.request is not None
+            assert peer.request[2]["stream"] is True
+            recorder = model_request.attempts
+            assert isinstance(recorder, ListAttemptRecorder)
+            assert len(recorder.started) == 1
 
     asyncio.run(scenario())
 
@@ -445,65 +589,81 @@ def test_real_loopback_stream_close_releases_socket_after_provisional_text(
 ) -> None:
     async def scenario() -> None:
         peer = CancelledStreamPeer()
-        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
-        port = server.sockets[0].getsockname()[1]
-        model = OpenAICompatModel(
-            base_url=f"http://127.0.0.1:{port}/v1",
-            tiers={"demo": "fabricated-wire-model"},
-            limits=limits,
-            output_limit_field="max_tokens",
-        )
-        stream = cast(AsyncGenerator, model.stream(model_request))
-        try:
-            first = await asyncio.wait_for(anext(stream), 2)
+        async with OwnedLoopback(peer.handle) as owned:
+            model = OpenAICompatModel(
+                base_url=f"http://127.0.0.1:{owned.port}/v1",
+                tiers={"demo": "fabricated-wire-model"},
+                limits=limits,
+                output_limit_field="max_tokens",
+            )
+            owned.model = model
+            stream = owned.own_stream(cast(AsyncGenerator, model.stream(model_request)))
+            first = await owned.wait(anext(stream))
             assert isinstance(first, TextDelta)
             assert first.text == "Fabricated "
-            await asyncio.wait_for(stream.aclose(), 2)
-            await asyncio.wait_for(peer.closed.wait(), 2)
-        finally:
             await stream.aclose()
-            await model.aclose()
-            server.close()
-            await server.wait_closed()
-        assert peer.requests == 1
-        recorder = model_request.attempts
-        assert isinstance(recorder, ListAttemptRecorder)
-        assert len(recorder.started) == 1
+            await owned.wait_event(peer.closed)
+            assert peer.requests == 1
+            recorder = model_request.attempts
+            assert isinstance(recorder, ListAttemptRecorder)
+            assert len(recorder.started) == 1
 
     asyncio.run(scenario())
 
 
 def test_real_loopback_stream_deadline_closes_stalled_socket_without_replay(
-    model_request: ModelRequest, limits: ModelExecutionLimits
+    model_request: ModelRequest, limits: ModelExecutionLimits, monkeypatch
 ) -> None:
     async def scenario() -> None:
         peer = CancelledStreamPeer()
-        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
-        port = server.sockets[0].getsockname()[1]
-        model = OpenAICompatModel(
-            base_url=f"http://127.0.0.1:{port}/v1",
-            tiers={"demo": "fabricated-wire-model"},
-            limits=limits,
-            output_limit_field="max_tokens",
-        )
-        request = model_request.model_copy(update={"timeout_seconds": 1.0})
-        stream = cast(AsyncGenerator, model.stream(request))
-        try:
-            first = await asyncio.wait_for(anext(stream), 2)
+        async with OwnedLoopback(peer.handle) as owned:
+            timeout_calls = []
+            real_timeout = asyncio.timeout
+
+            def selected_timeout(seconds):
+                timeout_calls.append(seconds)
+                timer = DeferredRequestTimeout(seconds, real_timeout)
+                timer_contexts.append(timer)
+                return timer
+
+            timer_contexts = []
+            monkeypatch.setattr(
+                compatible_module,
+                "asyncio",
+                SimpleNamespace(timeout=selected_timeout, sleep=asyncio.sleep),
+            )
+            model = OpenAICompatModel(
+                base_url=f"http://127.0.0.1:{owned.port}/v1",
+                tiers={"demo": "fabricated-wire-model"},
+                limits=limits,
+                output_limit_field="max_tokens",
+            )
+            owned.model = model
+            request = model_request.model_copy(update={"timeout_seconds": 1.0})
+            stream = owned.own_stream(cast(AsyncGenerator, model.stream(request)))
+            events: asyncio.Queue = asyncio.Queue()
+
+            async def forward_stream() -> None:
+                async for item in stream:
+                    await events.put(item)
+
+            driver = owned.own_task(asyncio.create_task(forward_stream()))
+            first = await owned.wait(events.get(), driver)
             assert isinstance(first, TextDelta)
             assert first.text == "Fabricated "
+            assert timeout_calls == [1.0]
+            assert peer.requests == 1
+            assert peer.closed.is_set() is False
+            timer_contexts[0].arm()
             with pytest.raises(ModelUnavailable, match="timeout"):
-                await asyncio.wait_for(anext(stream), 2)
-            await asyncio.wait_for(peer.closed.wait(), 2)
-        finally:
-            await stream.aclose()
-            await model.aclose()
-            server.close()
-            await server.wait_closed()
-        assert peer.requests == 1
-        recorder = model_request.attempts
-        assert isinstance(recorder, ListAttemptRecorder)
-        assert len(recorder.started) == 1
+                await owned.wait(events.get(), driver)
+            await owned.wait_event(peer.closed)
+            assert timeout_calls == [1.0]
+            assert timer_contexts[0].armed
+            assert timer_contexts[0].context.expired()
+            recorder = model_request.attempts
+            assert isinstance(recorder, ListAttemptRecorder)
+            assert len(recorder.started) == 1
 
     asyncio.run(scenario())
 
@@ -514,32 +674,27 @@ def test_real_loopback_missing_terminal_never_replays_or_finishes(
 ) -> None:
     async def scenario() -> None:
         peer = IncompleteStreamPeer(truncated_body=truncated_body)
-        server = await asyncio.start_server(peer.handle, "127.0.0.1", 0)
-        port = server.sockets[0].getsockname()[1]
-        model = OpenAICompatModel(
-            base_url=f"http://127.0.0.1:{port}/v1",
-            tiers={"demo": "fabricated-wire-model"},
-            limits=limits,
-            output_limit_field="max_tokens",
-        )
-        items = []
+        async with OwnedLoopback(peer.handle) as owned:
+            model = OpenAICompatModel(
+                base_url=f"http://127.0.0.1:{owned.port}/v1",
+                tiers={"demo": "fabricated-wire-model"},
+                limits=limits,
+                output_limit_field="max_tokens",
+            )
+            owned.model = model
+            items = []
 
-        async def collect() -> None:
-            async for item in model.stream(model_request):
-                items.append(item)
+            async def collect() -> None:
+                async for item in model.stream(model_request):
+                    items.append(item)
 
-        try:
             with pytest.raises(ModelUnavailable):
-                await collect()
-        finally:
-            await model.aclose()
-            server.close()
-            await server.wait_closed()
-        assert [item.text for item in items if isinstance(item, TextDelta)] == ["Fabricated "]
-        assert not any(isinstance(item, ModelResponse) for item in items)
-        assert peer.requests == 1
-        recorder = model_request.attempts
-        assert isinstance(recorder, ListAttemptRecorder)
-        assert len(recorder.started) == 1
+                await owned.wait(collect())
+            assert [item.text for item in items if isinstance(item, TextDelta)] == ["Fabricated "]
+            assert not any(isinstance(item, ModelResponse) for item in items)
+            assert peer.requests == 1
+            recorder = model_request.attempts
+            assert isinstance(recorder, ListAttemptRecorder)
+            assert len(recorder.started) == 1
 
     asyncio.run(scenario())

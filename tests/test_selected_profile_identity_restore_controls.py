@@ -15,6 +15,7 @@ import selected_profiles_identity_child as credential_child
 import selected_profiles_identity_credentials as credentials
 import selected_profiles_identity_probe as probe
 from databricks.sdk import WorkspaceClient
+from selected_profiles_process import await_retained
 
 HOST = "https://workspace.fabricated.example"
 PRINCIPAL = "fabricated-principal"
@@ -53,15 +54,23 @@ async def _no_wait(_duration: float) -> None:
 
 async def _await_event_or_operation(event: asyncio.Event, operation: asyncio.Task[Any]) -> None:
     event_wait = asyncio.create_task(event.wait())
+    finish_cleanup = asyncio.Event()
+
+    async def settle() -> None:
+        await finish_cleanup.wait()
+        if not event_wait.done():
+            event_wait.cancel()
+        await asyncio.gather(event_wait, return_exceptions=True)
+
+    cleanup = asyncio.create_task(settle())
     try:
         done, _ = await asyncio.wait({event_wait, operation}, return_when=asyncio.FIRST_COMPLETED)
         if event_wait not in done:
             await operation
             raise AssertionError("operation_terminated_before_expected_event")
     finally:
-        if not event_wait.done():
-            event_wait.cancel()
-            await asyncio.gather(event_wait, return_exceptions=True)
+        finish_cleanup.set()
+        await await_retained(cleanup)
 
 
 class _ManualDeadline:
@@ -204,14 +213,20 @@ def test_child_environment_has_no_inherited_databricks_credentials() -> None:
 
 async def _blocked_sdk_request() -> bool:
     accepted = asyncio.Event()
+    handlers: set[asyncio.Task[Any]] = set()
 
     async def hold(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        del reader
+        task = asyncio.current_task()
+        if task is not None:
+            handlers.add(task)
         accepted.set()
         try:
-            await asyncio.Event().wait()
+            await reader.read()
         finally:
             writer.close()
+            await writer.wait_closed()
+            if task is not None:
+                handlers.discard(task)
 
     server = await asyncio.start_server(hold, "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
@@ -225,67 +240,125 @@ async def _blocked_sdk_request() -> bool:
         credentials._run_process(
             b"",
             command=(sys.executable, "-c", code, url),
-            timeout_seconds=60,
+            timeout_seconds=credentials._CHILD_TIMEOUT_SECONDS,
         )
     )
     try:
         await _await_event_before_terminal(accepted, task)
-        with pytest.raises(credentials.CredentialRefreshError) as error:
+        with pytest.raises(credentials.LiveQualificationIncomplete) as error:
             await task
-        assert error.value.retryable is True
+        assert error.value.reason == "qualification_workspace_identity_not_observed"
         return True
     finally:
-        server.close()
-        await server.wait_closed()
+
+        async def settle() -> None:
+            server.close()
+            await server.wait_closed()
+            await asyncio.gather(*handlers, return_exceptions=True)
+
+        await await_retained(asyncio.create_task(settle()))
 
 
-def test_sdk_oauth_no_timeout_is_killed_and_reaped_in_child_process() -> None:
+def test_sdk_oauth_observer_exhaustion_is_incomplete() -> None:
     assert asyncio.run(_blocked_sdk_request())
 
 
-def test_repeated_cancellation_kills_and_reaps_child(tmp_path) -> None:
-    async def run() -> None:
-        accepted = asyncio.Event()
-        pid_file = tmp_path / "child-pid"
+async def _start_held_token_server() -> tuple[
+    asyncio.Server, asyncio.Event, set[asyncio.Task[Any]]
+]:
+    accepted = asyncio.Event()
+    handlers: set[asyncio.Task[Any]] = set()
 
-        async def hold(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-            del reader
-            accepted.set()
-            try:
-                await asyncio.Event().wait()
-            finally:
-                writer.close()
-
-        server = await asyncio.start_server(hold, "127.0.0.1", 0)
-        port = server.sockets[0].getsockname()[1]
-        url = f"http://127.0.0.1:{port}/token"
-        code = (
-            "import os,sys; open(sys.argv[1], 'w').write(str(os.getpid())); "
-            "from databricks.sdk.oauth import retrieve_token; "
-            "retrieve_token(None, None, sys.argv[2], {'grant_type': 'client_credentials'})"
-        )
-        task = asyncio.create_task(
-            credentials._run_process(
-                b"",
-                command=(sys.executable, "-c", code, str(pid_file), url),
-                timeout_seconds=60,
-            )
-        )
+    async def hold(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        handler_task = asyncio.current_task()
+        if handler_task is not None:
+            handlers.add(handler_task)
+        accepted.set()
         try:
-            await _await_event_before_terminal(accepted, task)
-            child_pid = int(pid_file.read_text(encoding="ascii"))
-            task.cancel()
-            await asyncio.sleep(0)
-            task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await task
-            with pytest.raises(ProcessLookupError):
-                os.kill(child_pid, 0)
+            await reader.read()
         finally:
-            server.close()
-            await server.wait_closed()
+            writer.close()
+            await writer.wait_closed()
+            if handler_task is not None:
+                handlers.discard(handler_task)
 
-    asyncio.run(run())
+    server = await asyncio.start_server(hold, "127.0.0.1", 0)
+    return server, accepted, handlers
+
+
+def _instrument_cancelled_shields() -> tuple[
+    pytest.MonkeyPatch, asyncio.Queue[None], asyncio.Queue[None]
+]:
+    entered: asyncio.Queue[None] = asyncio.Queue()
+    cancelled: asyncio.Queue[None] = asyncio.Queue()
+    original = asyncio.shield
+
+    async def observed(future: asyncio.Future[Any]) -> Any:
+        entered.put_nowait(None)
+        try:
+            return await original(future)
+        except asyncio.CancelledError:
+            cancelled.put_nowait(None)
+            raise
+
+    patcher = pytest.MonkeyPatch()
+    patcher.setattr(asyncio, "shield", observed)
+    return patcher, entered, cancelled
+
+
+async def _settle_local_child_and_server(
+    task: asyncio.Task[Any], server: asyncio.Server, handlers: set[asyncio.Task[Any]]
+) -> None:
+    async def settle() -> None:
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        server.close()
+        await server.wait_closed()
+        await asyncio.gather(*handlers, return_exceptions=True)
+
+    await await_retained(asyncio.create_task(settle()))
+
+
+async def _exercise_repeated_child_cancellation(tmp_path: Path) -> None:
+    server, accepted, handlers = await _start_held_token_server()
+    pid_file = tmp_path / "child-pid"
+    url = f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}/token"
+    code = (
+        "import os,sys; open(sys.argv[1], 'w').write(str(os.getpid())); "
+        "from databricks.sdk.oauth import retrieve_token; "
+        "retrieve_token(None, None, sys.argv[2], {'grant_type': 'client_credentials'})"
+    )
+    task = asyncio.create_task(
+        credentials._run_process(
+            b"", command=(sys.executable, "-c", code, str(pid_file), url), timeout_seconds=60
+        )
+    )
+    patcher: pytest.MonkeyPatch | None = None
+    try:
+        await _await_event_before_terminal(accepted, task)
+        child_pid = int(pid_file.read_text(encoding="ascii"))
+        assert os.kill(child_pid, 0) is None
+        patcher, entered, cancelled = _instrument_cancelled_shields()
+        task.cancel()
+        await entered.get()
+        task.cancel()
+        await cancelled.get()
+        assert not task.done()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
+    finally:
+        try:
+            await _settle_local_child_and_server(task, server, handlers)
+        finally:
+            if patcher is not None:
+                patcher.undo()
+
+
+def test_repeated_cancellation_kills_and_reaps_child(tmp_path) -> None:
+    asyncio.run(_exercise_repeated_child_cancellation(tmp_path))
 
 
 def test_child_request_contains_only_profile_metadata(tmp_path) -> None:
@@ -331,6 +404,15 @@ async def _await_event_before_terminal(
     event: asyncio.Event, operation: asyncio.Task[object]
 ) -> None:
     watcher = asyncio.create_task(event.wait())
+    finish_cleanup = asyncio.Event()
+
+    async def settle() -> None:
+        await finish_cleanup.wait()
+        if not watcher.done():
+            watcher.cancel()
+        await asyncio.gather(watcher, return_exceptions=True)
+
+    cleanup = asyncio.create_task(settle())
     try:
         done, _ = await asyncio.wait({watcher, operation}, return_when=asyncio.FIRST_COMPLETED)
         if watcher in done and event.is_set():
@@ -338,6 +420,5 @@ async def _await_event_before_terminal(
         await operation
         raise AssertionError("operation completed before the expected request event")
     finally:
-        if not watcher.done():
-            watcher.cancel()
-            await asyncio.gather(watcher, return_exceptions=True)
+        finish_cleanup.set()
+        await await_retained(cleanup)

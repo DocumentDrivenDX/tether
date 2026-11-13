@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 import selected_profiles_identity_credentials as credentials
+from qualify_live_apps_incomplete import LiveQualificationIncomplete
 from selected_profiles_identity_credentials import CredentialRefreshError, FreshCredential
 
 _HOST = "https://workspace.fabricated.example"
@@ -31,6 +32,37 @@ def _result(**override: object) -> bytes:
         **override,
     }
     return json.dumps(value).encode() + b"\n"
+
+
+class _ControlledStdin:
+    def write(self, _data: bytes) -> None:
+        return None
+
+    async def drain(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+class _ControlledProcess:
+    pid = 1
+    returncode = 0
+
+    def __init__(self, output: bytes, *, eof: bool = True, raw_timeout: bool = False) -> None:
+        self.stdin = _ControlledStdin()
+        self.stdout = asyncio.StreamReader()
+        self.stdout.feed_data(output)
+        if eof:
+            self.stdout.feed_eof()
+        self.raw_timeout = raw_timeout
+        self.wait_calls = 0
+
+    async def wait(self) -> int:
+        self.wait_calls += 1
+        if self.raw_timeout and self.wait_calls == 1:
+            raise TimeoutError("producer_wait_timeout")
+        return 0
 
 
 def _error(failure: object) -> bytes:
@@ -282,9 +314,22 @@ def test_read_child_output_enforces_bound() -> None:
         asyncio.run(read(b"x" * (limit + 1)))
 
 
-def test_settle_task_waits_through_cancellation() -> None:
+def test_settle_task_waits_through_cancellation(monkeypatch: pytest.MonkeyPatch) -> None:
     async def run() -> None:
         release = asyncio.Event()
+        cancelled = asyncio.Event()
+        entered = asyncio.Event()
+        shield = asyncio.shield
+
+        async def observed_shield(task: asyncio.Future[Any]) -> Any:
+            entered.set()
+            try:
+                return await shield(task)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        monkeypatch.setattr(credentials.asyncio, "shield", observed_shield)
 
         async def work() -> str:
             await release.wait()
@@ -292,10 +337,11 @@ def test_settle_task_waits_through_cancellation() -> None:
 
         task = asyncio.create_task(work())
         settler = asyncio.create_task(credentials._settle_task(task))
-        await asyncio.sleep(0)
+        await entered.wait()
         settler.cancel()
-        await asyncio.sleep(0)
+        await cancelled.wait()
         assert not settler.done()
+        assert not task.done()
         release.set()
         assert await settler == ("value", True)
         assert await credentials._settle_task(asyncio.create_task(work())) == ("value", False)
@@ -329,12 +375,126 @@ def test_run_process_refuses_invalid_output() -> None:
         _run(b"{}", "print('not json')")
 
 
-def test_run_process_deadline_kills_child_and_is_retryable() -> None:
-    with pytest.raises(
-        CredentialRefreshError, match="identity_credential_network_transient"
-    ) as info:
+def test_run_process_deadline_kills_child_as_incomplete_observation() -> None:
+    with pytest.raises(LiveQualificationIncomplete) as info:
         _run(b"{}", _BLOCK, timeout=0.2)
-    assert info.value.retryable is True
+    assert info.value.reason == "qualification_workspace_identity_not_observed"
+
+
+def test_run_process_timeout_drains_descendant_after_leader_exit() -> None:
+    code = (
+        "import subprocess,sys; "
+        "subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+        "print('leader-exited', flush=True)"
+    )
+    with pytest.raises(LiveQualificationIncomplete) as info:
+        _run(b"{}", code, timeout=0.2)
+    assert info.value.reason == "qualification_workspace_identity_not_observed"
+
+
+def test_run_process_preserves_unrelated_timeout_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    processes: list[_ControlledProcess] = []
+
+    async def spawn(*_args: Any, **_kwargs: Any) -> _ControlledProcess:
+        process = _ControlledProcess(_result(), raw_timeout=True)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(credentials.asyncio, "create_subprocess_exec", spawn)
+    with pytest.raises(TimeoutError, match="producer_wait_timeout") as info:
+        _run(b"{}", "pass", timeout=20)
+    assert not isinstance(info.value, LiveQualificationIncomplete)
+    assert processes[0].wait_calls == 2
+
+
+def test_run_process_cancellation_retains_held_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def run() -> None:
+        reader_waiting = asyncio.Event()
+        cleanup_started = asyncio.Event()
+        release_cleanup = asyncio.Event()
+        process = _ControlledProcess(_result(), eof=False)
+        readers: list[asyncio.Task[Any]] = []
+        original_reader = credentials._read_child_output
+        original_cleanup = credentials._cleanup_child
+
+        async def spawn(*_args: Any, **_kwargs: Any) -> _ControlledProcess:
+            return process
+
+        async def observed_reader(output: asyncio.StreamReader) -> bytes:
+            task = asyncio.current_task()
+            assert task is not None
+            readers.append(task)
+            reader_waiting.set()
+            return await original_reader(output)
+
+        async def held_cleanup(
+            child: asyncio.subprocess.Process, reader: asyncio.Task[Any] | None
+        ) -> None:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            await original_cleanup(child, reader)
+
+        monkeypatch.setattr(credentials.asyncio, "create_subprocess_exec", spawn)
+        monkeypatch.setattr(credentials, "_read_child_output", observed_reader)
+        monkeypatch.setattr(credentials, "_cleanup_child", held_cleanup)
+        operation = asyncio.create_task(
+            credentials._run_process(
+                b"{}",
+                command=(sys.executable, "-c", "pass"),
+                timeout_seconds=20,
+            )
+        )
+        await reader_waiting.wait()
+        operation.cancel()
+        await cleanup_started.wait()
+        assert not readers[0].cancelled()
+        release_cleanup.set()
+        process.stdout.feed_eof()
+        with pytest.raises(asyncio.CancelledError):
+            await operation
+        assert readers[0].done()
+        assert not readers[0].cancelled()
+        assert readers[0].result() == _result()
+
+    asyncio.run(run())
+
+
+def test_run_process_cancellation_during_success_cleanup_remains_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        cleanup_started = asyncio.Event()
+        release_cleanup = asyncio.Event()
+        process = _ControlledProcess(_result())
+        original_cleanup = credentials._cleanup_child
+
+        async def spawn(*_args: Any, **_kwargs: Any) -> _ControlledProcess:
+            return process
+
+        async def held_cleanup(
+            process: asyncio.subprocess.Process, reader: asyncio.Task[Any] | None
+        ) -> None:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            await original_cleanup(process, reader)
+
+        monkeypatch.setattr(credentials.asyncio, "create_subprocess_exec", spawn)
+        monkeypatch.setattr(credentials, "_cleanup_child", held_cleanup)
+        code = f"import sys;sys.stdout.buffer.write({_result()!r})"
+        operation = asyncio.create_task(
+            credentials._run_process(
+                b"{}", command=(sys.executable, "-c", code), timeout_seconds=20
+            )
+        )
+        await cleanup_started.wait()
+        operation.cancel()
+        assert not operation.done()
+        release_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await operation
+        assert process.wait_calls == 2
+
+    asyncio.run(run())
 
 
 def test_run_process_refuses_when_no_interpreter(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -394,7 +554,7 @@ def test_run_process_cancellation_during_spawn_reaps_the_child(
     asyncio.run(run())
 
 
-def test_cleanup_child_reaps_live_group_and_cancels_reader() -> None:
+def test_cleanup_child_reaps_live_group_and_drains_reader() -> None:
     async def run() -> None:
         process = await asyncio.create_subprocess_exec(
             sys.executable,
@@ -407,7 +567,7 @@ def test_cleanup_child_reaps_live_group_and_cancels_reader() -> None:
         reader = asyncio.create_task(credentials._read_child_output(process.stdout))
         await credentials._cleanup_child(process, reader)
         assert process.returncode is not None
-        assert reader.done()
+        assert await reader == b""
         # Exited children are only awaited, never signalled.
         await credentials._cleanup_child(process, None)
 

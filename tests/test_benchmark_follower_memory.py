@@ -10,8 +10,10 @@ import benchmark_follower_memory_fixture as fixture_module
 import benchmark_follower_memory_ports as ports_module
 import benchmark_follower_memory_trial as benchmark_trial
 import pytest
+import selected_profiles_process
 from benchmark_follower_memory_cleanup import close_all_retained
 from benchmark_follower_memory_fixture import _summary
+from context_lifetime_controls import CancellationObserver, settle_tasks, wait_event_or_task
 
 from tether.client import EntriesAppended, Lagged, ReplyText, SessionUpdated
 from tether.stores.jsonl.store import JsonlSessionStore
@@ -263,11 +265,15 @@ def test_cleanup_attempts_every_resource_and_surfaces_failure() -> None:
     assert calls == ["host", "store", "files"]
 
 
-def test_cleanup_survives_repeated_cancellation_and_then_reports_it() -> None:
+def test_cleanup_survives_repeated_cancellation_and_then_reports_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def run() -> list[str]:
         calls: list[str] = []
         entered = asyncio.Event()
         release = asyncio.Event()
+        observer = CancellationObserver()
+        observer.install(selected_profiles_process, monkeypatch)
 
         async def close_blocked() -> bool:
             entered.set()
@@ -282,13 +288,17 @@ def test_cleanup_survives_repeated_cancellation_and_then_reports_it() -> None:
         task = asyncio.create_task(
             close_all_retained([("last", close_last), ("blocked", close_blocked)])
         )
-        await asyncio.wait_for(entered.wait(), timeout=2)
-        task.cancel()
-        await asyncio.sleep(0)
-        task.cancel()
-        release.set()
+        try:
+            await wait_event_or_task(entered, task)
+            await wait_event_or_task(observer.entered, task)
+            for acknowledgement in observer.acknowledged:
+                task.cancel()
+                await wait_event_or_task(acknowledgement, task)
+                assert not task.done()
+        finally:
+            await settle_tasks((task,), release=release.set)
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, timeout=2)
+            await task
         return calls
 
     assert asyncio.run(run()) == ["blocked", "last"]
@@ -319,10 +329,15 @@ def test_partial_fixture_setup_closes_every_acquired_resource(monkeypatch) -> No
     assert closed == ["store", "files"]
 
 
-def test_host_physical_wait_finishes_before_borrowed_store_close() -> None:
+def test_host_physical_wait_finishes_before_borrowed_store_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def run() -> list[str]:
         order: list[str] = []
+        entered = asyncio.Event()
         release = asyncio.Event()
+        observer = CancellationObserver()
+        observer.install(selected_profiles_process, monkeypatch)
 
         class Host:
             async def aclose(self) -> bool:
@@ -331,6 +346,7 @@ def test_host_physical_wait_finishes_before_borrowed_store_close() -> None:
 
             async def wait_closed(self) -> bool:
                 order.append("host-wait-start")
+                entered.set()
                 await release.wait()
                 order.append("host-closed")
                 return True
@@ -346,12 +362,19 @@ def test_host_physical_wait_finishes_before_borrowed_store_close() -> None:
                 cast(fixture_module._Fixture, SimpleNamespace(host=Host(), store=Store()))
             )
         )
-        await asyncio.sleep(0)
-        assert "store-closed" not in order
-        cleanup.cancel()
-        release.set()
+        try:
+            await wait_event_or_task(entered, cleanup)
+            await wait_event_or_task(observer.entered, cleanup)
+            assert "store-closed" not in order
+            for acknowledgement in observer.acknowledged:
+                cleanup.cancel()
+                await wait_event_or_task(acknowledgement, cleanup)
+                assert not cleanup.done()
+                assert "store-closed" not in order
+        finally:
+            await settle_tasks((cleanup,), release=release.set)
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(cleanup, timeout=2)
+            await cleanup
         return order
 
     assert asyncio.run(run()) == [

@@ -41,6 +41,14 @@ ddx:
 
 ## Functional time and coordination policy
 
+Owner decision on 2026-11-09 makes actual performance qualification optional
+and nonblocking for implementation and release. Required functional, security,
+lifecycle, configured-deadline and genuine-expiry proof remains unchanged.
+The isolated workflow and synthetic admission/rejection/separation/privacy/
+cleanup controls remain in functional verification; actual measurements remain
+outside it. An optional measurement's failed, deferred, incomplete or unrun
+outcome is not a performance pass and does not block those delivery gates.
+
 The owner's 2026-11-02 instruction is to let functional tests be slow and to
 separate performance qualification onto known hardware without confounding
 concurrent work. Audit Python, TypeScript, installed, browser and accessibility
@@ -190,7 +198,7 @@ Required P0 release capabilities pass their applicable gates before support is c
 | Contract/unit | pytest, AnyIO plugin, Hypothesis | Existing selected Python stack; deterministic ports and property-based state exploration | Unmeasured; separate fast deterministic suite | Maintain shared factories and reusable conformance cases |
 | Integration | pytest/AnyIO; local HTTP scenario server; PostgreSQL 18 | Proves transport cancellation/framing and actual transactional/fenced store behavior | Unmeasured; process/server startup is isolated | Maintain controlled fault points, no network credentials |
 | End to end | Reference CLI/TUI drivers and a subprocess effect recorder | Proves library-to-client behavior, restart, approval and visible effect counts | Unmeasured; fewer critical journeys | Fabricated scenarios and controlled barriers rather than timing sleeps |
-| Performance | Existing planned benchmark suite | Protect API latency/memory and context/executor bounds | Baseline required; no claimed timing | Commit measured budgets by workload/profile |
+| Performance | Separate opt-in benchmark suite | Qualify API latency/memory and context/executor measurements | Optional qualification; workflow/logic controls remain required | Retain measured budgets and actual outcomes by workload/profile |
 
 **Cost/benefit summary**: Reuse port suites and state-machine properties for most cases; reserve real processes, workers and PostgreSQL for guarantees those boundaries establish. No framework installation or competitor benchmark is a gate. No measured CI/runtime baseline exists in this plan.
 

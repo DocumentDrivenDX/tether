@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
+from typing import Any
+
 import pytest
 from databricks.sdk.service.iam import Patch, PatchOp, PatchSchema
 from qualify_selected_profiles import (
@@ -19,6 +23,66 @@ from selected_profiles_pg_oracle import OracleResult
 from selected_profiles_process import _runtime_path
 
 from tether.client import IntegrityError
+
+
+class _ThreadReleaseEvent(threading.Event):
+    def __init__(self, loop: asyncio.AbstractEventLoop, entered: asyncio.Event) -> None:
+        super().__init__()
+        self.loop = loop
+        self.entered = entered
+        self.requested_wait: list[float | None] = []
+
+    def wait(self, timeout: float | None = None) -> bool:
+        self.requested_wait.append(timeout)
+        self.loop.call_soon_threadsafe(self.entered.set)
+        return super().wait(timeout)
+
+
+def _shield_cancel_acknowledger() -> tuple[Any, asyncio.Queue[None], asyncio.Queue[None]]:
+    original = asyncio.shield
+    entered: asyncio.Queue[None] = asyncio.Queue()
+    cancelled: asyncio.Queue[None] = asyncio.Queue()
+
+    async def observed(task: asyncio.Future[Any]) -> Any:
+        entered.put_nowait(None)
+        try:
+            return await original(task)
+        except asyncio.CancelledError:
+            cancelled.put_nowait(None)
+            raise
+
+    return observed, entered, cancelled
+
+
+async def _cancel_twice_with_ack(
+    task: asyncio.Task[Any], entered: asyncio.Queue[None], cancelled: asyncio.Queue[None]
+) -> None:
+    await entered.get()
+    task.cancel()
+    await cancelled.get()
+    await entered.get()
+    task.cancel()
+    await cancelled.get()
+
+
+def _physical_disable_steps(
+    loop: asyncio.AbstractEventLoop, sequence: list[str]
+) -> tuple[_ThreadReleaseEvent, asyncio.Event, Any, Any, Any]:
+    entered = asyncio.Event()
+    release = _ThreadReleaseEvent(loop, entered)
+
+    async def disable() -> None:
+        await asyncio.to_thread(release.wait)
+        sequence.append("disable-finished")
+
+    async def check() -> None:
+        sequence.append("check")
+
+    async def restore() -> str:
+        sequence.append("restore")
+        return "restored"
+
+    return release, entered, disable, check, restore
 
 
 @pytest.mark.parametrize("sqlstate", ["28000", "28P01"])
@@ -215,43 +279,51 @@ def test_clean_runtime_path_preserves_selected_symlink_entrypoint(tmp_path) -> N
     assert str(target.parent) not in directories
 
 
-def test_cancelled_revocation_waits_for_physical_disable_before_restore() -> None:
-    import asyncio
-    import threading
-
+def test_cancelled_revocation_waits_for_physical_disable_before_restore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def run() -> None:
-        disable_started = threading.Event()
-        release_disable = threading.Event()
         sequence: list[str] = []
-
-        def physical_disable() -> None:
-            disable_started.set()
-            if not release_disable.wait(timeout=5):
-                raise TimeoutError("test_disable_release_timeout")
-            sequence.append("disable-finished")
-
-        async def disable() -> None:
-            await asyncio.to_thread(physical_disable)
-
-        async def check() -> None:
-            sequence.append("check")
-
-        async def restore() -> str:
-            sequence.append("restore")
-            return "restored"
-
+        release, disable_entered, disable, check, restore = _physical_disable_steps(
+            asyncio.get_running_loop(), sequence
+        )
         operation = asyncio.create_task(_ordered_disable_check_restore(disable, check, restore))
         waiter = asyncio.create_task(_await_retained(operation))
-        assert await asyncio.to_thread(disable_started.wait, 2)
-        waiter.cancel()
-        await asyncio.sleep(0.05)
-        waiter.cancel()
-        await asyncio.sleep(0.05)
-        assert sequence == []
-        release_disable.set()
-        with pytest.raises(asyncio.CancelledError):
-            await waiter
-        assert sequence == ["disable-finished", "check", "restore"]
+        observed, shield_entered, shield_cancelled = _shield_cancel_acknowledger()
+        monkeypatch.setattr(asyncio, "shield", observed)
+        entered_wait = asyncio.create_task(disable_entered.wait())
+        finish_cleanup = asyncio.Event()
+
+        async def settle() -> None:
+            await finish_cleanup.wait()
+            release.set()
+            if not entered_wait.done():
+                entered_wait.cancel()
+            await asyncio.gather(entered_wait, return_exceptions=True)
+            if not waiter.done():
+                await asyncio.gather(waiter, return_exceptions=True)
+            outcome = (await asyncio.gather(operation, return_exceptions=True))[0]
+            if isinstance(outcome, BaseException):
+                raise outcome
+
+        cleanup = asyncio.create_task(settle())
+        try:
+            finished, _ = await asyncio.wait(
+                {entered_wait, operation}, return_when=asyncio.FIRST_COMPLETED
+            )
+            assert entered_wait in finished, "disable_ended_before_physical_wait"
+            assert release.requested_wait == [None]
+            await _cancel_twice_with_ack(waiter, shield_entered, shield_cancelled)
+            assert not waiter.done()
+            assert not operation.done()
+            assert sequence == []
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await waiter
+            assert sequence == ["disable-finished", "check", "restore"]
+        finally:
+            finish_cleanup.set()
+            await _await_retained(cleanup)
 
     asyncio.run(run())
 

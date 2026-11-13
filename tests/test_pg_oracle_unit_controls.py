@@ -7,34 +7,14 @@ import io
 import json
 import ssl
 import sys
-from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any, cast
 
 import asyncpg
 import pytest
 import selected_profiles_pg_oracle as oracle
-
-_VERSION = oracle.EXPECTED_ASYNCPG_VERSION
-_REQUEST: dict[str, Any] = {
-    "host": "database.example.test",
-    "port": 5432,
-    "user": "caller",
-    "password": "-".join(("fabricated", "value")),
-    "database": "db",
-    "ca_file": "/fabricated/ca.pem",
-}
-
-
-def _report(**override: object) -> bytes:
-    value = {
-        "kind": "connected",
-        "current_user": "caller",
-        "sqlstate": None,
-        "driver_version": _VERSION,
-        **override,
-    }
-    return json.dumps(value).encode() + b"\n"
+from pg_oracle_unit_support import _REQUEST, _VERSION, _report
+from qualify_live_apps_incomplete import LiveQualificationIncomplete
 
 
 @pytest.mark.parametrize(
@@ -44,6 +24,7 @@ def _report(**override: object) -> bytes:
         (asyncpg.InvalidAuthorizationSpecificationError("x"), "28000"),
         (asyncpg.UndefinedTableError("x"), None),
         (OSError("x"), None),
+        (TimeoutError("x"), None),
     ],
 )
 def test_auth_sqlstate_classifies_only_authentication_refusals(
@@ -87,9 +68,17 @@ def test_connection_arguments_refuse_non_mapping_and_missing_keys() -> None:
 
 
 class _Conn:
-    def __init__(self, value: object = "caller", close_error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        value: object = "caller",
+        close_error: Exception | None = None,
+        close_started: asyncio.Event | None = None,
+        close_release: asyncio.Event | None = None,
+    ) -> None:
         self.value = value
         self.close_error = close_error
+        self.close_started = close_started
+        self.close_release = close_release
         self.closed = False
 
     async def fetchval(self, query: str) -> object:
@@ -97,6 +86,10 @@ class _Conn:
         return self.value
 
     async def close(self) -> None:
+        if self.close_started is not None:
+            self.close_started.set()
+        if self.close_release is not None:
+            await self.close_release.wait()
         self.closed = True
         if self.close_error is not None:
             raise self.close_error
@@ -133,11 +126,50 @@ def test_run_connection_reports_connected_and_closes(monkeypatch: pytest.MonkeyP
     assert seen["ssl"].check_hostname is True
 
 
-def test_run_connection_suppresses_close_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_connection_reports_close_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     connection = _Conn(close_error=RuntimeError("close"))
     _install_connect(monkeypatch, connection=connection)
-    assert asyncio.run(oracle._run_connection(_REQUEST)).kind == "connected"
+    assert asyncio.run(oracle._run_connection(_REQUEST)).kind == "other_failure"
     assert connection.closed
+
+
+def test_run_connection_retains_close_through_caller_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        close_started = asyncio.Event()
+        close_release = asyncio.Event()
+        connection = _Conn(close_started=close_started, close_release=close_release)
+        _install_connect(monkeypatch, connection=connection)
+        entered: asyncio.Queue[None] = asyncio.Queue()
+        cancelled: asyncio.Queue[None] = asyncio.Queue()
+        original_shield = asyncio.shield
+
+        async def observed_shield(task: asyncio.Future[Any]) -> Any:
+            entered.put_nowait(None)
+            try:
+                return await original_shield(task)
+            except asyncio.CancelledError:
+                cancelled.put_nowait(None)
+                raise
+
+        monkeypatch.setattr(oracle.asyncio, "shield", observed_shield)
+        operation = asyncio.create_task(oracle._run_connection(_REQUEST))
+        await close_started.wait()
+        await entered.get()
+        operation.cancel()
+        await cancelled.get()
+        await entered.get()
+        operation.cancel()
+        await cancelled.get()
+        assert not operation.done()
+        assert not connection.closed
+        close_release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await operation
+        assert connection.closed
+
+    asyncio.run(run())
 
 
 def test_run_connection_rejects_non_text_current_user(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -198,6 +230,42 @@ def _child_output(monkeypatch: pytest.MonkeyPatch, raw: bytes) -> dict[str, Any]
 def test_child_main_runs_request_and_reports(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_connect(monkeypatch, connection=_Conn())
     assert _child_output(monkeypatch, json.dumps(_REQUEST).encode())["kind"] == "connected"
+
+
+def test_child_main_reports_observation_expiry_with_private_exit_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stdout = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", SimpleNamespace(buffer=stdout))
+
+    async def expired(_request: object) -> oracle.OracleResult:
+        raise oracle._OracleObservationExpired
+
+    monkeypatch.setattr(oracle, "_run_connection", expired)
+    result = asyncio.run(oracle._child_main(json.dumps(_REQUEST).encode()))
+    assert result == oracle._OBSERVATION_EXPIRED_EXIT_CODE
+    assert json.loads(stdout.getvalue()) == {
+        "kind": "other_failure",
+        "current_user": None,
+        "sqlstate": None,
+        "driver_version": _VERSION,
+    }
+
+
+def test_decode_accepts_only_exact_private_expiry_report() -> None:
+    with pytest.raises(LiveQualificationIncomplete) as info:
+        oracle._decode_output(
+            _report(kind="other_failure", current_user=None),
+            oracle._OBSERVATION_EXPIRED_EXIT_CODE,
+        )
+    assert info.value.reason == "qualification_database_credential_not_observed"
+    for raw in (
+        _report(kind="connected", current_user="caller"),
+        _report(kind="auth_refused", current_user=None, sqlstate="28P01"),
+        _report(kind="other_failure", current_user=None, driver_version="0.31.0"),
+    ):
+        with pytest.raises(RuntimeError, match="database_oracle_child_failed"):
+            oracle._decode_output(raw, oracle._OBSERVATION_EXPIRED_EXIT_CODE)
 
 
 @pytest.mark.parametrize(
@@ -300,15 +368,14 @@ def test_kill_child_kills_group_and_reaps_real_process() -> None:
     asyncio.run(run())
 
 
-def test_cleanup_child_kills_live_process_and_cancels_reader() -> None:
+def test_cleanup_child_kills_live_process_and_drains_reader() -> None:
     async def run() -> None:
         process = await _spawn_blocked_child()
         assert process.stdout is not None
         reader = asyncio.create_task(oracle._read_child_output(process.stdout))
-        await asyncio.sleep(0)
         await oracle._cleanup_child(process, reader)
         assert process.returncode is not None
-        assert reader.done()
+        assert await reader == b""
 
     asyncio.run(run())
 
@@ -322,10 +389,25 @@ def test_cleanup_child_without_reader_on_exited_process() -> None:
     asyncio.run(run())
 
 
-def test_await_cleanup_finishes_through_cancellation_and_surfaces_failure() -> None:
+def test_await_cleanup_finishes_through_cancellation_and_surfaces_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def run() -> None:
         release = asyncio.Event()
         finished: list[str] = []
+        cancelled: asyncio.Queue[None] = asyncio.Queue()
+        entered: asyncio.Queue[None] = asyncio.Queue()
+        shield = asyncio.shield
+
+        async def observed_shield(task: asyncio.Future[Any]) -> Any:
+            entered.put_nowait(None)
+            try:
+                return await shield(task)
+            except asyncio.CancelledError:
+                cancelled.put_nowait(None)
+                raise
+
+        monkeypatch.setattr(oracle.asyncio, "shield", observed_shield)
 
         async def cleanup() -> None:
             await release.wait()
@@ -333,10 +415,14 @@ def test_await_cleanup_finishes_through_cancellation_and_surfaces_failure() -> N
 
         task = asyncio.create_task(cleanup())
         waiter = asyncio.create_task(oracle._await_cleanup(task))
-        await asyncio.sleep(0)
+        await entered.get()
         waiter.cancel()
-        await asyncio.sleep(0)
+        await cancelled.get()
+        await entered.get()
+        waiter.cancel()
+        await cancelled.get()
         assert not waiter.done()
+        assert not task.done()
         release.set()
         with pytest.raises(asyncio.CancelledError):
             await waiter
@@ -349,159 +435,3 @@ def test_await_cleanup_finishes_through_cancellation_and_surfaces_failure() -> N
             await oracle._await_cleanup(asyncio.create_task(broken()))
 
     asyncio.run(run())
-
-
-class _Stdin:
-    def __init__(self) -> None:
-        self.payload = b""
-        self.closed = False
-
-    def write(self, data: bytes) -> None:
-        self.payload += data
-
-    async def drain(self) -> None:
-        return None
-
-    def close(self) -> None:
-        self.closed = True
-
-
-class _Child:
-    pid = 4242
-
-    def __init__(self, output: bytes, returncode: int | None, *, pipes: bool = True) -> None:
-        self.stdin = _Stdin() if pipes else None
-        self.stdout = asyncio.StreamReader() if pipes else None
-        if self.stdout is not None:
-            self.stdout.feed_data(output)
-            self.stdout.feed_eof()
-        self._final = returncode
-        self.returncode: int | None = None if returncode is None else returncode
-
-    async def wait(self) -> int:
-        return self._final if self._final is not None else 0
-
-
-def _probe(**override: Any) -> Any:
-    arguments = {k: v for k, v in _REQUEST.items()} | override
-    return oracle.probe_database(**arguments)
-
-
-def _install_spawn(
-    monkeypatch: pytest.MonkeyPatch, make: Callable[[], _Child]
-) -> tuple[list[Any], list[_Child]]:
-    spawned: list[Any] = []
-    children: list[_Child] = []
-
-    async def spawn(*args: Any, **kwargs: Any) -> _Child:
-        spawned.append((args, kwargs))
-        children.append(make())
-        return children[-1]
-
-    monkeypatch.setattr(oracle.asyncio, "create_subprocess_exec", spawn)
-    return spawned, children
-
-
-def test_probe_database_sends_request_and_decodes_child_report(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    spawned, children = _install_spawn(
-        monkeypatch,
-        lambda: _Child(_report(kind="auth_refused", current_user=None, sqlstate="28P01"), 0),
-    )
-    result = asyncio.run(_probe())
-    assert result == oracle.OracleResult("auth_refused", sqlstate="28P01")
-    stdin = children[0].stdin
-    assert stdin is not None
-    assert json.loads(stdin.payload) == _REQUEST
-    assert stdin.closed
-    assert spawned[0][0][-1] == "scripts.selected_profiles_pg_oracle"
-    assert spawned[0][1]["env"] == oracle._child_environment()
-
-
-def test_probe_database_refuses_oversize_input(monkeypatch: pytest.MonkeyPatch) -> None:
-    spawned, _children = _install_spawn(monkeypatch, lambda: _Child(b"", 0))
-    monkeypatch.setattr(oracle, "MAX_INPUT_BYTES", 10)
-    with pytest.raises(RuntimeError, match="database_oracle_input_limit"):
-        asyncio.run(_probe())
-    assert spawned == []
-
-
-def test_probe_database_refuses_missing_pipes(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_spawn(monkeypatch, lambda: _Child(b"", 0, pipes=False))
-    with pytest.raises(RuntimeError, match="database_oracle_pipe_unavailable"):
-        asyncio.run(_probe())
-
-
-def test_probe_database_refuses_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_spawn(monkeypatch, lambda: _Child(_report(), 3))
-    with pytest.raises(RuntimeError, match="database_oracle_child_failed"):
-        asyncio.run(_probe())
-
-
-def test_probe_database_refuses_child_without_exit_status(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class Unfinished(_Child):
-        async def wait(self) -> int:
-            # Report completion but leave returncode unset; mark exited at cleanup time.
-            self.returncode = None
-            return 0
-
-    children: list[_Child] = []
-
-    def make() -> _Child:
-        children.append(Unfinished(_report(), 0))
-        children[0].returncode = None
-        return children[0]
-
-    _install_spawn(monkeypatch, make)
-
-    async def run() -> None:
-        try:
-            await _probe()
-        finally:
-            children[0].returncode = 0
-
-    with pytest.raises(RuntimeError, match="database_oracle_child_failed"):
-        asyncio.run(run())
-
-
-def test_probe_database_maps_deadline_to_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def run() -> None:
-        monkeypatch.setattr(oracle, "CHILD_TIMEOUT_SECONDS", 0.01)
-
-        async def spawn(*_args: Any, **_kwargs: Any) -> _Child:
-            await asyncio.Event().wait()
-            raise AssertionError("unreachable")
-
-        monkeypatch.setattr(oracle.asyncio, "create_subprocess_exec", spawn)
-        await _probe()
-
-    with pytest.raises(RuntimeError, match="database_oracle_timeout"):
-        asyncio.run(run())
-
-
-@pytest.mark.parametrize(
-    ("result", "ok"),
-    [
-        (oracle.OracleResult("auth_refused", sqlstate="28P01"), True),
-        (oracle.OracleResult("connected", current_user="caller"), False),
-        (oracle.OracleResult("other_failure"), False),
-    ],
-)
-def test_require_authentication_refusal_returns_only_classified_refusals(
-    monkeypatch: pytest.MonkeyPatch, result: oracle.OracleResult, ok: bool
-) -> None:
-    async def probe(**_kwargs: object) -> oracle.OracleResult:
-        return result
-
-    monkeypatch.setattr(oracle, "probe_database", probe)
-    if ok:
-        assert asyncio.run(oracle.require_authentication_refusal(**_REQUEST)) == (
-            "28P01",
-            _VERSION,
-        )
-    else:
-        with pytest.raises(RuntimeError, match="database_auth_refusal_unclassified"):
-            asyncio.run(oracle.require_authentication_refusal(**_REQUEST))

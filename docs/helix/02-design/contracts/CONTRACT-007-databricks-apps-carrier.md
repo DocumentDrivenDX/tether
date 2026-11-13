@@ -248,6 +248,15 @@ MUST NOT establish descendant exit or stream EOF.
 
 ### 4. Storage and resource qualification
 
+Under PRD NFR-7's 2026-11-09 owner decision, actual performance qualification
+MUST NOT block implementation, functional carrier acceptance or release.
+Functional identity, authorization, lifecycle, configured caller deadlines and
+genuine expiry evidence remain required. Optional performance measurements
+MUST retain their actual outcome and the existing isolation/admission rules;
+failed, deferred or unrun measurements MUST NOT be presented as a pass. Apps
+latency remains observational. Any referenced qualified local performance claim
+MUST retain its exact six-profile/54-metric scope and source/admission joins.
+
 The carrier MUST use a declared Tether `LiveStore` and `HistoryProvider` profile. JSONL files on Apps-local storage MUST NOT be presented as restart-durable. A Unity Catalog volume MUST NOT be treated as a journal or generic writable filesystem without separate contract and qualification.
 
 Lakebase or another managed PostgreSQL endpoint MUST be treated as a separate profile from the existing PostgreSQL 18 qualification. The embedder MUST provide explicit schema migration ownership, application roles, authorization/RLS decisions, TLS requirements, connection acquisition and token refresh. The carrier MUST NOT migrate an unmanaged schema or select an application role implicitly during ordinary construction.

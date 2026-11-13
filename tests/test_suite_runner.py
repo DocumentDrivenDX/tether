@@ -9,9 +9,12 @@ import threading
 from pathlib import Path
 
 import pytest
+import selected_profiles_process
 import test_evidence
 import test_suite
+from context_lifetime_controls import wait_event_or_task
 from process import CommandIncompleteError, run_command
+from process_lifetime_controls import ShieldCancellationObserver
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -227,12 +230,14 @@ def test_cancellation_waits_for_incomplete_receipt_write_to_settle(tmp_path, mon
     monkeypatch.setattr(test_suite, "inventory", lambda root: source)
     monkeypatch.setattr(test_evidence, "inventory", lambda root: source)
     receipt_path = tmp_path / "cancelled-python-evidence.json"
-    write_started = threading.Event()
+    write_started = asyncio.Event()
     release_write = threading.Event()
     original_write = test_evidence.ObservedEvidence.write
+    loop: asyncio.AbstractEventLoop | None = None
 
     def held_write(evidence, root, code, destination=None):
-        write_started.set()
+        assert loop is not None
+        loop.call_soon_threadsafe(write_started.set)
         release_write.wait()
         return original_write(evidence, root, code, destination)
 
@@ -241,16 +246,25 @@ def test_cancellation_waits_for_incomplete_receipt_write_to_settle(tmp_path, mon
 
     monkeypatch.setattr(test_evidence.ObservedEvidence, "write", held_write)
     monkeypatch.setattr(test_suite, "command", fail_erase)
+    observer = ShieldCancellationObserver(1)
+    observer.install(selected_profiles_process, monkeypatch)
 
     async def scenario():
+        nonlocal loop
+        loop = asyncio.get_running_loop()
         task = asyncio.create_task(test_suite.run_suite(sys.executable, evidence_path=receipt_path))
-        await asyncio.to_thread(write_started.wait)
-        task.cancel()
-        await asyncio.sleep(0)
-        assert not task.done()
-        release_write.set()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        observer.target = task
+        try:
+            await wait_event_or_task(write_started, task)
+            task.cancel()
+            await wait_event_or_task(observer.acknowledged[0], task)
+            assert not task.done()
+            release_write.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            release_write.set()
+            await asyncio.gather(task, return_exceptions=True)
 
     asyncio.run(scenario())
     receipt = json.loads(receipt_path.read_text())

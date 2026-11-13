@@ -4,8 +4,10 @@ import asyncio
 from contextlib import suppress
 
 import pytest
+from context_lifetime_controls import ContextClock, settle_tasks, wait_event_or_task
 from test_agent_summaries import configuration, fixture, response, turn
 
+import tether.engine.context.step as context_step
 from tether.models.testing import ScriptedModel
 from tether.types.execution import WorkerOutstanding
 
@@ -18,8 +20,12 @@ def anyio_backend():
 
 
 @pytest.mark.parametrize("times_out", [False, True])
-async def test_abandoned_summary_retains_actual_model_work_and_session(limits, times_out):
+async def test_abandoned_summary_retains_actual_model_work_and_session(
+    limits, times_out, monkeypatch
+):
     entered, release = asyncio.Event(), asyncio.Event()
+    clock = ContextClock()
+    clock.install(context_step, monkeypatch)
 
     class Model(ScriptedModel):
         async def stream(self, request):
@@ -36,10 +42,15 @@ async def test_abandoned_summary_retains_actual_model_work_and_session(limits, t
     async with fixture(limits, model=model, settings=values) as h:
         await turn(h, "first")
         task = asyncio.create_task(turn(h, "second"))
+        owned_workers = ()
         try:
-            await asyncio.wait_for(entered.wait(), 1)
+            await wait_event_or_task(entered, task)
             if times_out:
-                result, _ = await asyncio.wait_for(task, 1)
+                context_timer = _arm_summary_deadline(
+                    clock, values["context_config"].timeout_seconds
+                )
+                result, _ = await task
+                assert context_timer.expired()
                 assert (result.stop_reason, result.reason) == (
                     "context_unavailable",
                     "context_failed",
@@ -47,13 +58,26 @@ async def test_abandoned_summary_retains_actual_model_work_and_session(limits, t
             else:
                 task.cancel()
                 with pytest.raises(asyncio.CancelledError):
-                    await asyncio.wait_for(task, 1)
+                    await task
             assert h.engine.workers.busy(h.session.id)
             with pytest.raises(WorkerOutstanding):
                 await turn(h, "third")
+            owned_workers = tuple(h.engine.workers.active)
         finally:
             release.set()
-            await asyncio.gather(*tuple(h.engine.workers.active), return_exceptions=True)
+            await settle_tasks((task, *owned_workers, *tuple(h.engine.workers.active)))
         assert len(model.requests) == 2
         async with h.store.turn(h.session.id, h.actor.id, turn_id="inspection") as log:
             assert not any(e.kind == "compaction" for e in log.entries)
+
+
+def _arm_summary_deadline(clock, expected_seconds):
+    deadline = clock.deadlines[-1]
+    duration = deadline - clock.now
+    if duration != expected_seconds:
+        raise AssertionError("summary_timeout_value_changed")
+    clock.advance_past(deadline)
+    loop_time = asyncio.get_running_loop().time()
+    context_timer = clock.timers[-1]
+    context_timer.reschedule(loop_time + duration)
+    return context_timer

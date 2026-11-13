@@ -1,23 +1,35 @@
 # IP-002 release candidate disposition
 
-This working tree implements an unreleased interface cohort. It has not been
-published to package registries, tagged, or merged by this task. Existing public
-0.1.0 and 0.2.0 core artifacts remain separate releases. The candidate Python
-cohort is `0.2.0.dev0`; the npm cohort is `0.2.0-dev.0`. Internal candidate
-dependencies require that exact prerelease cohort. The hash-verified published
-0.2.0 core exposes an older client surface and does not qualify the candidate
-public host contract. Candidate metadata does not establish registry availability
-or operator ownership of a public registry name.
-Versions are explicit in the candidate manifests. Before a future publication,
-update the Python and npm cohort versions, internal exact dependency constraints and
-locks together, then rebuild and requalify that cohort. A Git tag alone no longer
-derives the Python version. Keep the historical 0.1.0 release procedure scoped to
-its original artifacts.
+The resumed working tree has explicit Python package metadata `0.3.2` for the
+core, API, UI and Databricks packages, with matching exact internal Python
+dependencies where present. Its root and three npm package manifests remain
+`0.2.0-dev.0`. These inspected versions are not a fresh qualification or
+publication of the current modified bytes. The separate
+[0.3.2 publication receipt](../../03-test/evidence/release-032-publication-20261108.md)
+records the upstream Python release at commit `236c569`; this task has not
+published, tagged or merged its changes. Earlier 0.1.0, 0.2.0 and Source 27
+development artifacts retain their historical scope below.
+
+Before a future publication, choose the intended Python/npm cohort versions,
+update affected exact dependencies and locks consistently, then rebuild and
+qualify the actual artifacts. Do not roll the current Python manifests back to
+the Source 27 prerelease version. A Git tag alone does not derive the Python
+version, and metadata alone proves neither registry availability nor operator
+ownership of a public registry name.
 
 The acceptance authority is [IP-002](../web-platform-implementation-plan.md), its
 41 story criteria, and the machine closure audit. The
 [continuation](web-platform-continuation.md) records open gates. A successful
 focused test or wheel build does not close the aggregate release gate.
+
+Owner decision on 2026-11-09 makes actual performance qualification optional
+and nonblocking. WP-36 still requires the available isolated workflow and its
+deterministic admission/rejection/separation/privacy/cleanup controls. A release
+discloses optional measurement status without converting unrun, deferred,
+incomplete or failed measurements to PASS. Referenced qualified performance
+claims retain the exact six-profile/54-metric and source/admission checks.
+All functional, security, lifecycle, caller-deadline and selected live-profile
+requirements remain. Historical measurements below retain their original scope.
 
 ## Artifact cohort
 
@@ -49,8 +61,9 @@ compatibility with an untested registry release.
 
 The selected Python qualification runtime is 3.11 with the locked dependency
 cohort. The selected browser gate uses Node 22.22.2, React 19.3.1 and the installed
-Chromium build recorded by its runner. The current source27 aggregate and installed
-matrix are retained below; pending selected/manual/cleanup gates remain distinct.
+Chromium build recorded by its runner. The historical Source 27 aggregate and
+installed matrix are retained below; current Source 29 functional, installed,
+selected/manual and cleanup gates require their own exact evidence.
 Earlier Node 22.20.0 runs are diagnostic history in the continuation record.
 Exact lockfiles govern framework and server versions;
 other versions require independent evidence. Public client consumers should
@@ -81,15 +94,15 @@ private inventory and a resource-free public disposition. Do not imply cleanup
 has occurred before checking it.
 
 
-## Current source27 candidate readiness — observations, not release authorization
+## Historical Source 27 candidate readiness — observations, not current qualification
 
 The frozen cohort is 700 included files, canonical source SHA-256
 `4eb2d3e8f38e08604eb617ec6de70b50c48838be00aafc1c7aba1238e923c986`.
-The Python candidates remain `0.2.0.dev0` and npm candidates `0.2.0-dev.0`.
+That frozen cohort used Python `0.2.0.dev0` and npm `0.2.0-dev.0`.
 Nothing in this packet publishes, tags, merges or qualifies a production rollout.
 The candidate is reviewed as a development qualification cohort only.
 
-| Current evidence | Binding and observed scope |
+| Historical evidence | Binding and observed scope |
 |---|---|
 | [Full27 aggregate](web-platform/full27-aggregate.json) | SHA `b630d80f4a9a24d4e4d75ce7ad54b98b4c6397a72a34a4819fe43c67cd53a860`; ten deterministic stages, 2745 Python cases/117 bounded groups/global85% coverage, JS32/npm4/browser3. No CI-run claim is inferred from this local execution. |
 | [Installed matrix27](web-platform/full27-installed.json) | SHA `9c48ad2c1a506b958a30d57f2ffc381e8d0eb172a3770523be11e8eb24a2b0e3`; 49 checks/ten installed profiles, wheel/sdist reproducibility, licenses/notices, isolated closures and independent fabricated embedder. SBOM data are retained in the actual matrix/npm receipts. |
@@ -101,7 +114,7 @@ The candidate is reviewed as a development qualification cohort only.
 | [Managed task cases27](web-platform/full27-managed38-firstactual.json) | SHA `d35e429f3135cf87846369c41ba140c9c8748ad7bafc2384f19fad1711e2c371`; real separate-process natural lease takeover/fencing and killed-worker unknown-effect recovery on selected PostgreSQL18.6/TLS/nonadmin role. Public source composition only, no installed/deployed execution or managed-database HA/region/power-loss claim. |
 | Selected7 / final manual / cleanup | Pending their own complete actual receipts and final Root review. Earlier collector failures and warmup/log-readiness preparation are not selected-case passes. |
 
-The current installed raw wheel archive hashes are exact artifact identifiers,
+The Source 27 installed raw wheel archive hashes are exact artifact identifiers,
 not registry coordinates or a promise that a new build under changed inputs
 would have the same bytes:
 
@@ -122,7 +135,11 @@ API application protocol version1 is distinct from network HTTP versions.
 Untested versions, managed environments and broader model/transport subsets
 remain outside the claims.
 
-### Remaining final closure steps
+### Source 27 prepared closure instructions (historical)
+
+The following instructions describe the retained Source 27 packet. They are not
+the current Source 29 execution recipe or authority to reuse historical receipt
+bindings for changed bytes. Current closure follows IP-002 and the continuation.
 
 Retain the complete selected seven-case receipt only after all original cases
 pass in one source/profile-bound collector execution and the exact temporary
@@ -161,12 +178,49 @@ registry signing/channel control, a public release tag and production rollout
 remain separately authorized future actions, not new prerequisites invented by
 this packet and not actions executed by preparing it.
 
+## Source 29 candidate qualification
+
+The exact 816-file candidate passed the required functional and selected
+profile gates. Its [aggregate](web-platform/full29-aggregate.json) passed all
+11 stages. The [installed matrix](web-platform/full29-installed.json) records
+the wheel and source archive hashes, clean installed environments, and 49
+passing checks across ten profiles. The three development npm packages have
+separate [packing and consumption evidence](web-platform/full29-npm.json).
+The current qualified Python artifacts use `0.3.2` and the npm development
+artifacts use `0.2.0-dev.0`. The local gate used Python 3.11.17,
+Node 22.22.2, npm 11.20.0 and Chromium 156.0.8078.4.
+
+The [selected Apps receipt](web-platform/full29-live.json) binds the exact
+instrumented deployment with an explicitly injected fabricated shared-session
+context deadline. It records browser and remote TUI behavior, verified ingress,
+bounded shutdown with outstanding resources, and the unknown-effect barrier
+after restart. The [managed process receipt](web-platform/full29-managed.json)
+and the [selected collector receipt](web-platform/full29-selected.json) prove
+natural fencing and recovery, owner isolation, revocation and restoration,
+credential expiry, schema refusal, exact bundle identity and log privacy for
+the selected profile. The recorded support scope is limited to the specific
+local and selected development profiles. [Independent support review](web-platform/full29-support-review.json)
+includes the user-facing installed instructions and actual
+[media review](web-platform/full29-media-review.json).
+
+The [closure manifest](web-platform/acceptance-closure.json) maps all 41
+criteria and the 42 ordinary work tasks to exact observed outcomes. The
+[standalone audit](web-platform/full29-closure-audit.json) and
+[receipt-based release postcheck](web-platform/full29-release-postcheck.json)
+each exited zero with seven requirements, 41 criteria, 45 task records and no
+errors. The [continuation](web-platform-continuation.md) retains the actual
+failed and incomplete attempts and the exact qualified retry scope.
+
 ## Release decision
 
-**Hold while required gates remain open.** Final disposition requires the full
-core quality floor, browser and installed package matrices, current exact
-acceptance receipts, measured interface budgets, selected live profile evidence,
-independent review, and a passing closure audit. Registry publication, a public
-release tag and production rollout are separate actions requiring their own
-release decision. Audience-facing release notes should be authored for that
-actual shipped rollout, with the resulting artifact manifest and limits.
+The tested candidate is qualified for the recorded scope. All ten reviewed
+cleanup actions completed. The
+[cleanup disposition](web-platform/full29-cleanup-disposition.json) verifies
+40 exact resource states, including the selected test deployment and its
+owned resources. The prior PostgreSQL 17 project was checked for absence
+without mutation. The [operator runbook](../../05-deploy/web-platform-runbook.md)
+records the rollback and support limits. Signing, registry publication, a public release
+tag and production rollout require their own release decision. Optional current
+performance measurements were not run. Their nonblocking status follows the
+2026-11-09 owner decision; any future qualified claim retains the strict
+measurement and admission checks.

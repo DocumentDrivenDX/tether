@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 import httpx2 as httpx
 import pytest
+from functional_watchdog import MAX_FUNCTIONAL_WATCHDOG_MS
 from test_attachment_metadata import attachment
 from test_compatible_adapter import wire_response
 
@@ -189,7 +190,9 @@ async def test_public_estimator_conformance_uses_independent_wire_oracle():
             estimator(), lambda request: (oracle(request), oracle(request)), evidence="wire_oracle"
         )
 
-    report = await token_estimator_suite(factory)
+    report = await token_estimator_suite(
+        factory, timeout_seconds=MAX_FUNCTIONAL_WATCHDOG_MS / 1000.0
+    )
     assert report.capabilities["evidence"] == "wire_oracle"
     assert "estimate_attachments_bounds" in report.checks
 
